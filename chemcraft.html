@@ -1,0 +1,3017 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#1A1A2E">
+<title>ChemCraft - Học Hóa học</title>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap" rel="stylesheet">
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js';
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js';
+  import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCInWZftP-u5zcCJ5ikJdVYcoR_OwPU9_0",
+    authDomain: "chemcraft-e8e6e.firebaseapp.com",
+    projectId: "chemcraft-e8e6e",
+    storageBucket: "chemcraft-e8e6e.firebasestorage.app",
+    messagingSenderId: "606315063236",
+    appId: "1:606315063236:web:e31d93413d2bb577c0e691",
+    measurementId: "G-NXCLLTKZ6S"
+  };
+
+  let app, auth, db;
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch(e) {
+    console.warn('Firebase init error:', e);
+  }
+
+  window._fbAuth = auth;
+  window._fbDb = db;
+  window._fbApiKey = firebaseConfig.apiKey;
+  window._fbFns = { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, doc, setDoc, getDoc, updateDoc, arrayUnion, serverTimestamp };
+
+  // Auth state listener
+  if (auth) {
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        window._currentUser = user;
+        updateNavForLoggedIn(user);
+        // Load history from Firestore
+        try {
+          const snap = await getDoc(doc(db, 'users', user.uid));
+          if (snap.exists()) {
+            window._userHistory = snap.data().lessonHistory || [];
+          } else {
+            window._userHistory = [];
+            await setDoc(doc(db, 'users', user.uid), { displayName: user.displayName || '', email: user.email, lessonHistory: [], createdAt: serverTimestamp() });
+          }
+          renderHistoryList();
+        } catch(e) { console.warn('Firestore error:', e); }
+      } else {
+        window._currentUser = null;
+        window._userHistory = [];
+        updateNavForLoggedOut();
+        renderHistoryList();
+      }
+    });
+  }
+</script>
+
+<style>
+:root {
+  --sky:#E8F4FF; --sky2:#D0EAFF; --white:#FFFFFF;
+  --grass:#4CAF50; --grass-d:#388E3C; --dirt:#8D6E63;
+  --cyan:#00BCD4; --cyan-l:#E0F7FA; --cyan-d:#006064;
+  --gold:#FFC107; --gold-l:#FFF8E1; --gold-d:#E65100;
+  --purple:#9C27B0; --purple-l:#F3E5F5;
+  --green:#43A047; --green-l:#E8F5E9;
+  --orange:#FF7043; --orange-l:#FBE9E7;
+  --pink:#E91E63; --pink-l:#FCE4EC;
+  --red:#F44336; --red-l:#FFEBEE;
+  --ink:#1A1A2E;
+  --text:#212121; --text-m:#555770; --text-l:#8892A4;
+  --border:#CBD5E0; --shadow:rgba(0,0,0,0.12);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--text);overflow-x:hidden;font-size:16px;-webkit-font-smoothing:antialiased;}
+
+/* NAVBAR */
+#navbar{position:fixed;top:0;left:0;right:0;z-index:999;background:var(--white);border-bottom:4px solid var(--ink);box-shadow:0 4px 0 rgba(0,0,0,0.12);height:64px;display:flex;align-items:center;padding:0 20px;gap:8px;}
+.nav-logo{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:1.15rem;color:var(--ink);margin-right:10px;white-space:nowrap;}
+.nav-logo .hi{color:var(--cyan);}
+.nav-links{display:flex;gap:5px;flex:1;overflow-x:auto;}
+.nav-links::-webkit-scrollbar{display:none;}
+.nav-btn{font-family:'Be Vietnam Pro',sans-serif;font-size:0.88rem;font-weight:800;padding:8px 14px;border:2.5px solid var(--border);background:var(--white);color:var(--text-m);cursor:pointer;border-radius:8px;transition:all 0.15s;white-space:nowrap;display:flex;align-items:center;gap:5px;}
+.nav-btn:hover{border-color:var(--cyan);color:var(--cyan-d);background:var(--cyan-l);}
+.nav-btn.active{background:var(--ink);color:var(--white);border-color:var(--ink);}
+
+/* PAGE */
+.page{display:none;margin-top:64px;min-height:calc(100vh - 64px);}
+.page.active{display:block;animation:fadeIn 0.2s ease;}
+#lab{display:none;margin-top:64px;}
+#lab.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+/* BLOCK BUTTONS */
+.bb{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:1rem;padding:14px 28px;border:3px solid var(--ink);box-shadow:4px 4px 0 var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:10px;transition:transform 0.08s,box-shadow 0.08s;user-select:none;border-radius:4px;line-height:1.5;}
+.bb:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink);}
+.bb:active{transform:translate(4px,4px);box-shadow:0 0 0;}
+.bb-cyan{background:var(--cyan);color:#fff;}
+.bb-gold{background:var(--gold);color:var(--ink);}
+.bb-green{background:var(--green);color:#fff;}
+.bb-red{background:var(--red);color:#fff;}
+.bb-purple{background:var(--purple);color:#fff;}
+.bb-ink{background:var(--ink);color:#fff;}
+
+/* SEC TITLE */
+.sec-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:clamp(1.4rem,2.8vw,2rem);color:var(--ink);text-align:center;margin-bottom:8px;}
+.sec-sub{text-align:center;color:var(--text-m);font-size:1rem;font-weight:700;margin-bottom:32px;}
+.sec-line{width:60px;height:5px;border-radius:3px;background:var(--cyan);margin:10px auto 28px;}
+
+/* HOME */
+#home{background:#020812;}
+/* Hero fullscreen layout */
+.hero-section{position:relative;min-height:calc(100vh - 64px);display:flex;align-items:center;overflow:hidden;}
+/* 3D canvas fills entire hero */
+.hero-right{position:absolute;inset:0;z-index:0;}
+#thtml-container{position:absolute;inset:0;width:100%;height:100%;}
+#thtml-container canvas{position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;}
+/* Text floats on top left */
+.hero-left{position:relative;z-index:2;padding:60px 40px 60px 56px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;max-width:560px;}
+.hero-wrap{max-width:860px;margin:0 auto;padding:52px 24px 16px;text-align:center;}
+.hero-badge{display:inline-block;background:var(--gold);color:var(--ink);font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.85rem;padding:9px 18px;border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink);margin-bottom:22px;letter-spacing:0.2px;}
+.hero-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:clamp(2.4rem,4vw,4rem);color:#fff;line-height:1.2;margin-bottom:16px;text-align:left;text-shadow:0 2px 20px rgba(0,0,0,0.8);}
+.hero-title .c1{color:var(--cyan);}.hero-title .c2{color:var(--gold);}
+.hero-sub-text{font-size:1rem;font-weight:700;color:rgba(160,200,225,0.85);margin-bottom:32px;line-height:1.75;text-align:left;text-shadow:0 1px 8px rgba(0,0,0,0.9);}
+.hero-btns{display:flex;gap:12px;justify-content:flex-start;flex-wrap:wrap;margin-bottom:0;}
+/* Landscape — hidden */
+.landscape{display:none!important;}
+/* Responsive hero */
+@media(max-width:860px){
+  .hero-left{padding:44px 24px;align-items:center;max-width:100%;}
+  .hero-title,.hero-sub-text{text-align:center;}
+  .hero-btns{justify-content:center;}
+}
+/* Dashboard */
+.dashboard{background:var(--white);padding:56px 24px;}
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:20px;max-width:1080px;margin:0 auto;}
+.dash-card{background:var(--white);border:3px solid var(--ink);box-shadow:5px 5px 0 var(--ink);padding:26px 22px;cursor:pointer;transition:transform 0.12s,box-shadow 0.12s;border-radius:8px;position:relative;overflow:hidden;}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:var(--cc,var(--cyan));}
+.dash-card:hover{transform:translate(-4px,-4px);box-shadow:9px 9px 0 var(--ink);}
+.dash-icon{font-size:2.6rem;margin-bottom:12px;display:block;}
+.dash-tag{font-size:0.72rem;font-weight:900;letter-spacing:0.2px;text-transform:uppercase;color:var(--cc,var(--cyan));margin-bottom:5px;}
+.dash-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:1.05rem;color:var(--ink);margin-bottom:8px;line-height:1.4;}
+.dash-desc{font-size:0.93rem;font-weight:700;color:var(--text-m);margin-bottom:16px;line-height:1.6;}
+.dash-go{display:inline-flex;align-items:center;gap:7px;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.85rem;padding:9px 16px;background:var(--cc,var(--cyan));color:#fff;border:2.5px solid var(--ink);box-shadow:3px 3px 0 var(--ink);cursor:pointer;border-radius:4px;transition:transform 0.08s;}
+.dash-go:hover{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink);}
+.stats-strip{background:var(--ink);padding:30px 24px;display:flex;flex-wrap:wrap;gap:28px;justify-content:center;align-items:center;}
+.stat-item{text-align:center;}
+.stat-num{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:1.6rem;display:block;margin-bottom:5px;}
+.stat-lbl{font-size:0.8rem;font-weight:800;color:#8892A4;text-transform:uppercase;letter-spacing:0.3px;}
+
+/* LAB */
+.lab-bar{background:var(--ink);height:50px;border-bottom:3px solid var(--cyan);display:flex;align-items:center;padding:0 18px;gap:12px;flex-shrink:0;}
+.lab-live{display:flex;align-items:center;gap:7px;font-size:0.82rem;font-weight:800;color:#69F0AE;}
+.lab-dot{width:10px;height:10px;background:#69F0AE;border:2px solid #fff;animation:blink 1.2s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.2;}}
+.lab-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:700;font-size:0.85rem;color:#fff;letter-spacing:0.3px;}
+.lab-close{margin-left:auto;font-family:'Be Vietnam Pro',sans-serif;font-weight:700;font-size:0.8rem;padding:8px 14px;background:var(--red);color:#fff;border:2px solid #fff;box-shadow:2px 2px 0 rgba(0,0,0,0.4);cursor:pointer;border-radius:4px;transition:opacity 0.15s;}
+.lab-close:hover{opacity:0.85;}
+#lab-iframe{flex:1;width:100%;border:none;}
+
+/* PERIODIC TABLE */
+#periodic{background:linear-gradient(135deg,#F0F4FF 0%,#E8F8FF 100%);padding:44px 14px 52px;}
+.pt-wrap{max-width:1280px;margin:0 auto;}
+.pt-legend{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-bottom:18px;}
+.pt-leg-item{display:flex;align-items:center;gap:5px;font-size:0.78rem;font-weight:800;color:var(--text);}
+.pt-leg-dot{width:16px;height:16px;border:2px solid rgba(0,0,0,0.2);}
+.pt-filters{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-bottom:20px;}
+.pt-filt{font-size:0.78rem;font-weight:800;padding:7px 13px;border-radius:6px;border:2px solid transparent;cursor:pointer;transition:all 0.12s;box-shadow:2px 2px 0 rgba(0,0,0,0.12);}
+.pt-filt:hover,.pt-filt.active{border-color:var(--ink);transform:translate(1px,1px);}
+.pt-grid{display:grid;grid-template-columns:repeat(18,minmax(0,1fr));gap:3px;}
+.pt-cell{aspect-ratio:1;cursor:pointer;border:2px solid rgba(0,0,0,0.18);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:transform 0.1s,box-shadow 0.1s;z-index:0;overflow:hidden;border-radius:2px;}
+.pt-cell:hover{transform:scale(1.42);z-index:6;box-shadow:0 4px 16px rgba(0,0,0,0.25);border-color:var(--ink);}
+.pt-cell.empty{background:transparent;border-color:transparent;cursor:default;}
+.pt-cell.empty:hover{transform:none;box-shadow:none;}
+.pt-z{font-size:clamp(0.25rem,0.8vw,0.48rem);opacity:0.78;}
+.pt-sym{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:clamp(0.4rem,1.4vw,0.82rem);font-weight:900;}
+.pt-nm{font-size:clamp(0.15rem,0.42vw,0.28rem);opacity:0.72;font-family:'Be Vietnam Pro',sans-serif;margin-top:1px;}
+.pt-cell.dimmed{opacity:0.15;pointer-events:none;}
+/* Element modal */
+#el-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.48);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:20px;}
+#el-overlay.open{display:flex;}
+#el-modal{background:var(--white);width:100%;max-width:760px;border:3px solid var(--ink);box-shadow:8px 8px 0 var(--ink);border-radius:12px;overflow:hidden;animation:fadeIn 0.18s ease;max-height:92vh;overflow-y:auto;}
+.el-head{padding:22px 26px 18px;border-bottom:3px solid var(--border);display:flex;align-items:flex-start;gap:18px;}
+.el-sym-box{width:86px;height:86px;flex-shrink:0;border:3px solid var(--ink);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.el-sym-big{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:2rem;color:var(--ink);line-height:1;}
+.el-z-sm{font-size:0.68rem;font-weight:800;color:var(--text-m);margin-top:2px;}
+.el-name-big{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.9rem;color:var(--ink);margin-bottom:6px;line-height:1.6;}
+.el-cat-tag{display:inline-block;font-size:0.75rem;font-weight:900;padding:4px 11px;border-radius:4px;border:2px solid var(--ink);margin-bottom:8px;}
+.el-state{font-size:0.88rem;font-weight:800;color:var(--text-m);}
+.el-body{padding:18px 26px;}
+.el-grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px;}
+.el-item{background:var(--sky);border:2px solid var(--border);border-radius:6px;padding:9px 13px;}
+.el-item-lbl{font-size:0.72rem;font-weight:800;color:var(--text-l);margin-bottom:3px;}
+.el-item-val{font-size:0.95rem;font-weight:900;color:var(--ink);}
+.el-config{background:var(--sky);border:2px solid var(--border);border-radius:6px;padding:9px 13px;margin-bottom:11px;}
+.el-config-lbl{font-size:0.72rem;font-weight:800;color:var(--text-l);margin-bottom:3px;}
+.el-config-val{font-size:0.92rem;font-weight:800;color:var(--ink);}
+.el-desc{font-size:0.92rem;font-weight:700;color:var(--text-m);line-height:1.65;margin-bottom:10px;}
+.el-uses{background:var(--cyan-l);border-left:4px solid var(--cyan);padding:9px 13px;font-size:0.88rem;font-weight:700;color:var(--cyan-d);border-radius:0 6px 6px 0;margin-bottom:14px;}
+.el-close-btn{width:100%;padding:13px;background:var(--red);color:#fff;border:2.5px solid var(--ink);box-shadow:3px 3px 0 var(--ink);font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.58rem;cursor:pointer;border-radius:4px;transition:transform 0.08s;}
+.el-close-btn:hover{transform:translate(1px,1px);box-shadow:2px 2px 0 var(--ink);}
+
+/* TOOLS */
+#tools{background:var(--sky);padding:44px 22px 60px;}
+.tools-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:22px;max-width:1080px;margin:0 auto;}
+.tool-card{background:var(--white);border:3px solid var(--ink);box-shadow:5px 5px 0 var(--ink);border-radius:8px;overflow:hidden;}
+.tool-head{padding:14px 18px;border-bottom:3px solid var(--ink);display:flex;align-items:center;gap:9px;}
+.tool-head-icon{font-size:1.5rem;}
+.tool-head-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:0.95rem;color:var(--ink);}
+.tool-body{padding:18px;}
+.lbl{display:block;font-size:0.85rem;font-weight:900;color:var(--text-m);margin-bottom:5px;margin-top:9px;}
+.inp{width:100%;border:2.5px solid var(--border);border-radius:6px;padding:12px 13px;font-family:'Be Vietnam Pro',sans-serif;font-size:1rem;font-weight:800;color:var(--ink);background:var(--white);outline:none;transition:border-color 0.2s,box-shadow 0.2s;margin-bottom:7px;}
+.inp:focus{border-color:var(--cyan);box-shadow:0 0 0 3px var(--cyan-l);}
+.inp::placeholder{color:#B0BEC5;font-weight:700;}
+select.inp{cursor:pointer;}
+.tool-btn{width:100%;padding:14px;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.9rem;border:2.5px solid var(--ink);box-shadow:4px 4px 0 var(--ink);border-radius:4px;cursor:pointer;transition:transform 0.08s,box-shadow 0.08s;display:flex;align-items:center;justify-content:center;gap:9px;margin-top:10px;}
+.tool-btn:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink);}
+.tool-btn:active{transform:translate(4px,4px);box-shadow:0 0;}
+.tb-cyan{background:var(--cyan);color:#fff;}
+.tb-green{background:var(--green);color:#fff;}
+.tb-gold{background:var(--gold);color:var(--ink);}
+.tb-purple{background:var(--purple);color:#fff;}
+.result-box{display:none;margin-top:14px;border-radius:8px;overflow:hidden;border:2.5px solid var(--green);box-shadow:3px 3px 0 var(--green);}
+.result-box.show{display:block;}
+.result-top{background:var(--green-l);padding:11px 15px;border-bottom:2px solid var(--green);font-size:0.78rem;font-weight:900;color:var(--green);text-transform:uppercase;letter-spacing:0.2px;}
+.result-val{background:var(--white);padding:13px 17px;font-size:1.7rem;font-weight:900;color:var(--ink);line-height:1.2;}
+.result-steps{background:var(--sky);padding:11px 15px;font-size:0.9rem;font-weight:700;color:var(--text-m);line-height:1.7;white-space:pre-line;border-top:2px solid var(--border);}
+.eq-result-box{display:none;margin-top:14px;border:2.5px solid var(--gold-d);box-shadow:3px 3px 0 var(--gold-d);border-radius:8px;overflow:hidden;}
+.eq-result-box.show{display:block;}
+.eq-top{background:var(--gold-l);padding:11px 15px;border-bottom:2px solid var(--gold-d);font-size:0.78rem;font-weight:900;color:var(--gold-d);text-transform:uppercase;}
+.eq-balanced{font-size:1.45rem;font-weight:900;color:var(--ink);padding:13px 17px;line-height:1.45;background:var(--white);}
+.eq-type{padding:8px 15px;font-size:0.86rem;font-weight:800;color:var(--text-m);background:var(--sky);border-top:2px solid var(--border);}
+.eq-explain{padding:9px 15px;font-size:0.88rem;font-weight:700;color:var(--cyan-d);background:var(--cyan-l);border-top:2px solid var(--border);}
+.sample-chips{display:flex;flex-direction:column;gap:6px;margin-top:7px;}
+.chip{background:var(--sky);border:2px solid var(--border);border-radius:6px;padding:9px 13px;cursor:pointer;transition:all 0.12s;display:flex;flex-direction:column;gap:3px;}
+.chip:hover{border-color:var(--cyan);background:var(--cyan-l);}
+.chip-eq{font-size:0.98rem;font-weight:900;color:var(--ink);}
+.chip-type{font-size:0.77rem;font-weight:700;color:var(--text-m);}
+.rxn-item{background:var(--sky);border:2px solid var(--border);border-radius:6px;padding:11px 13px;margin-bottom:7px;cursor:pointer;transition:border-color 0.12s,background 0.12s;}
+.rxn-item:hover{border-color:var(--cyan);background:var(--cyan-l);}
+.rxn-eq{font-size:0.98rem;font-weight:900;color:var(--ink);}
+.rxn-type{font-size:0.78rem;font-weight:700;color:var(--text-m);margin-top:3px;}
+
+/* QUIZ */
+#quiz{background:linear-gradient(135deg,#EEF6FF 0%,#F5E8FF 100%);padding:44px 22px 60px;}
+.quiz-wrap{max-width:700px;margin:0 auto;}
+.quiz-hud{background:var(--white);border:3px solid var(--ink);box-shadow:4px 4px 0 var(--ink);border-radius:8px;padding:15px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:22px;}
+.hud-block{text-align:center;}
+.hud-lbl{font-size:0.7rem;font-weight:900;color:var(--text-l);text-transform:uppercase;letter-spacing:0.2px;margin-bottom:4px;}
+.hud-val{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:1.25rem;color:var(--ink);}
+.hud-hearts{display:flex;gap:3px;font-size:1.4rem;}
+.hud-timer{color:var(--cyan);}
+.hud-timer.red{color:var(--red);}
+.q-card{background:var(--white);border:3px solid var(--ink);box-shadow:6px 6px 0 var(--ink);border-radius:8px;padding:26px;margin-bottom:14px;}
+.q-num{font-size:0.78rem;font-weight:900;color:var(--cyan);letter-spacing:0.2px;margin-bottom:9px;}
+.q-text{font-size:1.1rem;font-weight:900;color:var(--ink);margin-bottom:20px;line-height:1.6;}
+.q-opts{display:flex;flex-direction:column;gap:9px;}
+.q-opt{background:var(--sky);border:2.5px solid var(--border);border-radius:8px;padding:13px 17px;cursor:pointer;font-size:0.98rem;font-weight:800;color:var(--ink);transition:all 0.1s;display:flex;align-items:center;gap:12px;}
+.q-opt:hover:not(.disabled){border-color:var(--cyan);background:var(--cyan-l);transform:translateX(4px);}
+.q-opt-ltr{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.58rem;width:26px;height:26px;background:var(--border);color:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:4px;}
+.q-opt.correct{border-color:var(--green);background:var(--green-l);color:var(--green);}
+.q-opt.correct .q-opt-ltr{background:var(--green);color:#fff;}
+.q-opt.wrong{border-color:var(--red);background:var(--red-l);color:var(--red);}
+.q-opt.wrong .q-opt-ltr{background:var(--red);color:#fff;}
+.q-opt.disabled{cursor:default;}
+.q-feedback{display:none;margin-top:13px;padding:13px 17px;border-radius:8px;font-size:0.92rem;font-weight:700;line-height:1.6;}
+.q-feedback.show{display:block;}
+.q-feedback.ok-fb{background:var(--green-l);border:2px solid var(--green);color:#2E7D32;}
+.q-feedback.no-fb{background:var(--red-l);border:2px solid var(--red);color:#C62828;}
+.q-nav{display:flex;justify-content:flex-end;margin-top:13px;}
+.q-next-btn{display:none;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.62rem;padding:13px 22px;background:var(--cyan);color:#fff;border:2.5px solid var(--ink);box-shadow:4px 4px 0 var(--ink);cursor:pointer;border-radius:4px;transition:transform 0.08s;}
+.q-next-btn:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink);}
+.quiz-result{background:var(--white);border:3px solid var(--ink);box-shadow:8px 8px 0 var(--ink);border-radius:8px;padding:44px 26px;text-align:center;}
+.r-emoji{font-size:5rem;display:block;margin-bottom:14px;}
+.r-score{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:2.8rem;color:var(--ink);margin-bottom:8px;text-shadow:3px 3px 0 var(--gold);}
+.r-pct{font-size:1.05rem;font-weight:900;color:var(--text-m);margin-bottom:5px;}
+.r-msg{font-size:0.98rem;font-weight:900;color:var(--cyan-d);margin-bottom:26px;}
+.r-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+
+/* FORMULAS */
+#formulas{background:var(--white);padding:44px 22px 60px;}
+.f-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px;max-width:1080px;margin:0 auto;}
+.f-card{background:var(--white);border:3px solid var(--ink);box-shadow:4px 4px 0 var(--ink);border-radius:8px;overflow:hidden;}
+.f-head{padding:13px 17px;border-bottom:3px solid var(--ink);display:flex;align-items:center;gap:9px;}
+.f-head-icon{font-size:1.4rem;}
+.f-head-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:0.9rem;color:var(--ink);}
+.f-items{padding:13px 17px;display:flex;flex-direction:column;gap:9px;}
+.f-item{background:var(--sky);border:2px solid var(--border);border-radius:6px;padding:11px 13px;}
+.f-name{font-size:0.78rem;font-weight:900;color:var(--text-m);margin-bottom:5px;}
+.f-eq{font-size:1.05rem;font-weight:900;color:var(--ink);margin-bottom:4px;}
+.f-eq-math{font-size:1rem;overflow-x:auto;padding:4px 0;}
+.f-eq-math mjx-container{font-size:1.05em!important;color:var(--ink);}
+.f-note{font-size:0.78rem;font-weight:700;color:var(--text-l);}
+
+/* TOAST */
+#toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:9999;pointer-events:none;background:var(--ink);color:#fff;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.58rem;padding:13px 26px;border-radius:8px;border:2px solid rgba(255,255,255,0.15);box-shadow:4px 4px 0 rgba(0,0,0,0.3);opacity:0;transition:opacity 0.25s;white-space:nowrap;}
+#toast.show{opacity:1;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-track{background:var(--sky);}
+::-webkit-scrollbar-thumb{background:var(--cyan);border-radius:4px;border:2px solid var(--sky);}
+/* ═══════════════════════════════════════════
+   MOBILE & TABLET RESPONSIVE — FULL OVERHAUL
+   ═══════════════════════════════════════════ */
+
+/* ── Touch target improvements ── */
+button, .nav-btn, .bb, .dash-card, .q-opt, .chem-btn {
+  -webkit-tap-highlight-color: rgba(0,0,0,0.08);
+  touch-action: manipulation;
+}
+
+/* ── Tablet: 641px – 1024px ── */
+@media (max-width:1024px) and (min-width:641px) {
+  #navbar { height:58px; padding:0 14px; gap:6px; }
+  .nav-logo { font-size:1rem; margin-right:6px; }
+  .nav-btn { font-size:0.8rem; padding:7px 10px; }
+  .nav-auth-btn { font-size:0.8rem; padding:7px 12px; }
+  .nav-username { display:none; }
+
+  .hero-left { padding:40px 28px; }
+  .hero-title { font-size:clamp(2rem,3.5vw,3rem); }
+
+  .dash-grid { grid-template-columns:repeat(2,1fr); gap:14px; }
+  .tools-grid { grid-template-columns:1fr; }
+  .f-grid { grid-template-columns:repeat(2,1fr); }
+
+  .pt-grid { gap:2px; }
+  .pt-cell { border-width:1.5px; }
+
+  .el-modal-top { flex-direction:column; }
+  .el-modal-left { border-right:none; border-bottom:2px solid var(--border); }
+  .el-modal-right { flex-direction:row; gap:10px; }
+  .el-atom-canvas-wrap, #el-atom-canvas { height:150px; }
+  .el-real-img-wrap { height:150px; }
+
+  .quiz-hud { padding:12px 14px; }
+}
+
+/* ── Mobile: ≤ 640px ── */
+@media (max-width:640px) {
+
+  /* NAVBAR — hamburger-free compact bar */
+  #navbar {
+    height:54px;
+    padding:0 10px;
+    gap:4px;
+  }
+  .nav-logo { font-size:0.92rem; margin-right:4px; }
+  .nav-links {
+    gap:3px;
+    /* horizontal scroll, hidden scrollbar */
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scroll-snap-type:x mandatory;
+  }
+  .nav-btn {
+    font-size:0.72rem;
+    padding:6px 8px;
+    gap:3px;
+    scroll-snap-align:start;
+    flex-shrink:0;
+    border-radius:6px;
+  }
+  /* hide emoji on mobile nav to save space */
+  .nav-btn::first-line { content:''; }
+  .nav-auth-btn {
+    font-size:0.72rem;
+    padding:6px 9px;
+    gap:4px;
+    margin-left:4px;
+    border-radius:6px;
+  }
+  .nav-username { display:none; }
+  .nav-avatar { width:30px; height:30px; font-size:0.75rem; }
+  .nav-logout { font-size:0.7rem; padding:5px 8px; }
+
+  /* PAGE top offset */
+  .page { margin-top:54px; }
+  #lab { margin-top:54px; }
+
+  /* HERO */
+  .hero-section { min-height:calc(100svh - 54px); }
+  .hero-left {
+    padding:28px 18px 28px;
+    align-items:center;
+    max-width:100%;
+  }
+  .hero-badge { font-size:0.72rem; padding:7px 13px; margin-bottom:14px; }
+  .hero-title { font-size:clamp(1.9rem,7vw,2.6rem); text-align:center; line-height:1.2; margin-bottom:12px; }
+  .hero-sub-text { font-size:0.88rem; text-align:center; margin-bottom:22px; }
+  .hero-btns {
+    justify-content:center;
+    gap:8px;
+  }
+  .bb { font-size:0.82rem; padding:11px 18px; gap:6px; }
+
+  /* DASHBOARD */
+  .dashboard { padding:32px 14px; }
+  .sec-title { font-size:1.3rem; }
+  .sec-sub { font-size:0.88rem; margin-bottom:22px; }
+  .dash-grid { grid-template-columns:1fr; gap:12px; }
+  .dash-card { padding:18px 16px; }
+  .dash-card:hover { transform:none; box-shadow:5px 5px 0 var(--ink); }
+  .dash-icon { font-size:2.2rem; margin-bottom:8px; }
+  .dash-title { font-size:0.98rem; }
+  .dash-desc { font-size:0.85rem; margin-bottom:12px; }
+  .dash-go { font-size:0.8rem; padding:8px 13px; }
+
+  /* STATS STRIP */
+  .stats-strip { padding:20px 14px; gap:16px; }
+  .stat-num { font-size:1.35rem; }
+  .stat-lbl { font-size:0.72rem; }
+
+  /* TOOLS */
+  #tools > div { padding:28px 14px 40px; }
+  .tools-grid { grid-template-columns:1fr; gap:14px; }
+  .tool-card { border-width:2.5px; }
+  .tool-head { padding:11px 14px; }
+  .tool-body { padding:14px; }
+  .inp { font-size:0.9rem; padding:11px 12px; }
+  .tool-btn { padding:12px; font-size:0.85rem; }
+  .result-val { font-size:1.4rem; }
+  .sample-chips { gap:5px; }
+  .chip { padding:8px 11px; }
+  .chip-eq { font-size:0.88rem; }
+
+  /* PERIODIC TABLE */
+  #periodic > div { padding:28px 6px 40px; }
+  .pt-legend { gap:6px; }
+  .pt-leg-item { font-size:0.68rem; }
+  .pt-leg-dot { width:12px; height:12px; }
+  .pt-filters { gap:5px; }
+  .pt-filt { font-size:0.68rem; padding:5px 9px; }
+  .pt-grid { gap:1.5px; }
+  .pt-cell { border-width:1px; }
+  /* larger tap target: prevent accidental zoom on double-tap */
+  .pt-cell:hover { transform:scale(1.55); }
+
+  /* ELEMENT MODAL — stacked on mobile */
+  #el-overlay { padding:10px; }
+  #el-modal {
+    max-height:95svh;
+    border-width:2.5px;
+    box-shadow:5px 5px 0 var(--ink);
+    border-radius:10px;
+  }
+  .el-modal-top { flex-direction:column; }
+  .el-modal-left {
+    padding:16px 14px 12px;
+    border-right:none;
+    border-bottom:2px solid var(--border);
+  }
+  .el-modal-right {
+    padding:12px 14px;
+    flex-direction:row;
+    gap:10px;
+  }
+  .el-atom-canvas-wrap, #el-atom-canvas { height:130px; }
+  .el-real-img-wrap { height:130px; }
+  .el-sym-big { font-size:1.6rem; }
+  .el-modal-body-grid { gap:6px; }
+  .el-info-chip { padding:7px 10px; }
+  .el-info-chip-val { font-size:0.85rem; }
+  .el-desc-block { font-size:0.82rem; }
+  .el-uses-block { font-size:0.8rem; }
+  .el-close-btn { padding:11px; font-size:0.85rem; }
+
+  /* QUIZ */
+  #quiz { padding:28px 12px 40px; }
+  .quiz-hud { padding:11px 13px; gap:8px; }
+  .hud-val { font-size:1.1rem; }
+  .q-card { padding:18px 14px; }
+  .q-text { font-size:1rem; margin-bottom:14px; }
+  .q-opt { padding:11px 13px; font-size:0.9rem; }
+  .q-feedback { font-size:0.85rem; }
+
+  /* AI SOLVER / SOLVE PAGE */
+  #solve-page { padding:28px 14px 40px; }
+  .solve-hero-title { font-size:clamp(1.5rem,6vw,2rem); }
+  .solve-card { padding:16px 14px; }
+  .solve-actions { grid-template-columns:repeat(2,1fr); gap:8px; }
+  .solve-act { font-size:0.8rem; padding:11px 10px; }
+  .solve-go { width:100%; justify-content:center; font-size:0.95rem; padding:14px 22px; }
+  .solve-result-body { padding:16px 14px; }
+  #solve-result-content { font-size:0.9rem; }
+
+  /* FORMULAS */
+  #formulas { padding:28px 14px 40px; }
+  .f-grid { grid-template-columns:1fr; gap:12px; }
+
+  /* BLOCK BUTTONS – bigger tap area */
+  .bb { min-height:44px; }
+
+  /* LESSON/LAB IFRAMES – full height minus compact navbar */
+  #lessons-iframe-wrap, #lab-iframe-wrap {
+    height:calc(100svh - 54px);
+  }
+
+  /* TOAST — higher to avoid home bar */
+  #toast { bottom:env(safe-area-inset-bottom, 20px); bottom:max(20px, calc(env(safe-area-inset-bottom) + 12px)); font-size:0.8rem; padding:11px 20px; }
+
+  /* SOUND TOGGLE — safe area */
+  #sound-toggle { bottom:max(18px, calc(env(safe-area-inset-bottom) + 12px)); right:max(18px, env(safe-area-inset-right)); }
+
+  /* HISTORY */
+  #history-section { margin:16px 14px; padding:16px 14px; }
+  .history-item { padding:10px 13px; }
+  .history-item-icon { font-size:1.3rem; }
+}
+
+/* ── Small phones ≤ 390px ── */
+@media (max-width:390px) {
+  .nav-btn { font-size:0.66rem; padding:5px 7px; }
+  .hero-title { font-size:1.7rem; }
+  .bb { font-size:0.78rem; padding:10px 14px; }
+  .dash-grid { gap:10px; }
+  .pt-grid { gap:1px; }
+}
+
+/* ── Landscape phones ── */
+@media (max-width:900px) and (orientation:landscape) and (max-height:500px) {
+  .hero-section { min-height:auto; padding:20px 0; }
+  .hero-left { padding:20px 18px; }
+  .hero-title { font-size:1.6rem; margin-bottom:8px; }
+  .hero-sub-text { margin-bottom:14px; font-size:0.82rem; }
+  .hero-btns { gap:6px; }
+  .bb { padding:9px 14px; font-size:0.8rem; }
+  /* full-height iframes in landscape */
+  #lessons-iframe-wrap, #lab-iframe-wrap { height:calc(100svh - 54px); }
+}
+
+/* ── Safe area padding (notch / home bar) ── */
+@supports (padding: max(0px)) {
+  #navbar {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+  .page, #lab { padding-bottom: env(safe-area-inset-bottom, 0); }
+}
+
+/* ═══ ENHANCED ELEMENT MODAL ═══ */
+#el-modal { font-family:'Be Vietnam Pro',sans-serif; }
+.el-modal-top { display:flex; gap:0; }
+.el-modal-left { flex:1; padding:22px 20px 18px; border-right:2px solid var(--border); min-width:200px; }
+.el-modal-right { flex:2; padding:16px; display:flex; flex-direction:column; gap:12px; }
+.el-atom-canvas-wrap {
+  background: #0d1117;
+  border:2px solid var(--border); border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden; position:relative;
+  height:180px;
+}
+#el-atom-canvas { display:block; width:100%; height:180px; }
+.el-atom-label {
+  position:absolute; bottom:6px; left:50%; transform:translateX(-50%);
+  font-size:0.68rem; font-weight:700; color:rgba(255,255,255,0.55);
+  font-family:'Be Vietnam Pro',sans-serif;font-weight:800; letter-spacing:0.2px; white-space:nowrap;
+}
+.el-real-img-wrap {
+  background:#f8f8f8; border:2px solid var(--border); border-radius:8px;
+  overflow:hidden; position:relative; height:140px;
+  display:flex; align-items:center; justify-content:center;
+}
+.el-real-img-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+.el-real-img-fallback {
+  font-size:3.5rem; display:flex; align-items:center; justify-content:center;
+  width:100%; height:100%; background:linear-gradient(135deg,#f0f4ff,#e8f0ff);
+}
+.el-real-img-caption {
+  position:absolute; bottom:0; left:0; right:0;
+  background:rgba(0,0,0,0.5); color:#fff;
+  font-size:0.7rem; font-weight:600; padding:3px 8px; text-align:center;
+}
+.el-modal-body-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.el-info-chip { background:var(--sky); border:1.5px solid var(--border); border-radius:6px; padding:8px 12px; }
+.el-info-chip-lbl { font-size:0.7rem; font-weight:700; color:var(--text-l); margin-bottom:2px; }
+.el-info-chip-val { font-size:0.95rem; font-weight:800; color:var(--ink); }
+.el-config-block { background:var(--sky); border:1.5px solid var(--border); border-radius:6px; padding:8px 12px; grid-column:1/-1; }
+.el-desc-block { font-size:0.88rem; font-weight:600; color:var(--text-m); line-height:1.65; }
+.el-uses-block { background:var(--cyan-l); border-left:3px solid var(--cyan); padding:8px 12px; font-size:0.85rem; font-weight:700; color:var(--cyan-d); border-radius:0 6px 6px 0; }
+.el-close-btn { width:100%; padding:12px; background:var(--red); color:#fff; border:2.5px solid var(--ink); box-shadow:3px 3px 0 var(--ink); font-family:'Be Vietnam Pro',sans-serif;font-weight:800; font-size:0.55rem; cursor:pointer; border-radius:4px; transition:transform 0.08s; margin-top:4px; }
+.el-close-btn:hover { transform:translate(1px,1px); box-shadow:2px 2px 0 var(--ink); }
+/* Nav btns font */
+.nav-btn { font-family:'Be Vietnam Pro',sans-serif !important; }
+.sec-sub,.dash-desc,.tool-body,.chip-type,.rxn-type,.result-steps,.el-desc-block,.el-uses-block,.f-note { font-family:'Be Vietnam Pro',sans-serif; }
+
+/* ══ 3D CINEMATIC SCENE ══ */
+#cinematic-wrap{position:relative;width:100%;background:#0a0d1a;overflow:hidden;user-select:none;}
+#cinematic-canvas{display:block;width:100%;}
+.cinematic-overlay{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to bottom,rgba(10,13,26,0.18) 0%,transparent 18%,transparent 80%,rgba(10,13,26,0.5) 100%);}
+.cinematic-title{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,188,212,0.13);border:1.5px solid rgba(0,188,212,0.4);color:rgba(255,255,255,0.92);font-size:0.8rem;font-weight:700;padding:5px 18px;border-radius:20px;letter-spacing:1px;backdrop-filter:blur(6px);white-space:nowrap;}
+.cinematic-scene-name{position:absolute;bottom:14px;left:20px;color:rgba(255,255,255,0.75);font-size:0.82rem;font-weight:600;text-shadow:0 1px 5px rgba(0,0,0,0.9);}
+.cinematic-dots{position:absolute;bottom:16px;right:20px;display:flex;gap:7px;align-items:center;}
+.cdot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.28);transition:all 0.4s;}
+.cdot.active{background:var(--cyan);transform:scale(1.35);}
+/* ══ SOUND TOGGLE ══ */
+#sound-toggle{position:fixed;bottom:22px;right:22px;z-index:998;width:46px;height:46px;border-radius:50%;background:var(--white);border:2.5px solid var(--ink);box-shadow:3px 3px 0 var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.25rem;transition:transform 0.12s,box-shadow 0.12s;}
+#sound-toggle:hover{transform:scale(1.12) translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink);}
+/* ═══ MINECRAFT AI SOLVER STYLES ═══ */
+.mc-panel{background:#C6C6C6;border:4px solid #000;box-shadow:inset 4px 4px 0 #FFF,inset -4px -4px 0 #555;}
+.mc-btn{background:#C6C6C6;border:3px solid #000;box-shadow:inset 3px 3px 0 #FFF,inset -3px -3px 0 #555;color:#222;cursor:pointer;text-transform:uppercase;transition:none;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;}
+.mc-btn:hover:not(:disabled){background:#A0A0A0;}
+.mc-btn:active:not(:disabled){box-shadow:inset 3px 3px 0 #555,inset -3px -3px 0 #FFF;}
+.mc-btn:disabled{color:#777;cursor:not-allowed;background:#A0A0A0;box-shadow:inset 3px 3px 0 #D0D0D0,inset -3px -3px 0 #555;}
+.mc-input{background:#1E1E1E;color:#FFF;border:4px solid #000;box-shadow:inset 4px 4px 0 #000,inset -4px -4px 0 #444;font-family:'Be Vietnam Pro',sans-serif;}
+.mc-input:focus{outline:none;border-color:#FFF;}
+.mc-book{background:#F4EAC8;border:4px solid #000;box-shadow:8px 8px 0 rgba(0,0,0,0.45);}
+
+/* AI Result text formatting */
+#ai-result-content strong{color:#5D4037;font-weight:900;}
+#ai-result-content h1,#ai-result-content h2,#ai-result-content h3{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.75rem;color:#5D4037;margin:14px 0 8px;padding-bottom:6px;border-bottom:2px solid rgba(93,64,55,0.2);}
+#ai-result-content p{margin-bottom:10px;}
+#ai-result-content mjx-container{font-size:1.1em!important;}
+
+@keyframes mcBlink{0%,100%{opacity:1;}50%{opacity:0;}}
+@keyframes progressAnim{0%{width:5%;}40%{width:60%;}80%{width:85%;}100%{width:95%;}}
+
+/* ═══ AUTH STYLES ═══ */
+#auth-overlay{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:20px;}
+#auth-overlay.open{display:flex;}
+#auth-modal{background:var(--white);width:100%;max-width:420px;border:3px solid var(--ink);box-shadow:8px 8px 0 var(--ink);border-radius:12px;overflow:hidden;animation:fadeIn 0.2s ease;}
+.auth-header{background:var(--ink);padding:20px 24px;display:flex;align-items:center;justify-content:space-between;}
+.auth-header-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:1.1rem;color:#fff;display:flex;align-items:center;gap:10px;}
+.auth-close{background:none;border:2px solid rgba(255,255,255,0.3);color:#fff;cursor:pointer;font-size:1rem;width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
+.auth-close:hover{background:rgba(255,255,255,0.1);}
+.auth-tabs{display:flex;border-bottom:3px solid var(--ink);}
+.auth-tab{flex:1;padding:14px;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.9rem;border:none;cursor:pointer;transition:all 0.15s;background:var(--sky);color:var(--text-m);}
+.auth-tab.active{background:var(--white);color:var(--ink);}
+.auth-body{padding:24px;}
+.auth-field{margin-bottom:16px;}
+.auth-field label{display:block;font-size:0.82rem;font-weight:800;color:var(--text-m);margin-bottom:6px;}
+.auth-field input{width:100%;border:2.5px solid var(--border);border-radius:8px;padding:12px 14px;font-family:'Be Vietnam Pro',sans-serif;font-size:0.95rem;font-weight:700;color:var(--ink);background:var(--white);outline:none;transition:border-color 0.2s,box-shadow 0.2s;}
+.auth-field input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px var(--cyan-l);}
+.auth-btn{width:100%;padding:14px;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.95rem;border:2.5px solid var(--ink);box-shadow:4px 4px 0 var(--ink);border-radius:4px;cursor:pointer;transition:transform 0.08s,box-shadow 0.08s;display:flex;align-items:center;justify-content:center;gap:9px;margin-top:6px;background:var(--cyan);color:#fff;}
+.auth-btn:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink);}
+.auth-btn:active{transform:translate(4px,4px);box-shadow:0 0;}
+.auth-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none!important;box-shadow:4px 4px 0 var(--ink)!important;}
+.auth-err{background:var(--red-l);border:2px solid var(--red);border-radius:6px;padding:10px 14px;font-size:0.85rem;font-weight:700;color:#C62828;margin-top:12px;display:none;}
+.auth-err.show{display:block;}
+.auth-divider{text-align:center;font-size:0.8rem;font-weight:700;color:var(--text-l);margin:16px 0;position:relative;}
+.auth-divider::before{content:'';position:absolute;top:50%;left:0;right:0;height:1px;background:var(--border);}
+.auth-divider span{background:var(--white);padding:0 12px;position:relative;}
+
+/* Nav label — hidden on very small screens via JS/CSS trick */
+.nav-lbl { display:inline; }
+
+/* Smoother scrolling for mobile nav */
+.nav-links { scroll-padding-left:8px; }
+
+/* Prevent body scroll when modal open */
+body.modal-open { overflow:hidden; touch-action:none; }
+
+/* Better touch scrolling on iOS */
+.page { -webkit-overflow-scrolling:touch; }
+.status-list, .chem-grid, .quiz-wrap { -webkit-overflow-scrolling:touch; }
+
+/* Focus ring visible for accessibility */
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline:3px solid var(--cyan);
+  outline-offset:2px;
+}
+
+/* Larger minimum touch targets */
+.nav-btn, .bb, .tool-btn, .q-opt, .auth-btn, .solve-act, .solve-go,
+.dash-go, .q-next-btn, .el-close-btn {
+  min-height:44px;
+}
+.nav-btn { min-height:36px; }
+
+/* Remove hover effects on touch devices */
+@media (hover:none) {
+  .dash-card:hover { transform:none; box-shadow:5px 5px 0 var(--ink); }
+  .bb:hover { transform:none; box-shadow:4px 4px 0 var(--ink); }
+  .tool-btn:hover { transform:none; box-shadow:4px 4px 0 var(--ink); }
+  .q-opt:hover:not(.disabled) { transform:none; }
+  .pt-cell:hover { transform:scale(1.0); z-index:0; }
+}
+.nav-auth-btn{font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.85rem;padding:8px 15px;border:2.5px solid var(--cyan);background:var(--cyan);color:#fff;cursor:pointer;border-radius:8px;transition:all 0.15s;white-space:nowrap;display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0;}
+.nav-auth-btn:hover{background:var(--cyan-d);border-color:var(--cyan-d);}
+.nav-user-area{display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0;}
+.nav-avatar{width:34px;height:34px;border-radius:50%;background:var(--ink);border:2.5px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.85rem;color:var(--cyan);cursor:pointer;font-family:'Be Vietnam Pro',sans-serif;transition:transform 0.12s;}
+.nav-avatar:hover{transform:scale(1.1);}
+.nav-username{font-size:0.85rem;font-weight:800;color:var(--ink);}
+.nav-logout{font-size:0.8rem;font-weight:700;padding:6px 12px;border:2px solid var(--border);background:var(--white);color:var(--text-m);cursor:pointer;border-radius:6px;transition:all 0.12s;}
+.nav-logout:hover{border-color:var(--red);color:var(--red);}
+
+/* ═══ AI SOLVER (REDESIGN - Minecraft vibrant) ═══ */
+#solve-page{background:linear-gradient(135deg,#EEF6FF 0%,#F5E8FF 50%,#FFF0E1 100%);padding:44px 22px 60px;min-height:calc(100vh - 64px);}
+.solve-wrap{max-width:880px;margin:0 auto;}
+.solve-hero{text-align:center;margin-bottom:28px;}
+.solve-hero-badge{display:inline-block;background:var(--gold);color:var(--ink);font-weight:800;font-size:0.78rem;padding:7px 16px;border:2.5px solid var(--ink);box-shadow:3px 3px 0 var(--ink);border-radius:4px;margin-bottom:14px;letter-spacing:0.3px;text-transform:uppercase;}
+.solve-hero-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:clamp(1.8rem,3.4vw,2.6rem);color:var(--ink);line-height:1.15;margin-bottom:10px;}
+.solve-hero-title .g1{color:var(--cyan-d);}.solve-hero-title .g2{color:var(--purple);}.solve-hero-title .g3{color:var(--orange);}
+.solve-hero-sub{font-size:0.96rem;font-weight:700;color:var(--text-m);max-width:560px;margin:0 auto;line-height:1.6;}
+
+.solve-card{background:var(--white);border:3px solid var(--ink);box-shadow:6px 6px 0 var(--ink);border-radius:10px;padding:22px;margin-bottom:22px;position:relative;overflow:hidden;}
+.solve-card::before{content:'';position:absolute;top:0;left:0;right:0;height:7px;background:linear-gradient(90deg,var(--cyan) 0%,var(--purple) 33%,var(--pink) 66%,var(--orange) 100%);}
+.solve-label{display:flex;align-items:center;gap:8px;font-weight:900;font-size:0.92rem;color:var(--ink);margin:6px 0 10px;}
+.solve-label i{color:var(--cyan-d);}
+.solve-textarea{width:100%;border:3px solid var(--ink);border-radius:8px;padding:14px 16px;font-family:'Be Vietnam Pro',sans-serif;font-size:0.98rem;font-weight:600;color:var(--ink);background:var(--sky);outline:none;resize:vertical;min-height:130px;line-height:1.6;transition:background 0.15s,box-shadow 0.15s;box-shadow:inset 2px 2px 0 rgba(0,0,0,0.08);}
+.solve-textarea:focus{background:var(--white);box-shadow:0 0 0 3px var(--cyan-l),inset 2px 2px 0 rgba(0,0,0,0.05);}
+.solve-textarea::placeholder{color:var(--text-l);font-weight:600;}
+
+.solve-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:14px;}
+.solve-act{display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 14px;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.88rem;border:2.5px solid var(--ink);box-shadow:4px 4px 0 var(--ink);border-radius:6px;cursor:pointer;transition:transform 0.08s,box-shadow 0.08s;background:var(--white);color:var(--ink);}
+.solve-act:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink);}
+.solve-act:active{transform:translate(4px,4px);box-shadow:0 0;}
+.solve-act i{font-size:1rem;}
+.solve-act.act-cam{background:var(--pink);color:#fff;}
+.solve-act.act-img{background:var(--cyan);color:#fff;}
+.solve-act.act-pdf{background:var(--red);color:#fff;}
+.solve-act.act-doc{background:var(--purple);color:#fff;}
+
+.solve-go-row{margin-top:18px;display:flex;justify-content:center;}
+.solve-go{display:inline-flex;align-items:center;gap:10px;padding:16px 36px;font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:1.05rem;border:3px solid var(--ink);box-shadow:5px 5px 0 var(--ink);border-radius:6px;cursor:pointer;background:linear-gradient(135deg,var(--gold) 0%,var(--orange) 100%);color:var(--ink);transition:transform 0.08s,box-shadow 0.08s;text-transform:uppercase;letter-spacing:0.3px;}
+.solve-go:hover:not(:disabled){transform:translate(2px,2px);box-shadow:3px 3px 0 var(--ink);}
+.solve-go:active:not(:disabled){transform:translate(5px,5px);box-shadow:0 0;}
+.solve-go:disabled{opacity:0.6;cursor:not-allowed;}
+.solve-go i{font-size:1.15rem;}
+
+.solve-preview{margin-top:14px;display:none;padding:12px;background:var(--sky);border:2.5px dashed var(--cyan);border-radius:8px;align-items:center;gap:12px;position:relative;}
+.solve-preview.show{display:flex;}
+.solve-preview-img{width:72px;height:72px;border-radius:6px;object-fit:cover;border:2px solid var(--ink);background:#fff;flex-shrink:0;display:none;}
+.solve-preview-img.show{display:block;}
+.solve-preview-icon{width:72px;height:72px;border-radius:6px;border:2px solid var(--ink);display:none;align-items:center;justify-content:center;font-size:2.2rem;flex-shrink:0;}
+.solve-preview-icon.show{display:flex;}
+.solve-preview-icon.pdf-ico{background:var(--red-l);color:var(--red);}
+.solve-preview-info{flex:1;min-width:0;}
+.solve-preview-name{font-weight:800;font-size:0.92rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.solve-preview-meta{font-size:0.78rem;font-weight:700;color:var(--text-m);margin-top:3px;}
+.solve-preview-rm{background:var(--red);color:#fff;border:2px solid var(--ink);width:32px;height:32px;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:900;flex-shrink:0;box-shadow:2px 2px 0 var(--ink);transition:transform 0.08s;}
+.solve-preview-rm:hover{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--ink);}
+
+.solve-notif{display:none;margin-top:14px;padding:13px 16px;border:2.5px solid;border-radius:8px;font-size:0.9rem;font-weight:700;align-items:center;gap:10px;box-shadow:3px 3px 0 rgba(0,0,0,0.15);}
+.solve-notif.show{display:flex;}
+.solve-notif.err{background:var(--red-l);border-color:var(--red);color:#C62828;}
+.solve-notif.ok{background:var(--green-l);border-color:var(--green);color:#2E7D32;}
+.solve-notif.info{background:var(--cyan-l);border-color:var(--cyan);color:var(--cyan-d);}
+.solve-notif i{font-size:1.1rem;}
+
+.solve-loading{display:none;flex-direction:column;align-items:center;justify-content:center;padding:36px 20px;background:var(--white);border:3px solid var(--ink);box-shadow:6px 6px 0 var(--ink);border-radius:10px;margin-bottom:22px;}
+.solve-loading.show{display:flex;}
+.solve-spinner{width:64px;height:64px;border:5px solid var(--cyan-l);border-top-color:var(--cyan);border-right-color:var(--purple);border-radius:50%;animation:spin 0.9s linear infinite;margin-bottom:16px;position:relative;}
+.solve-spinner::after{content:'⚗️';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.4rem;animation:mcBlink 1.4s infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.solve-loading-txt{font-weight:900;font-size:1rem;color:var(--ink);text-align:center;}
+.solve-loading-sub{font-size:0.85rem;font-weight:700;color:var(--text-m);margin-top:6px;text-align:center;}
+
+.solve-result{display:none;background:var(--white);border:3px solid var(--ink);box-shadow:7px 7px 0 var(--ink);border-radius:10px;overflow:hidden;}
+.solve-result.show{display:block;}
+.solve-result-head{background:linear-gradient(135deg,var(--green) 0%,var(--cyan) 100%);color:#fff;padding:14px 20px;border-bottom:3px solid var(--ink);display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.solve-result-title{display:flex;align-items:center;gap:10px;font-weight:900;font-size:1rem;}
+.solve-result-actions{display:flex;gap:6px;}
+.solve-result-btn{background:rgba(255,255,255,0.2);color:#fff;border:2px solid #fff;width:36px;height:36px;border-radius:6px;cursor:pointer;font-size:0.85rem;font-weight:800;transition:background 0.15s;}
+.solve-result-btn:hover{background:rgba(255,255,255,0.35);}
+.solve-result-body{padding:24px 22px;background:var(--white);}
+#solve-result-content{font-family:'Be Vietnam Pro',sans-serif;font-size:0.97rem;line-height:1.75;color:var(--text);}
+#solve-result-content h1,#solve-result-content h2,#solve-result-content h3{font-weight:900;color:var(--ink);margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--cyan-l);font-size:1.05rem;}
+#solve-result-content h1{font-size:1.2rem;color:var(--cyan-d);}
+#solve-result-content h2{font-size:1.1rem;color:var(--purple);}
+#solve-result-content strong{color:var(--orange);font-weight:900;}
+#solve-result-content p{margin-bottom:12px;}
+#solve-result-content ul,#solve-result-content ol{margin:8px 0 14px 24px;}
+#solve-result-content li{margin-bottom:6px;}
+#solve-result-content code{background:var(--sky);border:1.5px solid var(--border);border-radius:4px;padding:2px 6px;font-family:'Courier New',monospace;font-weight:700;color:var(--purple);}
+#solve-result-content mjx-container{font-size:1.08em!important;}
+.solve-reset{margin-top:16px;text-align:center;}
+.solve-reset-btn{background:var(--ink);color:#fff;border:2.5px solid var(--ink);box-shadow:4px 4px 0 var(--gold);padding:11px 22px;border-radius:6px;cursor:pointer;font-weight:800;font-size:0.88rem;transition:transform 0.08s,box-shadow 0.08s;display:inline-flex;align-items:center;gap:8px;}
+.solve-reset-btn:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--gold);}
+
+/* solve-actions 2-col on small screens handled by main mobile block above */
+
+/* History panel (inside home dashboard) */
+#history-section{display:none;background:var(--white);border:3px solid var(--ink);box-shadow:5px 5px 0 var(--ink);border-radius:8px;padding:20px 22px;margin:24px auto;max-width:1080px;}
+#history-section.show{display:block;}
+.history-title{font-family:'Be Vietnam Pro',sans-serif;font-weight:900;font-size:1rem;color:var(--ink);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.history-empty{font-size:0.9rem;font-weight:700;color:var(--text-l);text-align:center;padding:20px;}
+.history-list{display:flex;flex-direction:column;gap:8px;}
+.history-item{background:var(--sky);border:2px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:border-color 0.12s,background 0.12s;}
+.history-item:hover{border-color:var(--cyan);background:var(--cyan-l);}
+.history-item-icon{font-size:1.5rem;flex-shrink:0;}
+.history-item-info{flex:1;min-width:0;}
+.history-item-name{font-weight:800;font-size:0.92rem;color:var(--ink);}
+.history-item-time{font-size:0.75rem;font-weight:700;color:var(--text-l);margin-top:2px;}
+.history-item-badge{background:var(--green);color:#fff;font-size:0.7rem;font-weight:800;padding:3px 9px;border-radius:12px;flex-shrink:0;}
+</style>
+</head>
+<body>
+<div id="toast">OK!</div>
+
+<!-- AUTH MODAL -->
+<div id="auth-overlay" onclick="if(event.target===this)closeAuth()">
+  <div id="auth-modal">
+    <div class="auth-header">
+      <div class="auth-header-title">⚗️ ChemCraft Account</div>
+      <button class="auth-close" onclick="closeAuth()">✕</button>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">🔑 Đăng Nhập</button>
+      <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">✨ Đăng Ký</button>
+    </div>
+    <div class="auth-body">
+      <!-- LOGIN FORM -->
+      <div id="form-login">
+        <div class="auth-field">
+          <label>📧 Email</label>
+          <input type="email" id="login-email" placeholder="email@example.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label>🔒 Mật khẩu</label>
+          <input type="password" id="login-password" placeholder="Nhập mật khẩu..." autocomplete="current-password">
+        </div>
+        <button class="auth-btn" id="login-btn" onclick="doLogin()">🚀 ĐĂNG NHẬP</button>
+        <div class="auth-err" id="login-err"></div>
+      </div>
+      <!-- REGISTER FORM -->
+      <div id="form-register" style="display:none;">
+        <div class="auth-field">
+          <label>👤 Tên hiển thị</label>
+          <input type="text" id="reg-name" placeholder="Tên của bạn..." autocomplete="name">
+        </div>
+        <div class="auth-field">
+          <label>📧 Email</label>
+          <input type="email" id="reg-email" placeholder="email@example.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label>🔒 Mật khẩu (ít nhất 6 ký tự)</label>
+          <input type="password" id="reg-password" placeholder="Tạo mật khẩu..." autocomplete="new-password">
+        </div>
+        <button class="auth-btn" id="reg-btn" onclick="doRegister()">⚗️ TẠO TÀI KHOẢN</button>
+        <div class="auth-err" id="reg-err"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<nav id="navbar">
+  <div class="nav-logo">ChemCraft <span class="hi">⚗</span></div>
+  <div class="nav-links" id="nav-links" role="navigation" aria-label="Menu chính">
+    <button class="nav-btn active" onclick="goTo('home')" aria-label="Trang Chủ">🏠 <span class="nav-lbl">Trang Chủ</span></button>
+    <button class="nav-btn" onclick="goTo('lessons')" aria-label="Bài Học">📚 <span class="nav-lbl">Bài Học</span></button>
+    <button class="nav-btn" onclick="goTo('lab')" aria-label="Phòng Lab 3D">🧪 <span class="nav-lbl">Lab 3D</span></button>
+    <button class="nav-btn" onclick="goTo('periodic')" aria-label="Bảng Tuần Hoàn">⚛️ <span class="nav-lbl">Tuần Hoàn</span></button>
+    <button class="nav-btn" onclick="goTo('tools')" aria-label="Công Cụ">🔧 <span class="nav-lbl">Công Cụ</span></button>
+    <button class="nav-btn" onclick="goTo('quiz')" aria-label="Giải Bài Tập">🧠 <span class="nav-lbl">Giải Bài</span></button>
+    <button class="nav-btn" onclick="goTo('formulas')" aria-label="Công Thức">📐 <span class="nav-lbl">Công Thức</span></button>
+  </div>
+  <!-- Auth area (logged out) -->
+  <button class="nav-auth-btn" id="nav-login-btn" onclick="openAuth()" aria-label="Đăng Nhập">🔑 <span class="nav-lbl">Đăng Nhập</span></button>
+  <!-- Auth area (logged in) -->
+  <div class="nav-user-area" id="nav-user-area" style="display:none;">
+    <div class="nav-avatar" id="nav-avatar" onclick="goTo('home')" title="Xem hồ sơ">?</div>
+    <span class="nav-username" id="nav-username"></span>
+    <button class="nav-logout" onclick="doLogout()">Đăng xuất</button>
+  </div>
+</nav>
+
+<section class="page active" id="home">
+  <div class="hero-section">
+    <!-- BACKGROUND: 3D Flask animation fullscreen -->
+    <div class="hero-right">
+      <div id="thtml-container" style="position:absolute;inset:0;width:100%;height:100%;background:radial-gradient(circle at 75% 50%, rgba(57, 255, 20, 0.15) 0%, rgba(20, 60, 30, 0.4) 50%, rgba(3, 5, 8, 1) 100%);"></div>
+      <div style="position:absolute;inset:0;background:linear-gradient(to right,rgba(2,8,18,0.82) 0%,rgba(2,8,18,0.55) 45%,transparent 100%);pointer-events:none;z-index:1;"></div>
+      <div style="position:absolute;bottom:18px;left:50%;transform:translateX(-50%);color:rgba(57,255,20,0.45);font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;pointer-events:none;z-index:2;white-space:nowrap;"></div>
+    </div>
+
+    <!-- FOREGROUND: Text overlay -->
+    <div class="hero-left">
+      <div class="hero-badge">HỌC HOÁ VUI HƠN BAO GIỜ HẾT!</div>
+      <h1 class="hero-title">&#9879;&#65039; <span class="c1">CHEM</span><span class="c2">CRAFT</span></h1>
+      <p class="hero-sub-text">Phòng lab 3D • Bài học • Bảng tuần hoàn 118 nguyên tố<br>Công cụ tính toán • Giải bài tập AI</p>
+      <div class="hero-btns">
+        <button class="bb bb-cyan" onclick="goTo('lab')">&#129514; Vào Phòng Lab</button>
+        <button class="bb bb-gold" onclick="goTo('periodic')">&#9883;&#65039; Bảng Tuần Hoàn</button>
+        <button class="bb bb-purple" onclick="goTo('lessons')">&#128218; Bài Học</button>
+        <button class="bb bb-green" onclick="goTo('quiz')">&#129504; Giải Bài Tập</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- landscape hidden -->
+  <div class="landscape" style="display:none!important;">
+    <div class="landscape-sky" id="sky-anim"></div>
+    <div class="grass-row"></div>
+    <div class="dirt-row"></div>
+    <div id="tree-row"></div>
+  </div>
+
+  <script>
+  (function(){
+    function initTHtml() {
+      var container = document.getElementById('thtml-container');
+      if (!container || container._threeInited) return;
+      container._threeInited = true;
+
+      var scene = new THREE.Scene();
+      var _cW0 = container.offsetWidth || window.innerWidth;
+      var _cH0 = container.offsetHeight || (window.innerHeight - 64);
+      var camera = new THREE.PerspectiveCamera(45, _cW0 / _cH0, 0.1, 100);
+      camera.position.set(0, 0, 13);
+
+      var renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      var cW = container.offsetWidth || window.innerWidth;
+      var cH = container.offsetHeight || (window.innerHeight - 64);
+      renderer.setSize(cW, cH);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      var cvs = renderer.domElement;
+      cvs.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:block;';
+      container.appendChild(cvs);
+
+      var flaskGroup = new THREE.Group();
+      var flaskXPos = window.innerWidth > 900 ? 4 : 0;
+      flaskGroup.position.set(flaskXPos, -1.5, 0);
+      scene.add(flaskGroup);
+
+      // Glass shell
+      var glassPoints = [
+        new THREE.Vector2(0, -2.5),
+        new THREE.Vector2(1.5, -2.5),
+        new THREE.Vector2(1.7, -2.48),
+        new THREE.Vector2(1.85, -2.42),
+        new THREE.Vector2(1.98, -2.32),
+        new THREE.Vector2(2.08, -2.18),
+        new THREE.Vector2(2.13, -2.0),
+        new THREE.Vector2(0.85, 1.3),
+        new THREE.Vector2(0.8, 1.5),
+        new THREE.Vector2(0.78, 1.7),
+        new THREE.Vector2(0.78, 3.0),
+        new THREE.Vector2(0.9, 3.0),
+        new THREE.Vector2(0.95, 3.1),
+        new THREE.Vector2(0.9, 3.2),
+        new THREE.Vector2(0.73, 3.2)
+      ];
+      var glassGeo = new THREE.LatheGeometry(glassPoints, 128);
+      var glassMat = new THREE.MeshPhysicalMaterial({color:0xffffff,metalness:0.1,roughness:0.05,transmission:0.95,ior:1.5,thickness:0.1,transparent:true,side:THREE.DoubleSide,depthWrite:false});
+      var flask = new THREE.Mesh(glassGeo, glassMat);
+      flask.renderOrder = 4; flaskGroup.add(flask);
+
+      // Liquid
+      var liquidPoints = [
+        new THREE.Vector2(0,-2.4),
+        new THREE.Vector2(1.4,-2.4),
+        new THREE.Vector2(1.6,-2.38),
+        new THREE.Vector2(1.75,-2.32),
+        new THREE.Vector2(1.88,-2.22),
+        new THREE.Vector2(1.98,-2.08),
+        new THREE.Vector2(2.03,-1.9),
+        new THREE.Vector2(0.85,1.2)
+      ];
+      var liquidGeo = new THREE.LatheGeometry(liquidPoints, 128);
+      var liquidMat = new THREE.MeshStandardMaterial({color:0x00ff00,emissive:0x00aa00,emissiveIntensity:0.7,roughness:0.2,transparent:true,opacity:0.85,side:THREE.FrontSide,depthWrite:false});
+      var liquid = new THREE.Mesh(liquidGeo, liquidMat);
+      liquid.renderOrder = 1; flaskGroup.add(liquid);
+
+      // Surface
+      var surfaceGeo = new THREE.CircleGeometry(0.85, 128);
+      surfaceGeo.rotateX(-Math.PI/2); surfaceGeo.translate(0,1.2,0);
+      var surfaceMat = new THREE.MeshStandardMaterial({color:0x39ff14,emissive:0x39ff14,emissiveIntensity:1.0,roughness:0.1,transparent:true,opacity:0.95,depthWrite:false});
+      var liquidSurface = new THREE.Mesh(surfaceGeo, surfaceMat);
+      liquidSurface.renderOrder = 2; flaskGroup.add(liquidSurface);
+
+      // Voxels
+      var voxelSize = 0.15;
+      var cubeGeo = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+      var pixelMat = new THREE.MeshStandardMaterial({color:0x39ff14,emissive:0x39ff14,emissiveIntensity:2.0,transparent:true,opacity:0.9,depthWrite:false});
+
+      var bubblesCount = 120;
+      var bubbles = new THREE.InstancedMesh(cubeGeo, pixelMat, bubblesCount);
+      bubbles.renderOrder = 3; flaskGroup.add(bubbles);
+      var bubbleData = [], dummy = new THREE.Object3D();
+      for (var i = 0; i < bubblesCount; i++) {
+        var y = -2.3 + Math.random() * 3.4;
+        var maxRadius = 0.85 + (1.2 - y) * 0.38;
+        if (y < -1.9) maxRadius = 1.8;
+        maxRadius = Math.max(0, maxRadius - 0.15);
+        var radius = Math.random() * maxRadius;
+        var angle = Math.random() * Math.PI * 2;
+        bubbleData.push({x:Math.cos(angle)*radius,y:y,z:Math.sin(angle)*radius,speed:0.015+Math.random()*0.03,scale:0.3+Math.random()*1.0,angle:angle});
+      }
+
+      var particlesCount = 1000;
+      var particlesMesh = new THREE.InstancedMesh(cubeGeo, pixelMat, particlesCount);
+      particlesMesh.renderOrder = 0; scene.add(particlesMesh);
+      var particleData = [];
+      for (var i = 0; i < particlesCount; i++) {
+        particleData.push({x:(Math.random()-0.5)*40,y:(Math.random()-0.5)*25,z:(Math.random()-0.5)*30,speed:0.04+Math.random()*0.08,driftX:(Math.random()-0.5)*0.05,driftZ:(Math.random()-0.5)*0.05,seed:Math.random()*100});
+      }
+
+      // Lights
+      var pointLight = new THREE.PointLight(0x39ff14, 4, 15);
+      pointLight.position.set(0, 0, 0); flaskGroup.add(pointLight);
+      scene.add(new THREE.AmbientLight(0xcceebb, 0.6));
+      var dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      dirLight.position.set(5, 5, 5); scene.add(dirLight);
+      var rimLight = new THREE.DirectionalLight(0x00f3ff, 2);
+      rimLight.position.set(-5, 5, -5); scene.add(rimLight);
+
+      // Mouse interaction - fullscreen
+      window.addEventListener('mousemove', function(e) {
+        var mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        var mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        gsap.to(flaskGroup.rotation, {x:mouseY*0.6,y:mouseX*1.2,z:mouseX*-0.3,duration:2,ease:"power2.out"});
+      });
+
+      window.addEventListener('resize', function() {
+        var nW = container.offsetWidth, nH = container.offsetHeight;
+        if (!nW || !nH) return;
+        camera.aspect = nW / nH; camera.updateProjectionMatrix(); renderer.setSize(nW, nH);
+        flaskGroup.position.x = window.innerWidth > 900 ? 4 : 0;
+      });
+
+      var clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        var time = clock.getElapsedTime();
+        // Boiling surface
+        var positions = surfaceGeo.attributes.position.array;
+        for (var i = 0; i < positions.length; i += 3) {
+          positions[i+1] = 1.2 + Math.sin(time*6+positions[i]*10)*0.04 + Math.cos(time*4+positions[i+2]*10)*0.04;
+        }
+        surfaceGeo.attributes.position.needsUpdate = true;
+        // Bubbles
+        for (var i = 0; i < bubblesCount; i++) {
+          var d = bubbleData[i]; d.y += d.speed;
+          var cmr = 0.85 + (1.2 - d.y) * 0.38;
+          if (d.y < -1.9) cmr = 1.8;
+          cmr = Math.max(0, cmr - 0.15);
+          d.x = Math.cos(d.angle+time*3)*(cmr*0.2) + Math.cos(d.angle)*cmr*0.7;
+          d.z = Math.sin(d.angle+time*3)*(cmr*0.2) + Math.sin(d.angle)*cmr*0.7;
+          if (d.y > 1.2) { d.y = -2.3; d.angle = Math.random()*Math.PI*2; }
+          dummy.position.set(d.x,d.y,d.z); dummy.rotation.set(0,0,0); dummy.scale.set(d.scale,d.scale,d.scale); dummy.updateMatrix(); bubbles.setMatrixAt(i, dummy.matrix);
+        }
+        bubbles.instanceMatrix.needsUpdate = true;
+        // Particles
+        for (var i = 0; i < particlesCount; i++) {
+          var p = particleData[i]; p.y += p.speed;
+          p.x += p.driftX + Math.sin(time*4+p.seed)*0.02;
+          p.z += p.driftZ + Math.cos(time*4+p.seed)*0.02;
+          if (p.y > 12) { p.y = -12; p.x = (Math.random()-0.5)*40; p.z = (Math.random()-0.5)*30; }
+          var s = 0.5 + Math.sin(time*5+p.seed)*0.4;
+          dummy.position.set(p.x,p.y,p.z); dummy.rotation.set(0,0,0); dummy.scale.set(s,s,s); dummy.updateMatrix(); particlesMesh.setMatrixAt(i, dummy.matrix);
+        }
+        particlesMesh.instanceMatrix.needsUpdate = true;
+        flaskGroup.position.y = -1.5 + Math.sin(time*2)*0.05;
+        renderer.render(scene, camera);
+      }
+      animate();
+    }
+
+    function tryInitFlask() {
+      if (typeof THREE === 'undefined' || typeof gsap === 'undefined') return;
+      var container = document.getElementById('thtml-container');
+      if (!container) return;
+      function doInit() {
+        // Force fullscreen size if not set
+        if (container.offsetHeight < 10) {
+          container.style.height = (window.innerHeight - 64) + 'px';
+        }
+        initTHtml();
+      }
+      if (container.offsetWidth > 10 && container.offsetHeight > 10) { doInit(); return; }
+      var tries = 0;
+      function waitForSize() {
+        tries++;
+        if (container.offsetWidth > 10 || tries > 10) { doInit(); return; }
+        if (tries < 60) requestAnimationFrame(waitForSize);
+      }
+      requestAnimationFrame(waitForSize);
+    }
+    function loadFlaskDep(src, cb) {
+      var s = document.createElement('script'); s.src = src; s.onload = cb; document.head.appendChild(s);
+    }
+    if (typeof THREE === 'undefined') {
+      loadFlaskDep('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', function() {
+        if (typeof gsap === 'undefined') loadFlaskDep('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js', tryInitFlask);
+        else tryInitFlask();
+      });
+    } else if (typeof gsap === 'undefined') {
+      loadFlaskDep('https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js', tryInitFlask);
+    } else {
+      tryInitFlask();
+    }
+  })();
+  </script>
+  <div class="dashboard">
+    <div class="sec-title">🎒 CHỌN MODULE HỌC</div>
+    <div class="sec-line"></div>
+    <div class="dash-grid">
+      <div class="dash-card" style="--cc:var(--green)" onclick="goTo('lessons')">
+        <span class="dash-icon">📚</span>
+        <div class="dash-tag">Kiến Thức Cơ Bản</div>
+        <div class="dash-title">BÀI HỌC</div>
+        <p class="dash-desc">Học lý thuyết hóa học từ cơ bản đến nâng cao — bài học sinh động, dễ hiểu, đúng chương trình THPT!</p>
+        <button class="dash-go">▶ VÀO BÀI HỌC</button>
+      </div>
+      <div class="dash-card" style="--cc:var(--cyan)" onclick="goTo('lab')">
+        <span class="dash-icon">🧪</span>
+        <div class="dash-tag">Nổi Bật Nhất</div>
+        <div class="dash-title">PHÒNG LAB 3D</div>
+        <p class="dash-desc">Dạo phòng thí nghiệm 3D, nhặt hóa chất, pha chế và xem phản ứng đẹp theo góc nhìn thứ nhất!</p>
+        <button class="dash-go">▶ VÀO LAB NGAY</button>
+      </div>
+      <div class="dash-card" style="--cc:var(--gold-d)" onclick="goTo('periodic')">
+        <span class="dash-icon">⚛️</span>
+        <div class="dash-tag">118 Nguyên Tố</div>
+        <div class="dash-title">BẢNG TUẦN HOÀN</div>
+        <p class="dash-desc">Khám phá toàn bộ 118 nguyên tố — click để xem cấu hình electron, ứng dụng thực tế!</p>
+        <button class="dash-go">▶ KHÁM PHÁ</button>
+      </div>
+      <div class="dash-card" style="--cc:var(--purple)" onclick="goTo('tools');scrollToId('eq')">
+        <span class="dash-icon">⚖️</span>
+        <div class="dash-tag">Tự Động</div>
+        <div class="dash-title">CÂN BẰNG PHƯƠNG TRÌNH</div>
+        <p class="dash-desc">Nhập phương trình chưa cân bằng — hệ thống tự cân bằng và giải thích từng bước!</p>
+        <button class="dash-go">▶ CÂN BẰNG</button>
+      </div>
+      <div class="dash-card" style="--cc:var(--green)" onclick="goTo('tools');scrollToId('mol')">
+        <span class="dash-icon">🧮</span>
+        <div class="dash-tag">Tính Nhanh</div>
+        <div class="dash-title">MÁY TÍNH SỐ MOL</div>
+        <p class="dash-desc">Tính số mol từ khối lượng, thể tích khí đktc hoặc số hạt — kết quả và công thức rõ!</p>
+        <button class="dash-go">▶ TÍNH NGAY</button>
+      </div>
+      <div class="dash-card" style="--cc:var(--orange)" onclick="goTo('tools');scrollToId('conc')">
+        <span class="dash-icon">🫧</span>
+        <div class="dash-tag">Nồng Độ</div>
+        <div class="dash-title">TÍNH NỒNG ĐỘ</div>
+        <p class="dash-desc">Tính nồng độ mol (Cm) và nồng độ phần trăm (C%) — hiển thị bước giải đầy đủ!</p>
+        <button class="dash-go">▶ TÍNH NGAY</button>
+      </div>
+      <div class="dash-card" style="--cc:var(--pink)" onclick="goTo('quiz')">
+        <span class="dash-icon">🤖</span>
+        <div class="dash-tag">⭐ AI Powered</div>
+        <div class="dash-title">AI GIẢI BÀI HÓA</div>
+        <p class="dash-desc">Upload ảnh đề bài, PDF hoặc Word — AI giải chi tiết từng bước với công thức chuẩn THPT!</p>
+        <button class="dash-go">▶ CRAFT LỜI GIẢI</button>
+      </div>
+    </div>
+  </div>
+  <div class="stats-strip">
+    <div class="stat-item"><span class="stat-num" style="color:var(--gold)">118</span><div class="stat-lbl">Nguyên Tố</div></div>
+    <div class="stat-item"><span class="stat-num" style="color:var(--cyan)">40+</span><div class="stat-lbl">Phản Ứng</div></div>
+    <div class="stat-item"><span class="stat-num" style="color:#69F0AE">AI</span><div class="stat-lbl">Giải Bài</div></div>
+    <div class="stat-item"><span class="stat-num" style="color:var(--pink)">100%</span><div class="stat-lbl">Miễn Phí</div></div>
+    <div class="stat-item"><span class="stat-num" style="color:#FF7043">3D</span><div class="stat-lbl">Phòng Lab</div></div>
+  </div>
+
+  <!-- LESSON HISTORY SECTION (shown when logged in) -->
+  <div class="dashboard" style="padding-top:28px;padding-bottom:40px;">
+    <div id="history-section">
+      <div class="history-title">Lịch Sử<span style="font-size:0.75rem;font-weight:700;color:var(--text-l);margin-left:auto;" id="history-count"></span></div>
+      <div id="history-list-wrap">
+        <div class="history-empty" id="history-empty">Chưa có bài học nào. Hãy bắt đầu học ngay!</div>
+        <div class="history-list" id="history-list"></div>
+      </div>
+    </div>
+    <div id="history-login-prompt" style="text-align:center;padding:20px;">
+      <p style="font-size:0.95rem;font-weight:700;color:var(--text-m);margin-bottom:14px;">🔑 Đăng nhập để lưu tiến trình học tập của bạn!</p>
+      <button class="bb bb-cyan" onclick="openAuth()" style="font-size:0.88rem;padding:11px 22px;">Đăng Nhập / Đăng Ký</button>
+    </div>
+  </div>
+</section>
+
+<section class="page" id="lessons">
+<style>
+#lessons-iframe-wrap { width:100%; height:calc(100vh - 64px); overflow:hidden; display:block; }
+#lessons-iframe-wrap iframe { width:100%; height:100%; border:none; display:block; }
+</style>
+<div id="lessons-iframe-wrap">
+  <iframe id="lessons-iframe" src="" allowfullscreen></iframe>
+</div>
+<script>
+(function(){
+  function loadLessonsIframe() {
+    var iframe = document.getElementById('lessons-iframe');
+    if (!iframe || iframe.dataset.loaded) return;
+    iframe.dataset.loaded = '1';
+    iframe.src = 'lesson.html';
+  }
+  window._loadLessonsIframe = loadLessonsIframe;
+})();
+</script>
+</section>
+
+<section class="page" id="lab">
+<style>
+#lab-iframe-wrap { width:100%; height:calc(100vh - 64px); overflow:hidden; display:block; }
+#lab-iframe-wrap iframe { width:100%; height:100%; border:none; display:block; }
+#lab-mobile-notice {
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:calc(100vh - 64px);
+  padding:32px 24px;
+  text-align:center;
+  background:linear-gradient(135deg,#EEF6FF 0%,#E8F8FF 100%);
+}
+#lab-mobile-notice .lmn-icon { font-size:5rem; margin-bottom:18px; }
+#lab-mobile-notice .lmn-title {
+  font-family:'Be Vietnam Pro',sans-serif; font-weight:900;
+  font-size:clamp(1.3rem,4vw,1.8rem); color:var(--ink);
+  margin-bottom:12px; line-height:1.3;
+}
+#lab-mobile-notice .lmn-desc {
+  font-size:0.97rem; font-weight:700; color:var(--text-m);
+  line-height:1.7; max-width:400px; margin-bottom:24px;
+}
+#lab-mobile-notice .lmn-badge {
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--ink); color:#fff;
+  font-weight:800; font-size:0.88rem;
+  padding:12px 22px; border-radius:8px;
+  border:2.5px solid var(--ink); box-shadow:4px 4px 0 var(--cyan);
+}
+</style>
+
+<!-- Thông báo mobile -->
+<div id="lab-mobile-notice">
+  <div class="lmn-icon">🧪💻</div>
+  <div class="lmn-title">Phòng Lab 3D cần Máy Tính!</div>
+  <div class="lmn-desc">
+    Trải nghiệm thí nghiệm 3D vui nhộn yêu cầu màn hình lớn hơn và chuột để thao tác.<br><br>
+    Vui lòng mở <strong>ChemCraft trên máy tính</strong> để thực hành thí nghiệm!  🎮
+  </div>
+  <div class="lmn-badge">🖥️ Dùng máy tính để vào Lab 3D</div>
+</div>
+
+<!-- Iframe lab (chỉ desktop) -->
+<div id="lab-iframe-wrap">
+  <iframe id="lab-iframe" src="" allowfullscreen allow="pointer-lock; fullscreen; autoplay; gamepad; xr-spatial-tracking"></iframe>
+</div>
+<script>
+(function(){
+  function isMobile() {
+    return window.innerWidth < 900 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
+  function checkLabDevice() {
+    var notice = document.getElementById('lab-mobile-notice');
+    var wrap   = document.getElementById('lab-iframe-wrap');
+    if (isMobile()) {
+      notice.style.display = 'flex';
+      wrap.style.display   = 'none';
+    } else {
+      notice.style.display = 'none';
+      wrap.style.display   = 'block';
+    }
+  }
+  function loadLabIframe() {
+    checkLabDevice();
+    if (isMobile()) return; // không load iframe trên mobile
+    var iframe = document.getElementById('lab-iframe');
+    if (!iframe || iframe.dataset.loaded) return;
+    iframe.dataset.loaded = '1';
+    iframe.src = 'lab.html?v=' + Date.now();
+  }
+  window._loadLabIframe = loadLabIframe;
+  window.addEventListener('resize', checkLabDevice);
+})();
+</script>
+</section>
+
+
+<section class="page" id="periodic">
+  <div style="padding:44px 14px 52px;">
+    <div class="pt-wrap">
+      <div class="sec-title">⚛️ BẢNG TUẦN HOÀN CÁC NGUYÊN TỐ</div>
+      <p class="sec-sub">Click vào nguyên tố để xem thông tin chi tiết • 118 nguyên tố đầy đủ</p>
+      <div class="pt-legend" id="pt-legend"></div>
+      <div class="pt-filters" id="pt-filters"></div>
+      <div class="pt-grid" id="pt-grid"></div>
+      <p style="text-align:center;margin-top:11px;font-size:0.8rem;font-weight:700;color:var(--text-l);">* La-Lu (Z=57-71) | ** Ac-Lr (Z=89-103)</p>
+    </div>
+  </div>
+</section>
+
+<div id="el-overlay" onclick="if(event.target===this)closeEl()">
+  <div id="el-modal">
+    <!-- TOP: left = info, right = atom + image -->
+    <div class="el-modal-top">
+
+      <!-- LEFT: symbol + basic info -->
+      <div class="el-modal-left">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <div class="el-sym-box" id="em-box" style="width:78px;height:78px;flex-shrink:0;border:3px solid var(--ink);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <div class="el-sym-big" id="em-sym" style="font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:1.9rem;color:var(--ink);line-height:1;">H</div>
+            <div id="em-z" style="font-size:0.65rem;font-weight:800;color:var(--text-m);margin-top:2px;">Z=1</div>
+          </div>
+          <div>
+            <div id="em-name" style="font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:0.78rem;color:var(--ink);margin-bottom:6px;line-height:1.6;">Hiđrô</div>
+            <div id="em-cat" style="display:inline-block;font-size:0.72rem;font-weight:800;padding:3px 10px;border-radius:4px;border:2px solid var(--ink);margin-bottom:6px;">Phi kim</div>
+            <div id="em-state" style="font-size:0.85rem;font-weight:700;color:var(--text-m);">● Thể khí</div>
+          </div>
+        </div>
+
+        <div class="el-modal-body-grid">
+          <div class="el-info-chip"><div class="el-info-chip-lbl">Nguyên tử khối</div><div class="el-info-chip-val" id="em-mass">1.008 u</div></div>
+          <div class="el-info-chip"><div class="el-info-chip-lbl">Nhóm / Chu kỳ</div><div class="el-info-chip-val" id="em-group">1 / 1</div></div>
+          <div class="el-config-block">
+            <div style="font-size:0.7rem;font-weight:700;color:var(--text-l);margin-bottom:3px;">Cấu hình electron</div>
+            <div id="em-config" style="font-size:0.92rem;font-weight:800;color:var(--ink);">1s¹</div>
+          </div>
+        </div>
+
+        <p class="el-desc-block" id="em-desc" style="margin:10px 0;">Mô tả nguyên tố...</p>
+        <div class="el-uses-block" id="em-uses" style="margin-bottom:12px;">💡 Ứng dụng...</div>
+        <button class="el-close-btn" onclick="closeEl()">✕ ĐÓNG</button>
+      </div>
+
+      <!-- RIGHT: 3D atom model + real image -->
+      <div class="el-modal-right">
+        <!-- 3D Atom canvas -->
+        <div class="el-atom-canvas-wrap">
+          <canvas id="el-atom-canvas"></canvas>
+          <div class="el-atom-label" id="el-atom-label">MÔ HÌNH NGUYÊN TỬ</div>
+        </div>
+        <!-- Real photo -->
+        <div class="el-real-img-wrap">
+          <div id="em-img-container" class="el-real-img-fallback">⚗️</div>
+          <div class="el-real-img-caption" id="em-img-caption">Hình ảnh thực tế</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section class="page" id="tools">
+  <div style="padding:44px 22px 60px;">
+    <div class="sec-title">🔧 BỘ CÔNG CỤ HÓA HỌC</div>
+    <div class="sec-line" style="background:var(--purple);"></div>
+    <div class="tools-grid">
+      <div class="tool-card" id="eq">
+        <div class="tool-head" style="background:var(--purple-l);">
+          <span class="tool-head-icon">⚖️</span>
+          <span class="tool-head-title">CÂN BẰNG PHƯƠNG TRÌNH</span>
+        </div>
+        <div class="tool-body">
+          <label class="lbl">Nhập phương trình (VD: H₂ + O₂ → H₂O)</label>
+          <input class="inp" id="eq-inp" placeholder="H₂ + O₂ → H₂O">
+          <div style="display:flex;gap:8px;">
+            <button class="tool-btn tb-purple" onclick="doBalance()" style="flex:1;">CAN BANG NGAY</button>
+            <button class="tool-btn tb-purple" onclick="eqClear()" style="flex:0 0 50px;min-width:50px;">X</button>
+          </div>
+          <div style="margin-top:14px;">
+            <div class="lbl">PHAN UNG MAU - Click de thu:</div>
+            <div class="sample-chips" id="sample-chips"></div>
+          </div>
+          <div class="eq-result-box" id="eq-result">
+            <div class="eq-top">PHUONG TRINH DA CAN BANG</div>
+            <div class="eq-balanced" id="eq-out"></div>
+            <div class="eq-type" id="eq-type"></div>
+            <div class="eq-explain" id="eq-explain"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tool-card" id="mol">
+        <div class="tool-head" style="background:var(--green-l);">
+          <span class="tool-head-icon">🧮</span>
+          <span class="tool-head-title">MÁY TÍNH SỐ MOL</span>
+        </div>
+        <div class="tool-body">
+          <label class="lbl">Phương pháp tính:</label>
+          <select class="inp" id="mol-method" onchange="updateMol()">
+            <option value="mass">Từ khối lượng — n = m / M</option>
+            <option value="gas">Từ thể tích khí đktc — n = V / 22.4</option>
+            <option value="par">Từ số hạt — n = N / Nₐ</option>
+          </select>
+          <div id="mol-fields"></div>
+          <button class="tool-btn tb-green" onclick="calcMol()">TINH SO MOL</button>
+          <div class="result-box" id="mol-res">
+            <div class="result-top">KET QUA</div>
+            <div class="result-val" id="mol-val">n = ?</div>
+            <div class="result-steps" id="mol-steps"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tool-card" id="conc">
+        <div class="tool-head" style="background:var(--gold-l);">
+          <span class="tool-head-icon">🫧</span>
+          <span class="tool-head-title">MÁY TÍNH NỒNG ĐỘ</span>
+        </div>
+        <div class="tool-body">
+          <label class="lbl">Loại nồng độ:</label>
+          <select class="inp" id="conc-type" onchange="updateConc()">
+            <option value="cm">Nồng độ mol — Cₘ = n / V</option>
+            <option value="cp">Nồng độ phần trăm — C% = mct/mdd × 100%</option>
+          </select>
+          <div id="conc-fields"></div>
+          <button class="tool-btn tb-gold" onclick="calcConc()">TINH NONG DO</button>
+          <div class="result-box" id="conc-res" style="border-color:var(--gold-d);box-shadow:3px 3px 0 var(--gold-d);">
+            <div class="result-top" style="background:var(--gold-l);color:var(--gold-d);border-color:var(--gold-d);">KET QUA</div>
+            <div class="result-val" id="conc-val">C = ?</div>
+            <div class="result-steps" id="conc-steps"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-head" style="background:var(--cyan-l);">
+          <span class="tool-head-icon">⚗️</span>
+          <span class="tool-head-title">PHẢN ỨNG PHỔ BIẾN</span>
+        </div>
+        <div class="tool-body" id="rxn-lib"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="page" id="quiz">
+
+<style>
+/* ── Scrollbar ── */
+#quiz .quiz-wrap::-webkit-scrollbar { width: 6px; }
+#quiz .quiz-wrap::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+
+/* ── Glass panel ── */
+.glass-panel {
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.2);
+  box-shadow: 0 8px 32px 0 rgba(31,38,135,0.07);
+}
+
+/* ── Markdown body ── */
+.markdown-body h1 { font-size:1.5rem; font-weight:800; margin:1.2em 0 .6em; color:#1e40af; }
+.markdown-body h2 { font-size:1.25rem; font-weight:700; margin:1em 0 .5em; color:#1d4ed8; }
+.markdown-body h3 { font-size:1.1rem; font-weight:600; margin:.9em 0 .4em; color:#2563eb; }
+.markdown-body p  { margin-bottom:.9em; line-height:1.75; }
+.markdown-body ul { list-style:disc; margin-left:1.5em; margin-bottom:.9em; }
+.markdown-body ol { list-style:decimal; margin-left:1.5em; margin-bottom:.9em; }
+.markdown-body li { margin-bottom:.25em; }
+.markdown-body strong { font-weight:800; color:#111827; }
+.markdown-body em { font-style:italic; }
+.markdown-body code { background:#f1f5f9; color:#db2777; padding:1px 5px; border-radius:4px; font-size:.88em; font-family:monospace; }
+.markdown-body pre  { background:#1e293b; color:#f8fafc; padding:14px; border-radius:10px; overflow-x:auto; margin-bottom:1em; }
+.markdown-body pre code { background:transparent; color:inherit; padding:0; }
+.markdown-body blockquote { border-left:4px solid #60a5fa; padding:8px 14px; font-style:italic; color:#4b5563; background:#eff6ff; border-radius:0 8px 8px 0; margin:1em 0; }
+.markdown-body mjx-container { outline:none!important; }
+</style>
+
+<!-- Libs -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
+<script>
+  if (!window.MathJax) {
+    window.MathJax = {
+      tex: { inlineMath:[['$','$'],['\(','\)']], displayMath:[['$$','$$'],['\[','\]']], processEscapes:true },
+      svg: { fontCache:'global' }
+    };
+    var _mjs=document.createElement('script');
+    _mjs.async=true;
+    _mjs.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+    document.head.appendChild(_mjs);
+  }
+</script>
+
+<!-- Solve UI (REDESIGNED — Minecraft vibrant) -->
+<div id="solve-page">
+  <div class="solve-wrap">
+
+    <!-- Hero -->
+    <div class="solve-hero">
+      <div class="solve-hero-badge">⚗️ AI Trợ Giảng Hoá Học</div>
+      <h1 class="solve-hero-title">
+        <span class="g1">Giải</span> <span class="g2">Bài Tập</span> <span class="g3">Hoá</span> 🧪
+      </h1>
+      <p class="solve-hero-sub">
+        Trợ lý ảo hỗ trợ giải bài tập Hoá học theo
+        <strong style="color:var(--cyan-d)">Chương trình GDPT 2018</strong>
+        (Danh pháp IUPAC). Nhập đề, chụp ảnh, tải PDF hoặc Word — AI lo phần còn lại!
+      </p>
+    </div>
+
+    <!-- Input card -->
+    <div class="solve-card">
+      <label class="solve-label" for="problem-input">
+        <i class="fa-solid fa-pen-nib"></i> Nhập nội dung bài toán
+      </label>
+      <textarea id="problem-input" class="solve-textarea"
+        placeholder="Ví dụ: Đốt cháy hoàn toàn 2,4 gam Magnesium (Mg) trong khí Oxygen (O₂) dư. Tính khối lượng oxide thu được..."></textarea>
+
+      <!-- Action grid -->
+      <div class="solve-actions">
+        <input type="file" id="image-upload" accept="image/*,.pdf,.doc,.docx" hidden>
+        <input type="file" id="camera-upload" accept="image/*" capture="environment" hidden>
+
+        <button type="button" class="solve-act act-cam" onclick="document.getElementById('camera-upload').click()">
+          <i class="fa-solid fa-camera"></i> Chụp ảnh
+        </button>
+        <button type="button" class="solve-act act-img" onclick="(function(){var i=document.getElementById('image-upload');i.accept='image/*';i.click();})()">
+          <i class="fa-solid fa-image"></i> Tải ảnh
+        </button>
+        <button type="button" class="solve-act act-pdf" onclick="(function(){var i=document.getElementById('image-upload');i.accept='.pdf,application/pdf';i.click();})()">
+          <i class="fa-solid fa-file-pdf"></i> Tải PDF
+        </button>
+        <button type="button" class="solve-act act-doc" onclick="(function(){var i=document.getElementById('image-upload');i.accept='.docx';i.click();})()">
+          <i class="fa-solid fa-file-word"></i> Tải Word
+        </button>
+      </div>
+
+      <!-- Preview -->
+      <div id="image-preview-container" class="solve-preview">
+        <img id="image-preview" class="solve-preview-img" src="" alt="Preview">
+        <div id="preview-icon" class="solve-preview-icon"></div>
+        <div class="solve-preview-info">
+          <div id="preview-filename" class="solve-preview-name"></div>
+          <div id="preview-meta" class="solve-preview-meta">Đã đính kèm</div>
+        </div>
+        <button type="button" id="remove-image" class="solve-preview-rm" title="Gỡ file">
+          <i class="fa-solid fa-times"></i>
+        </button>
+      </div>
+
+      <span id="file-name" style="display:none">Tải ảnh/file lên (.pdf, .docx)</span>
+
+      <!-- Notification -->
+      <div id="error-notification" class="solve-notif err">
+        <i id="notification-icon" class="fa-solid fa-triangle-exclamation"></i>
+        <div>
+          <div id="notification-title" style="font-weight:900">Đã có lỗi xảy ra</div>
+          <div id="error-message" style="font-weight:600;font-size:0.85rem;margin-top:2px">Vui lòng thử lại sau.</div>
+        </div>
+      </div>
+
+      <!-- Solve btn -->
+      <div class="solve-go-row">
+        <button id="solve-btn" class="solve-go">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Giải Bài Ngay
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading-indicator" class="solve-loading">
+      <div class="solve-spinner"></div>
+      <p class="solve-loading-txt">AI đang suy nghĩ và phân tích...</p>
+      <p class="solve-loading-sub">Viết phương trình, tính số mol, áp dụng định luật...</p>
+    </div>
+
+    <!-- Result -->
+    <div id="result-container" class="solve-result">
+      <div class="solve-result-head">
+        <div class="solve-result-title">
+          <i class="fa-solid fa-circle-check"></i> Lời Giải Chi Tiết
+        </div>
+        <div class="solve-result-actions">
+          <button id="copy-btn" class="solve-result-btn" title="Sao chép">
+            <i class="fa-regular fa-copy"></i>
+          </button>
+        </div>
+      </div>
+      <div class="solve-result-body">
+        <div id="result-content"></div>
+        <div class="solve-reset">
+          <button id="reset-btn" class="solve-reset-btn">
+            <i class="fa-solid fa-rotate-right"></i> Giải bài khác
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+        // System prompt instructs the AI to act as a chemistry teacher using the new curriculum
+        const systemPrompt = `Bạn là giáo viên Hóa học giải bài tập THCS/THPT theo chương trình GDPT 2018 Việt Nam (danh pháp IUPAC tiếng Anh).
+
+BẮT BUỘC:
+- Dùng danh pháp IUPAC: Sodium, Potassium, Copper, Iron, Hydrochloric acid...
+- KHÔNG chào hỏi, KHÔNG dẫn dắt — đi thẳng vào lời giải ngay.
+- Lời giải NGẮN GỌN, súc tích. Chỉ giữ các bước cần thiết. Không giải thích dài dòng.
+- Viết phương trình đầy đủ (kèm điều kiện nếu có).
+- Dùng Markdown và LaTeX cho mọi công thức/phương trình:
+  • Inline: $n_{Fe} = 0{,}1\\ \\text{mol}$
+  • Block (1 phương trình mỗi khối, KHÔNG xuống dòng trong $$): $$\\text{Mg} + 2\\text{HCl} \\rightarrow \\text{MgCl}_2 + \\text{H}_2\\uparrow$$
+  • Điều kiện trên mũi tên: \\xrightarrow{t^\\circ}
+- Kết thúc bằng **Đáp án:** tóm tắt 1–2 dòng.`;
+
+        // DOM Elements
+        const problemInput = document.getElementById('problem-input');
+        const imageUpload = document.getElementById('image-upload');
+        const cameraUpload = document.getElementById('camera-upload');
+        const fileNameDisplay = document.getElementById('file-name');
+        const imagePreviewContainer = document.getElementById('image-preview-container');
+        const imagePreview = document.getElementById('image-preview');
+        const previewIcon = document.getElementById('preview-icon');
+        const previewFilename = document.getElementById('preview-filename');
+        const previewMeta = document.getElementById('preview-meta');
+        const removeImageBtn = document.getElementById('remove-image');
+        const solveBtn = document.getElementById('solve-btn');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const loadingTxt = loadingIndicator.querySelector('.solve-loading-txt');
+        const loadingSub = loadingIndicator.querySelector('.solve-loading-sub');
+        const resultContainer = document.getElementById('result-container');
+        const resultContent = document.getElementById('result-content');
+        const copyBtn = document.getElementById('copy-btn');
+        const resetBtn = document.getElementById('reset-btn');
+
+        const notificationBox = document.getElementById('error-notification');
+        const notificationIcon = document.getElementById('notification-icon');
+        const notificationTitle = document.getElementById('notification-title');
+        const errorMessage = document.getElementById('error-message');
+
+        let base64ImageData = null;
+        let imageMimeType = null;
+
+        function showLoading(txt, sub) {
+            loadingTxt.textContent = txt || 'AI đang suy nghĩ và phân tích...';
+            loadingSub.textContent = sub || 'Viết phương trình, tính số mol, áp dụng định luật...';
+            loadingIndicator.classList.add('show');
+        }
+        function hideLoading() { loadingIndicator.classList.remove('show'); }
+
+        // Trích xuất text từ PDF dùng PDF.js
+        async function extractPdfText(file) {
+            if (!window.pdfjsLib) throw new Error('PDF.js chưa tải xong, vui lòng thử lại.');
+            const buf = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+            let full = '';
+            const max = Math.min(pdf.numPages, 20);
+            for (let i = 1; i <= max; i++) {
+                const page = await pdf.getPage(i);
+                const tc = await page.getTextContent();
+                const txt = tc.items.map(it => it.str).join(' ');
+                if (txt.trim()) full += `\n--- Trang ${i} ---\n${txt}\n`;
+            }
+            return { text: full.trim(), pages: pdf.numPages };
+        }
+
+        async function handleFile(file) {
+            if (!file) return;
+            if (file.size > 15 * 1024 * 1024) {
+                showNotification("File quá lớn. Vui lòng chọn file dưới 15MB.");
+                return;
+            }
+            const fileExt = file.name.split('.').pop().toLowerCase();
+            const isDocx = fileExt === 'docx';
+            const isDoc = fileExt === 'doc';
+            const isPdf = fileExt === 'pdf' || file.type === 'application/pdf';
+            const isImage = file.type.startsWith('image/');
+
+            if (isDoc) {
+                showNotification("Chỉ hỗ trợ Word định dạng .docx. Vui lòng lưu lại file dưới dạng .docx.");
+                return;
+            }
+            if (!isImage && !isPdf && !isDocx) {
+                showNotification("Chỉ hỗ trợ Ảnh, PDF và Word (.docx).");
+                return;
+            }
+
+            // DOCX → mammoth → text
+            if (isDocx) {
+                showLoading('Đang đọc file Word...', 'Trích xuất văn bản');
+                try {
+                    const ab = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({ arrayBuffer: ab });
+                    const text = (result.value || '').trim();
+                    if (text) {
+                        problemInput.value = (problemInput.value ? problemInput.value + "\n\n" : "") + text;
+                        showNotification("Đã trích xuất nội dung từ Word!", "success");
+                    } else {
+                        showNotification("File Word trống hoặc không đọc được chữ.");
+                    }
+                } catch (err) {
+                    showNotification("Lỗi đọc Word: " + err.message);
+                } finally {
+                    hideLoading();
+                }
+                return;
+            }
+
+            // PDF → pdf.js → text (chèn vào textarea)
+            if (isPdf) {
+                showLoading('Đang đọc file PDF...', 'Trích xuất nội dung văn bản');
+                try {
+                    const { text, pages } = await extractPdfText(file);
+                    if (text) {
+                        problemInput.value = (problemInput.value ? problemInput.value + "\n\n" : "") + text;
+                        showNotification(`Đã đọc ${pages} trang PDF — nội dung đã thêm vào ô đề bài.`, "success");
+                        // Hiện preview thumbnail PDF
+                        previewFilename.textContent = file.name;
+                        previewMeta.textContent = `PDF • ${pages} trang • đã trích xuất văn bản`;
+                        imagePreview.classList.remove('show');
+                        previewIcon.classList.add('show', 'pdf-ico');
+                        previewIcon.innerHTML = '<i class="fa-solid fa-file-pdf"></i>';
+                        imagePreviewContainer.classList.add('show');
+                    } else {
+                        showNotification("Không trích xuất được văn bản. PDF có thể là ảnh scan — hãy thử dùng nút Chụp ảnh từng trang.");
+                    }
+                } catch (err) {
+                    showNotification("Lỗi đọc PDF: " + err.message);
+                } finally {
+                    hideLoading();
+                }
+                return;
+            }
+
+            // Image → base64 + preview
+            imageMimeType = file.type;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const dataUrl = event.target.result;
+                base64ImageData = dataUrl.split(',')[1];
+                previewFilename.textContent = file.name;
+                previewMeta.textContent = `Ảnh • ${(file.size/1024).toFixed(0)} KB`;
+                previewIcon.classList.remove('show');
+                imagePreview.classList.add('show');
+                imagePreview.src = dataUrl;
+                imagePreviewContainer.classList.add('show');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        imageUpload.addEventListener('change', e => handleFile(e.target.files[0]));
+        cameraUpload.addEventListener('change', e => handleFile(e.target.files[0]));
+
+        removeImageBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            resetFileInput();
+        });
+
+        function resetFileInput() {
+            imageUpload.value = '';
+            cameraUpload.value = '';
+            imagePreviewContainer.classList.remove('show');
+            imagePreview.src = '';
+            imagePreview.classList.remove('show');
+            previewIcon.classList.remove('show', 'pdf-ico');
+            previewIcon.innerHTML = '';
+            previewFilename.textContent = '';
+            base64ImageData = null;
+            imageMimeType = null;
+        }
+
+        // Gọi Gemini — tối đa token + tự tiếp tục nếu bị cắt giữa chừng
+        async function callChatProxy(messages) {
+            const apiKey = 'AIzaSyA-3GWOCVxGEN8NLNY18tqbA9J8Mgm5ygI';
+            const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            const lastMsg = messages[messages.length - 1];
+            const parts = [];
+            const userContent = lastMsg.content;
+            if (typeof userContent === 'string') {
+                parts.push({ text: userContent });
+            } else if (Array.isArray(userContent)) {
+                for (const item of userContent) {
+                    if (item.type === 'text') parts.push({ text: item.text });
+                    else if (item.type === 'image_url' && item.image_url?.url) {
+                        const dataUrl = item.image_url.url;
+                        const mimeMatch = dataUrl.match(/data:([^;]+);base64,/);
+                        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+                        const b64 = dataUrl.split(',')[1];
+                        parts.push({ inlineData: { mimeType, data: b64 } });
+                    }
+                }
+            }
+
+            // Helper gọi API một lần
+            async function callOnce(contents) {
+                const payload = {
+                    contents,
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: { temperature: 0.3, maxOutputTokens: 65536 }
+                };
+                const response = await fetch(GEMINI_URL, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (data.error) {
+                    const code = data.error.code || response.status;
+                    const msg = data.error.message || 'Lỗi không xác định';
+                    if (code === 429) throw new Error('Hệ thống đang bận. Vui lòng thử lại sau vài giây.');
+                    if (code === 403) throw new Error('API key chưa được cấp quyền.');
+                    throw new Error(`Lỗi Gemini (${code}): ${msg}`);
+                }
+                if (!data.candidates?.length) throw new Error('Không nhận được phản hồi từ AI.');
+                const candidate = data.candidates[0];
+                const text = (candidate.content?.parts || []).map(p => p.text || '').join('');
+                return { text, finishReason: candidate.finishReason };
+            }
+
+            // Lần gọi đầu
+            let { text: fullText, finishReason } = await callOnce([{ role: 'user', parts }]);
+
+            // Nếu bị cắt (MAX_TOKENS) → tiếp tục tối đa 3 lần
+            let tries = 0;
+            while (finishReason === 'MAX_TOKENS' && tries < 3) {
+                tries++;
+                const cont = await callOnce([
+                    { role: 'user', parts },
+                    { role: 'model', parts: [{ text: fullText }] },
+                    { role: 'user', parts: [{ text: 'Tiếp tục giải từ chỗ vừa dừng, không lặp lại phần đã có.' }] }
+                ]);
+                fullText += cont.text;
+                finishReason = cont.finishReason;
+            }
+
+            return fullText;
+        }
+
+        solveBtn.addEventListener('click', async () => {
+            const textQuery = problemInput.value.trim();
+            if (!textQuery && !base64ImageData) {
+                showNotification("Vui lòng nhập đề bài, chụp ảnh hoặc tải file lên.");
+                problemInput.focus();
+                return;
+            }
+            notificationBox.classList.remove('show');
+            resultContainer.classList.remove('show');
+            showLoading();
+            solveBtn.disabled = true;
+
+            try {
+                const userContent = [];
+                const promptText = textQuery || "Hãy phân tích bức ảnh này và giải chi tiết các bài toán Hoá học trong đó.";
+                userContent.push({ type: 'text', text: promptText });
+                if (base64ImageData && imageMimeType && imageMimeType.startsWith('image/')) {
+                    userContent.push({
+                        type: 'image_url',
+                        image_url: { url: `data:${imageMimeType};base64,${base64ImageData}` }
+                    });
+                }
+                const responseText = await callChatProxy([{ role: 'user', content: userContent }]);
+                if (responseText && responseText.trim()) renderResult(responseText);
+                else throw new Error("Không nhận được phản hồi hợp lệ từ AI.");
+            } catch (error) {
+                console.error("Error:", error);
+                showNotification(`${error.message}`);
+            } finally {
+                hideLoading();
+                solveBtn.disabled = false;
+            }
+        });
+
+        function renderResult(text) {
+            // Bảo vệ LaTeX khỏi bị marked.js phá: tách ra → đánh placeholder → parse → restore
+            const latexBlocks = [];
+            let protected_text = text;
+
+            // 1. Bảo vệ block math $$ ... $$ (kể cả đa dòng) — ưu tiên trước
+            protected_text = protected_text.replace(/\$\$([\s\S]*?)\$\$/g, function(match) {
+                latexBlocks.push(match);
+                return '%%LTXB' + (latexBlocks.length - 1) + '%%';
+            });
+
+            // 2. Bảo vệ inline math $ ... $ — dùng regex chính xác hơn:
+            //    - Không bắt đầu/kết thúc bằng khoảng trắng
+            //    - Cho phép bất kỳ ký tự nào (kể cả ^, _, -, +, {, }) bên trong
+            //    - Không span nhiều dòng
+            protected_text = protected_text.replace(/\$(?!\s)((?:[^$\n]|\\.)+?)(?<!\s)\$/g, function(match) {
+                latexBlocks.push(match);
+                return '%%LTXI' + (latexBlocks.length - 1) + '%%';
+            });
+
+            // 3. Parse markdown (giờ không còn $ nào)
+            let htmlContent = marked.parse(protected_text);
+
+            // 4. Restore LaTeX — xử lý cả trường hợp marked HTML-encode placeholder
+            const restoreLatex = (html) => html.replace(/%%LTX(B|I)(\d+)%%/g, function(_, _type, idx) {
+                return latexBlocks[parseInt(idx)] || '';
+            });
+            htmlContent = restoreLatex(htmlContent);
+            // fallback nếu marked encode & thành &amp;
+            htmlContent = htmlContent.replace(/&amp;&amp;LTX(B|I)(\d+)%%/g, function(_, type, idx) {
+                return latexBlocks[parseInt(idx)] || '';
+            });
+            htmlContent = restoreLatex(htmlContent);
+
+            resultContent.innerHTML = htmlContent;
+
+            const reveal = () => {
+                resultContainer.classList.add('show');
+                resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            };
+            if (window.MathJax) {
+                MathJax.typesetPromise([resultContent]).then(reveal).catch(err => { console.error(err); reveal(); });
+            } else reveal();
+        }
+
+        function showNotification(msg, type = 'error') {
+            errorMessage.textContent = msg;
+            notificationBox.classList.remove('err','ok','info');
+            if (type === 'error') {
+                notificationBox.classList.add('err');
+                notificationTitle.textContent = 'Đã có lỗi xảy ra';
+                notificationIcon.className = 'fa-solid fa-triangle-exclamation';
+            } else if (type === 'success') {
+                notificationBox.classList.add('ok');
+                notificationTitle.textContent = 'Thành công';
+                notificationIcon.className = 'fa-solid fa-circle-check';
+            } else {
+                notificationBox.classList.add('info');
+                notificationTitle.textContent = 'Thông báo';
+                notificationIcon.className = 'fa-solid fa-circle-info';
+            }
+            notificationBox.classList.add('show');
+            clearTimeout(window._notifTimer);
+            window._notifTimer = setTimeout(() => notificationBox.classList.remove('show'), 5000);
+        }
+
+        copyBtn.addEventListener('click', () => {
+            const textToCopy = resultContent.innerText;
+            const ta = document.createElement("textarea");
+            ta.value = textToCopy; ta.style.position = "fixed";
+            document.body.appendChild(ta); ta.focus(); ta.select();
+            try {
+                if (document.execCommand('copy')) {
+                    const icon = copyBtn.querySelector('i');
+                    const old = icon.className;
+                    icon.className = 'fa-solid fa-check';
+                    setTimeout(() => { icon.className = old; }, 1800);
+                }
+            } catch (err) { showNotification("Không thể sao chép."); }
+            document.body.removeChild(ta);
+        });
+
+        resetBtn.addEventListener('click', () => {
+            problemInput.value = '';
+            resetFileInput();
+            resultContainer.classList.remove('show');
+            notificationBox.classList.remove('show');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            problemInput.focus();
+        });
+
+    </script>
+</script>
+</section>
+
+<section class="page" id="formulas">
+  <div style="padding:44px 22px 60px;">
+    <div class="sec-title">📐 THƯ VIỆN CÔNG THỨC HOÁ HỌC</div>
+    <div class="sec-line" style="background:var(--green);"></div>
+    <div class="f-grid" id="f-grid"></div>
+  </div>
+</section>
+
+<script>
+"use strict";
+function goTo(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  var page=document.getElementById(id); if(!page)return;
+  page.classList.add('active');
+  var activeBtn = null;
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+id+"'")){
+      b.classList.add('active');
+      activeBtn = b;
+    }
+  });
+  // Mobile: scroll active nav button into view
+  if(activeBtn){
+    var navLinks = document.getElementById('nav-links');
+    if(navLinks && navLinks.scrollWidth > navLinks.clientWidth){
+      activeBtn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+    }
+  }
+  // Haptic feedback on mobile (if supported)
+  if(navigator.vibrate) navigator.vibrate(8);
+  /* load lessons iframe on first visit */
+  if(id === 'lessons'){
+    setTimeout(function(){
+      if(window._loadLessonsIframe) window._loadLessonsIframe();
+    }, 80);
+    if(window.recordLesson) window.recordLesson('Bài học Hoá học', 'Bài học', '📚');
+  }
+  /* load lab iframe on first visit */
+  if(id === 'lab'){
+    setTimeout(function(){
+      if(window._loadLabIframe) window._loadLabIframe();
+    }, 80);
+    if(window.recordLesson) window.recordLesson('Phòng Lab 3D', 'Thí nghiệm', '🧪');
+  }
+  /* legacy lab init hook */
+  if(id === 'lab' && window._labInitFn && !window._labInited){
+    window._labInited = true;
+    setTimeout(function(){ window._labInitFn(); }, 80);
+  }
+  if(id === 'periodic' && window.recordLesson) window.recordLesson('Bảng Tuần Hoàn', '118 Nguyên tố', '⚛️');
+  if(id === 'quiz' && window.recordLesson) window.recordLesson('AI Giải Bài Tập', 'Bài tập', '🤖');
+  if(id === 'formulas'){
+    if(window.recordLesson) window.recordLesson('Thư Viện Công Thức', 'Công thức', '📐');
+    setTimeout(function(){
+      var grid = document.getElementById('f-grid');
+      if(grid && window.MathJax && MathJax.typesetPromise){
+        MathJax.typesetPromise([grid]).catch(function(e){console.warn('MathJax:',e);});
+      }
+    }, 100);
+  }
+  window.scrollTo(0,0);
+}
+function scrollToId(id){setTimeout(function(){var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},120);}
+
+// Home scene
+(function(){
+  var sky=document.getElementById('sky-anim');
+  [[80,10,28,0],[110,50,20,-8],[65,72,32,-15],[100,25,24,-22]].forEach(function(d){
+    var c=document.createElement('div');c.className='px-cloud';
+    c.style.cssText='width:'+d[0]+'px;height:'+d[2]+'px;top:'+d[1]+'px;animation-duration:'+(28+d[0]/5)+'s;animation-delay:'+d[3]+'s;';
+    sky.appendChild(c);
+  });
+  var tr=document.getElementById('tree-row');
+  [4,14,24,36,50,64,76,88].forEach(function(p){
+    var t=document.createElement('div');t.className='px-tree';t.style.left=p+'%';
+    t.innerHTML='<div class="px-leaves"></div><div class="px-trunk"></div>';tr.appendChild(t);
+  });
+})();
+
+// Periodic Table
+var CATS={
+  alkali:{label:'Kim loại kiềm',color:'#FF8A65',text:'#000'},
+  alkaline:{label:'Kim loại kiềm thổ',color:'#FFD54F',text:'#000'},
+  lanthanide:{label:'Họ Lanthanide',color:'#80DEEA',text:'#000'},
+  actinide:{label:'Họ Actinide',color:'#CE93D8',text:'#000'},
+  transition:{label:'Kim loại chuyển tiếp',color:'#90CAF9',text:'#000'},
+  postTrans:{label:'Kim loại (nhóm chính)',color:'#A5D6A7',text:'#000'},
+  metalloid:{label:'Á kim',color:'#CFD8DC',text:'#000'},
+  nonmetal:{label:'Phi kim',color:'#DCE775',text:'#000'},
+  halogen:{label:'Halogen',color:'#FFB74D',text:'#000'},
+  noble:{label:'Khí hiếm',color:'#EF9A9A',text:'#000'},
+};
+var EDET={
+  1:{config:'1s1',state:'Khi',desc:'Nguyên tố nhẹ nhất và phổ biến nhất trong vũ trụ. Thành phần chính của nước.',uses:'Nhiên liệu tên lửa, pin hydro, sản xuất NH₃'},
+  2:{config:'1s2',state:'Khi',desc:'Khí hiếm nhẹ thứ hai, hoàn toàn trơ về hoá học.',uses:'Khinh khí cầu, làm lạnh siêu dẫn, MRI'},
+  3:{config:'[He]2s1',state:'Ran',desc:'Kim loại kiềm nhẹ nhất. Phản ứng với nước, cháy đỏ hồng.',uses:'Pin Li-ion, thuốc điều trị lưỡng cực, hợp kim nhẹ'},
+  4:{config:'[He]2s2',state:'Ran',desc:'Kim loại nhẹ, cứng, chịu nhiệt tốt.',uses:'Hợp kim với Cu, cửa sổ tia X'},
+  5:{config:'[He]2s22p1',state:'Ran',desc:'Á kim, độ cứng cao.',uses:'Thuỷ tinh Pyrex, chất bán dẫn'},
+  6:{config:'[He]2s22p2',state:'Ran',desc:'Nền tảng hoá học hữu cơ và sự sống — kim cương, than chì.',uses:'Nhiên liệu, nhựa, kim cương, graphene'},
+  7:{config:'[He]2s22p3',state:'Khi',desc:'Chiếm 78% khí quyển Trái Đất. Cần thiết cho protein và DNA.',uses:'Phân đạm, thuốc nổ TNT, bảo quản thực phẩm'},
+  8:{config:'[He]2s22p4',state:'Khi',desc:'Nguyên tố phổ biến nhất trong vỏ Trái Đất. Cần thiết cho hô hấp.',uses:'Hô hấp, luyện thép, hàn cắt kim loại'},
+  9:{config:'[He]2s22p5',state:'Khi',desc:'Phi kim hoạt động mạnh nhất, oxi hoá cực mạnh.',uses:'Teflon (chảo không dính), kem đánh răng'},
+  10:{config:'[He]2s22p6',state:'Khi',desc:'Khí hiếm phát ánh sáng đỏ cam đặc trưng khi phóng điện.',uses:'Đèn neon, laser, chất làm lạnh'},
+  11:{config:'[Ne]3s1',state:'Ran',desc:'Kim loại mềm trắng bạc, phản ứng mạnh với nước. Cháy màu vàng.',uses:'Muối ăn (NaCl), xà phòng, đèn đường natri'},
+  12:{config:'[Ne]3s2',state:'Ran',desc:'Kim loại nhẹ, cháy sáng trắng rực rỡ trong không khí.',uses:'Hợp kim Al-Mg, pháo hoa, máy tính, thuốc kháng axit'},
+  13:{config:'[Ne]3s23p1',state:'Ran',desc:'Kim loại nhẹ, bền, dẫn điện tốt. Phổ biến thứ 3 trong vỏ Trái Đất.',uses:'Lon nước ngọt, máy bay, dây điện'},
+  14:{config:'[Ne]3s23p2',state:'Ran',desc:'Chất bán dẫn quan trọng nhất, nền tảng công nghiệp điện tử.',uses:'Chip máy tính, pin mặt trời, thuỷ tinh'},
+  15:{config:'[Ne]3s23p3',state:'Ran',desc:'Tồn tại dạng trắng (độc, phát quang) và đỏ. Cần thiết cho DNA và ATP.',uses:'Que diêm, phân bón, thuốc diệt chuột'},
+  16:{config:'[Ne]3s23p4',state:'Ran',desc:'Phi kim màu vàng, mùi đặc trưng khi cháy (SO₂). Có trong protein.',uses:'Axit H₂SO₄, que diêm, cao su lưu hoá'},
+  17:{config:'[Ne]3s23p5',state:'Khi',desc:'Khí vàng lục độc, mùi hắc. Chất khử trùng mạnh.',uses:'Khử trùng nước, nhựa PVC, thuốc tẩy'},
+  18:{config:'[Ne]3s23p6',state:'Khi',desc:'Khí hiếm phổ biến nhất trong khí quyển (0,93%). Hoàn toàn trơ.',uses:'Bóng đèn, hàn MIG/TIG, cửa kính 2 lớp'},
+  19:{config:'[Ar]4s1',state:'Ran',desc:'Kim loại kiềm mềm, phản ứng rất mạnh với nước. Cháy màu tím.',uses:'Phân kali, thuốc súng, xà phòng mềm'},
+  20:{config:'[Ar]4s2',state:'Ran',desc:'Kim loại kiềm thổ màu trắng. Khoáng chất quan trọng cho xương và răng.',uses:'Xi măng (CaCO₃), vôi (CaO), phân bón'},
+  26:{config:'[Ar]3d64s2',state:'Ran',desc:'Kim loại phổ biến nhất được sử dụng. Dễ bị gỉ sét trong không khí ẩm.',uses:'Thép xây dựng, máy móc, huyết sắc tố hemoglobin'},
+  29:{config:'[Ar]3d104s1',state:'Ran',desc:'Kim loại đỏ cam, dẫn điện và nhiệt tốt thứ hai sau Ag.',uses:'Dây điện, ống nước, đồng xu, đồng thau'},
+  30:{config:'[Ar]3d104s2',state:'Ran',desc:'Kim loại xanh xám nhạt, bảo vệ thép khỏi gỉ sét.',uses:'Mạ kẽm, pin khô, ZnO trong kem chống nắng'},
+  47:{config:'[Kr]4d105s1',state:'Ran',desc:'Kim loại quý màu trắng bạc, dẫn điện tốt nhất trong tất cả kim loại.',uses:'Trang sức, tiền xu, mạch điện tử'},
+  56:{config:'[Xe]6s2',state:'Ran',desc:'Kim loại kiềm thổ nặng, màu xám trắng. Cháy xanh lá.',uses:'BaSO₄ chụp X-quang, pháo hoa màu xanh lá'},
+  79:{config:'[Xe]4f145d106s1',state:'Ran',desc:'Kim loại quý màu vàng đặc trưng, không bị oxy hoá.',uses:'Trang sức, dự trữ tiền tệ, tiếp điểm điện tử'},
+  80:{config:'[Xe]4f145d106s2',state:'Long',desc:'Kim loại duy nhất ở thể lỏng điều kiện thường. Độc tính cao.',uses:'Nhiệt kế (cũ), đèn huỳnh quang'},
+  82:{config:'[Xe]4f145d106s26p2',state:'Ran',desc:'Kim loại nặng, mềm, màu xám xanh. Tích luỹ độc trong cơ thể.',uses:'Ắc quy chì-axit, che chắn bức xạ X-quang'},
+  92:{config:'[Rn]5f36d17s2',state:'Ran',desc:'Kim loại phóng xạ nặng nhất trong tự nhiên. Nguồn năng lượng hạt nhân.',uses:'Nhiên liệu lò phản ứng hạt nhân, hợp kim siêu cứng'},
+};
+var ALL=[];
+(function(){
+  var syms='H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og'.split(' ');
+  var masses=[1.008,4.003,6.941,9.012,10.81,12.011,14.007,15.999,18.998,20.18,22.990,24.305,26.982,28.085,30.974,32.06,35.45,39.95,39.098,40.078,44.956,47.867,50.942,52.00,54.938,55.845,58.933,58.693,63.546,65.38,69.723,72.63,74.922,78.971,79.904,83.798,85.468,87.62,88.906,91.224,92.906,95.95,98,101.07,102.91,106.42,107.87,112.41,114.82,118.71,121.76,127.60,126.90,131.29,132.91,137.33,138.91,140.12,140.91,144.24,145,150.36,151.96,157.25,158.93,162.50,164.93,167.26,168.93,173.05,174.97,178.49,180.95,183.84,186.21,190.23,192.22,195.08,196.97,200.59,204.38,207.2,208.98,209,210,222,223,226,227,232.04,231.04,238.03,237,244,243,247,247,251,252,257,258,259,262,267,268,269,270,277,278,281,282,285,286,289,290,293,294,294];
+  var viN={
+  1:'Hiđrô',2:'Heli',3:'Liti',4:'Beri',5:'Bo',
+  6:'Cacbon',7:'Nitơ',8:'Oxy',9:'Flo',10:'Neon',
+  11:'Natri',12:'Magiê',13:'Nhôm',14:'Silic',15:'Photpho',
+  16:'Lưu huỳnh',17:'Clo',18:'Argon',19:'Kali',20:'Canxi',
+  21:'Scandi',22:'Titan',23:'Vanadi',24:'Crom',25:'Mangan',
+  26:'Sắt',27:'Coban',28:'Niken',29:'Đồng',30:'Kẽm',
+  31:'Gali',32:'Gecmani',33:'Asen',34:'Selen',35:'Brom',
+  36:'Krypton',37:'Rubidi',38:'Stronti',39:'Ytri',40:'Ziriconi',
+  41:'Niobi',42:'Molipđen',43:'Tecneti',44:'Ruteni',45:'Rodi',
+  46:'Paladi',47:'Bạc',48:'Cađimi',49:'Indi',50:'Thiếc',
+  51:'Antimon',52:'Telua',53:'Iot',54:'Xenon',55:'Xesi',
+  56:'Bari',57:'Lantan',58:'Xeri',59:'Prazeođim',60:'Neođim',
+  61:'Prometi',62:'Samari',63:'Europi',64:'Gađolini',65:'Terbi',
+  66:'Dysprosi',67:'Honmi',68:'Erbi',69:'Thuli',70:'Ytterbi',
+  71:'Luteti',72:'Hafni',73:'Tantan',74:'Vonfam',75:'Reni',
+  76:'Osmi',77:'Iridi',78:'Platin',79:'Vàng',80:'Thủy ngân',
+  81:'Tali',82:'Chì',83:'Bitmut',84:'Poloni',85:'Atatin',86:'Radon',
+  87:'Franci',88:'Radi',89:'Actini',90:'Thori',91:'Protactini',92:'Urani',
+  93:'Neptuni',94:'Plutoni',95:'Americi',96:'Curi',97:'Berkeli',98:'Californi',
+  99:'Einsteini',100:'Fermi',101:'Mendelevi',102:'Nobeli',103:'Laurenci',
+  104:'Rutherfordi',105:'Dubni',106:'Siborghi',107:'Bohri',108:'Hasni',
+  109:'Meitneri',110:'Darmstadti',111:'Rơngeni',112:'Copernici',113:'Nihoni',
+  114:'Flerovi',115:'Moscovi',116:'Livermori',117:'Tenesin',118:'Oganesson'
+};
+  var pos=[[1,1],[1,18],[2,1],[2,2],[2,13],[2,14],[2,15],[2,16],[2,17],[2,18],[3,1],[3,2],[3,13],[3,14],[3,15],[3,16],[3,17],[3,18],[4,1],[4,2],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[4,9],[4,10],[4,11],[4,12],[4,13],[4,14],[4,15],[4,16],[4,17],[4,18],[5,1],[5,2],[5,3],[5,4],[5,5],[5,6],[5,7],[5,8],[5,9],[5,10],[5,11],[5,12],[5,13],[5,14],[5,15],[5,16],[5,17],[5,18],[6,1],[6,2],null,[6,4],[6,5],[6,6],[6,7],[6,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[6,15],[6,16],[6,17],[6,18],[7,1],[7,2],null,[7,4],[7,5],[7,6],[7,7],[7,8],[7,9],[7,10],[7,11],[7,12],[7,13],[7,14],[7,15],[7,16],[7,17],[7,18]];
+  for(var z=57;z<=71;z++)pos[z-1]=[8,z-54];
+  for(var z=89;z<=103;z++)pos[z-1]=[9,z-86];
+  var rfPos=[[7,4],[7,5],[7,6],[7,7],[7,8],[7,9],[7,10],[7,11],[7,12],[7,13],[7,14],[7,15],[7,16],[7,17],[7,18]];
+  rfPos.forEach(function(p,i){pos[103+i]=p;});
+  function getCat(z){
+    if(z===1)return'nonmetal';
+    if([2,10,18,36,54,86,118].indexOf(z)>=0)return'noble';
+    if([9,17,35,53,85,117].indexOf(z)>=0)return'halogen';
+    if([3,11,19,37,55,87].indexOf(z)>=0)return'alkali';
+    if([4,12,20,38,56,88].indexOf(z)>=0)return'alkaline';
+    if(z>=57&&z<=71)return'lanthanide';
+    if(z>=89&&z<=103)return'actinide';
+    if([5,14,32,33,51,52,84].indexOf(z)>=0)return'metalloid';
+    if([6,7,8,15,16,34].indexOf(z)>=0)return'nonmetal';
+    if((z>=21&&z<=30)||(z>=39&&z<=48)||(z>=72&&z<=80)||(z>=104&&z<=112))return'transition';
+    return'postTrans';
+  }
+  syms.forEach(function(sym,i){
+    var z=i+1,p=pos[i]||[0,0];
+    ALL.push({z:z,sym:sym,name:viN[z]||sym,cat:getCat(z),mass:masses[i]||0,period:p?p[0]:0,group:p?p[1]:0});
+  });
+})();
+
+function buildPT(){
+  var leg=document.getElementById('pt-legend');
+  Object.entries(CATS).forEach(function(e){
+    leg.innerHTML+='<div class="pt-leg-item"><div class="pt-leg-dot" style="background:'+e[1].color+'"></div><span>'+e[1].label+'</span></div>';
+  });
+  var flt=document.getElementById('pt-filters');
+  flt.innerHTML='<button class="pt-filt active" style="background:#1A237E;color:#fff;" onclick="filterPT(\'all\',this)">Tất cả</button>';
+  Object.entries(CATS).forEach(function(e){
+    flt.innerHTML+='<button class="pt-filt" style="background:'+e[1].color+';color:'+e[1].text+';" onclick="filterPT(\''+e[0]+'\',this)">'+e[1].label+'</button>';
+  });
+  var grid=document.getElementById('pt-grid');
+  var rows=9,cols=18;
+  var gd=Array.from({length:rows},function(){return Array(cols).fill(null);});
+  ALL.forEach(function(el){if(el.period>=1&&el.period<=9&&el.group>=1&&el.group<=18)gd[el.period-1][el.group-1]=el;});
+  var html='';
+  for(var r=0;r<rows;r++)for(var c=0;c<cols;c++){
+    var el=gd[r][c];
+    if(!el){
+      if((r===5||r===6)&&c===2)html+='<div class="pt-cell" style="background:#E8EAF6;border-color:#9FA8DA;cursor:default;font-size:0.26rem;color:#5C6BC0;text-align:center;padding:1px;">'+(r===5?'57-71':'89-103')+'</div>';
+      else html+='<div class="pt-cell empty"></div>';
+    }else{
+      var cc=CATS[el.cat]||{color:'#eee',text:'#000'};
+      html+='<div class="pt-cell" data-cat="'+el.cat+'" style="background:'+cc.color+';color:'+cc.text+';" onclick="showEl('+el.z+')"><div class="pt-z">'+el.z+'</div><div class="pt-sym">'+el.sym+'</div><div class="pt-nm">'+(el.name.length>7?el.name.substring(0,6)+'..':el.name)+'</div></div>';
+    }
+  }
+  html+=Array(18).fill('<div class="pt-cell empty"></div>').join('');
+  html+='<div class="pt-cell empty"></div><div class="pt-cell empty"></div>';
+  html+='<div class="pt-cell" style="background:#607D8B;color:#fff;font-size:0.32rem;cursor:default;text-align:center;">La<br>57-71</div>';
+  ALL.filter(function(e){return e.z>=57&&e.z<=71;}).forEach(function(el){var cc=CATS[el.cat]||{color:'#eee',text:'#000'};html+='<div class="pt-cell" data-cat="'+el.cat+'" style="background:'+cc.color+';color:'+cc.text+';" onclick="showEl('+el.z+')"><div class="pt-z">'+el.z+'</div><div class="pt-sym">'+el.sym+'</div><div class="pt-nm">'+(el.name.length>7?el.name.substring(0,6)+'..':el.name)+'</div></div>';});
+  html+=Array(3).fill('<div class="pt-cell empty"></div>').join('');
+  html+='<div class="pt-cell empty"></div><div class="pt-cell empty"></div>';
+  html+='<div class="pt-cell" style="background:#607D8B;color:#fff;font-size:0.32rem;cursor:default;text-align:center;">Ac<br>89-103</div>';
+  ALL.filter(function(e){return e.z>=89&&e.z<=103;}).forEach(function(el){var cc=CATS[el.cat]||{color:'#eee',text:'#000'};html+='<div class="pt-cell" data-cat="'+el.cat+'" style="background:'+cc.color+';color:'+cc.text+';" onclick="showEl('+el.z+')"><div class="pt-z">'+el.z+'</div><div class="pt-sym">'+el.sym+'</div><div class="pt-nm">'+(el.name.length>7?el.name.substring(0,6)+'..':el.name)+'</div></div>';});
+  html+=Array(3).fill('<div class="pt-cell empty"></div>').join('');
+  grid.innerHTML=html;
+}
+function filterPT(cat,btn){
+  document.querySelectorAll('.pt-filt').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  document.querySelectorAll('.pt-cell:not(.empty)').forEach(function(c){c.classList.toggle('dimmed',cat!=='all'&&c.dataset.cat!==cat);});
+}
+/* ─── ELEMENT REAL IMAGES (Wikipedia/public domain) ─── */
+var EL_IMG = {
+  1:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/White_shark.jpg/100px-White_shark.jpg',
+};
+/* Map Z → Wikimedia Commons image URL (direct CDN thumbnails) */
+var EL_WIKIMG = {
+  1: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Hydrogen_discharge_tube.jpg/240px-Hydrogen_discharge_tube.jpg',
+  2: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Glowing_noble_gas_helium.jpg/240px-Glowing_noble_gas_helium.jpg',
+  3: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e2/Lithium_paraffin.jpg/240px-Lithium_paraffin.jpg',
+  4: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Beryllium_%28Be%29.jpg/240px-Beryllium_%28Be%29.jpg',
+  6: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Coal_anthracite.jpg/240px-Coal_anthracite.jpg',
+  7: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Liquidnitrogen.jpg/240px-Liquidnitrogen.jpg',
+  8: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Liquid_oxygen_in_a_beaker_1.jpg/240px-Liquid_oxygen_in_a_beaker_1.jpg',
+  9: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Fluorine_gas_with_blue_light.jpg/240px-Fluorine_gas_with_blue_light.jpg',
+  11:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/27/Na_%28Sodium%29.jpg/240px-Na_%28Sodium%29.jpg',
+  12:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/MgFl.jpg/240px-MgFl.jpg',
+  13:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Aluminium-4.jpg/240px-Aluminium-4.jpg',
+  14:'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Silicon.jpg/240px-Silicon.jpg',
+  15:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/White_phosphorus.jpg/240px-White_phosphorus.jpg',
+  16:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/Sulfur_-_El_Desierto_mine%2C_San_Pablo_de_Napa%2C_Daniel_Campos_Province%2C_Potos%C3%AD%2C_Bolivia.jpg/240px-Sulfur_-_El_Desierto_mine.jpg',
+  17:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Chlorine2.jpg/240px-Chlorine2.jpg',
+  19:'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Potassium2.jpg/240px-Potassium2.jpg',
+  20:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Calcium_unter_Argon_Schutzgasatmosph%C3%A4re.jpg/240px-Calcium_unter_Argon.jpg',
+  26:'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Iron_electrolytic_and_1cm3_cube.jpg/240px-Iron_electrolytic_and_1cm3_cube.jpg',
+  29:'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Copper_electrolytic_and_1cm3_cube.jpg/240px-Copper_electrolytic_and_1cm3_cube.jpg',
+  30:'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Zinc_fragment_sublimed_and_1cm3_cube.jpg/240px-Zinc_fragment_sublimed_and_1cm3_cube.jpg',
+  35:'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Bromine-sample.jpg/240px-Bromine-sample.jpg',
+  47:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Silver_crystal.jpg/240px-Silver_crystal.jpg',
+  56:'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Barium_unter_Argon.jpg/240px-Barium_unter_Argon.jpg',
+  79:'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Gold-crystals.jpg/240px-Gold-crystals.jpg',
+  80:'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Mercury_in_tube.jpg/240px-Mercury_in_tube.jpg',
+  82:'https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Lead_-_The_Element.jpg/240px-Lead_-_The_Element.jpg',
+  92:'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/Uranium_electrolytic_and_1cm3_cube.jpg/240px-Uranium_electrolytic_and_1cm3_cube.jpg',
+};
+
+/* Element state emoji */
+var STATE_EMOJI = { 'Khi':'🌬️', 'Ran':'🪨', 'Long':'💧', 'Phong xa':'☢️' };
+
+var _atomAnim = null; // animation frame handle
+
+function showEl(z){
+  var el=ALL.find(function(e){return e.z===z;});if(!el)return;
+  var det=EDET[z]||{};var cc=CATS[el.cat]||{color:'#eee',text:'#000'};
+
+  /* Basic info */
+  document.getElementById('em-sym').textContent=el.sym;
+  document.getElementById('em-z').textContent='Z = '+el.z;
+  document.getElementById('em-box').style.background=cc.color;
+  document.getElementById('em-name').textContent=el.name;
+  document.getElementById('em-cat').textContent=cc.label;
+  document.getElementById('em-cat').style.background=cc.color;
+  document.getElementById('em-state').textContent=det.state?(STATE_EMOJI[det.state]||'●')+' '+det.state:'';
+  document.getElementById('em-mass').textContent=el.mass+' u';
+  document.getElementById('em-group').textContent=el.group+' / '+el.period;
+  document.getElementById('em-config').textContent=det.config||'—';
+  document.getElementById('em-desc').textContent=det.desc||el.name+' ('+el.sym+') — nguyên tử số '+el.z+'.';
+  document.getElementById('em-uses').textContent=det.uses?'💡 Ứng dụng: '+det.uses:'💡 Xem thêm trong tài liệu Hóa học THPT.';
+  document.getElementById('el-atom-label').textContent='⚛️ Mô hình nguyên tử — '+el.sym+' (Z='+el.z+')';
+
+  /* Real image */
+  var imgContainer=document.getElementById('em-img-container');
+  var imgCaption=document.getElementById('em-img-caption');
+  var imgUrl=EL_WIKIMG[z];
+  if(imgUrl){
+    imgContainer.innerHTML='<img src="'+imgUrl+'" alt="'+el.name+'" onerror="this.parentNode.innerHTML=\'<div class=el-real-img-fallback>'+getElementEmoji(z)+'</div>\'">';
+    imgContainer.className='';
+    imgContainer.style.cssText='width:100%;height:100%;';
+    imgCaption.textContent=el.name+' — hình ảnh thực tế';
+  } else {
+    imgContainer.className='el-real-img-fallback';
+    imgContainer.style.cssText='';
+    imgContainer.innerHTML='<span style="font-size:3rem;">'+getElementEmoji(z)+'</span>';
+    imgCaption.textContent=el.name+' ('+el.sym+')';
+  }
+
+  document.getElementById('el-overlay').classList.add('open');
+
+  /* Draw 3D atom model */
+  requestAnimationFrame(function(){ drawAtom(el.z, el.sym, cc.color); });
+}
+
+function getElementEmoji(z){
+  if(z===1) return '🌫️';
+  if(z===2) return '🎈';
+  if([3,11,19,37,55,87].indexOf(z)>=0) return '⚡';
+  if([4,12,20,38,56,88].indexOf(z)>=0) return '🪨';
+  if(z===6) return '💎';
+  if(z===7) return '💨';
+  if(z===8) return '💧';
+  if([9,17,35,53,85].indexOf(z)>=0) return '🟠';
+  if([2,10,18,36,54,86].indexOf(z)>=0) return '✨';
+  if([26,29,79,47].indexOf(z)>=0) return '🔶';
+  if(z===80) return '🌡️';
+  if(z>=89) return '☢️';
+  return '⚛️';
+}
+
+function drawAtom(Z, sym, catColor){
+  if(_atomAnim){ cancelAnimationFrame(_atomAnim); _atomAnim=null; }
+  var canvas=document.getElementById('el-atom-canvas');
+  if(!canvas) return;
+  var wrap=canvas.parentElement;
+  canvas.width=wrap.clientWidth||340;
+  canvas.height=180;
+  var ctx=canvas.getContext('2d');
+
+  /* Shell model: Bohr model up to 4 shells */
+  var shells=getShells(Z);
+  var cx=canvas.width/2, cy=canvas.height/2;
+  var maxR=Math.min(cx,cy)-14;
+  var t=0;
+
+  /* Colors */
+  var nucleusColor=catColor||'#00BCD4';
+  var electronColors=['#00E5FF','#FFD700','#FF4081','#69F0AE'];
+
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    /* Dark background */
+    var bg=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(cx,cy));
+    bg.addColorStop(0,'#1a1f35'); bg.addColorStop(1,'#0a0d1a');
+    ctx.fillStyle=bg; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    /* Draw shells (orbits) */
+    var shellCount=shells.length;
+    shells.forEach(function(eCount, si){
+      var r=maxR*(si+1)/(shellCount+0.5);
+      /* Orbit ring */
+      ctx.beginPath();
+      ctx.arc(cx,cy,r,0,Math.PI*2);
+      ctx.strokeStyle='rgba(255,255,255,0.12)';
+      ctx.lineWidth=1;
+      ctx.stroke();
+
+      /* Electrons on this shell */
+      var color=electronColors[si%electronColors.length];
+      for(var ei=0;ei<eCount;ei++){
+        var speed=(si===0?1.4:si===1?0.9:si===2?0.6:0.4);
+        var angle=(2*Math.PI*ei/eCount)+(t*speed*(si%2===0?1:-1));
+        var ex=cx+r*Math.cos(angle);
+        var ey=cy+r*Math.sin(angle);
+
+        /* Glow */
+        var glow=ctx.createRadialGradient(ex,ey,0,ex,ey,6);
+        glow.addColorStop(0,color); glow.addColorStop(1,'transparent');
+        ctx.fillStyle=glow; ctx.beginPath();
+        ctx.arc(ex,ey,6,0,Math.PI*2); ctx.fill();
+
+        /* Core dot */
+        ctx.fillStyle=color;
+        ctx.beginPath(); ctx.arc(ex,ey,3,0,Math.PI*2); ctx.fill();
+      }
+    });
+
+    /* Nucleus */
+    var nucR=Math.max(8, Math.min(18, 4+Math.log(Z)*2.5));
+    var nucGlow=ctx.createRadialGradient(cx,cy,0,cx,cy,nucR*2);
+    nucGlow.addColorStop(0,nucleusColor); nucGlow.addColorStop(1,'transparent');
+    ctx.fillStyle=nucGlow; ctx.beginPath(); ctx.arc(cx,cy,nucR*2,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=nucleusColor; ctx.beginPath(); ctx.arc(cx,cy,nucR,0,Math.PI*2); ctx.fill();
+
+    /* Symbol in nucleus */
+    ctx.fillStyle='#fff';
+    ctx.font='bold '+(nucR>12?'11':'9')+'px Inter,system-ui,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(sym,cx,cy);
+
+    t+=0.018;
+    if(document.getElementById('el-overlay').classList.contains('open')){
+      _atomAnim=requestAnimationFrame(draw);
+    }
+  }
+  draw();
+}
+
+function getShells(Z){
+  /* Bohr model shell filling: 2,8,18,32 max but simplified for visual */
+  var max=[2,8,8,18,18,32];
+  var shells=[]; var remaining=Z;
+  for(var i=0;i<max.length&&remaining>0;i++){
+    var n=Math.min(remaining,max[i]);
+    /* Cap visual electrons per shell for clarity */
+    shells.push(Math.min(n,8));
+    remaining-=n;
+  }
+  return shells;
+}
+
+function closeEl(){
+  document.getElementById('el-overlay').classList.remove('open');
+  if(_atomAnim){ cancelAnimationFrame(_atomAnim); _atomAnim=null; }
+}
+
+// REACTIONS
+var RXN=[
+  {i:'HCl + NaOH -> NaCl + H2O',b:'HCl + NaOH → NaCl + H₂O',t:'Trung hoà (Axit-Bazơ)',e:'Axit mạnh + bazơ mạnh → muối + nước. pH sau phản ứng = 7.'},
+  {i:'H2 + O2 -> H2O',b:'2H₂ + O₂ → 2H₂O',t:'Tổng hợp (Hoá hợp)',e:'Bảo toàn H: 4 mỗi vế; Bảo toàn O: 2 mỗi vế.'},
+  {i:'Zn + HCl -> ZnCl2 + H2',b:'Zn + 2HCl → ZnCl₂ + H₂↑',t:'Phản ứng thế — sinh khí H₂',e:'Zn đứng trước H trong dãy hoạt động hoá học.'},
+  {i:'Fe + CuSO4 -> FeSO4 + Cu',b:'Fe + CuSO₄ → FeSO₄ + Cu',t:'Phản ứng thế kim loại',e:'Fe hoạt động mạnh hơn Cu, đẩy Cu ra khỏi dung dịch muối.'},
+  {i:'AgNO3 + NaCl -> AgCl + NaNO3',b:'AgNO₃ + NaCl → AgCl↓ + NaNO₃',t:'Kết tủa trắng — nhận biết Cl⁻',e:'AgCl là kết tủa trắng đặc trưng, không tan trong nước.'},
+  {i:'CaCO3 + HCl -> CaCl2 + H2O + CO2',b:'CaCO₃ + 2HCl → CaCl₂ + H₂O + CO₂↑',t:'Muối cacbonat + axit — sinh CO₂',e:'CO₂ bay lên là bằng chứng của phản ứng. Đá vôi tan trong HCl.'},
+  {i:'CuSO4 + NaOH -> CuOH2 + Na2SO4',b:'CuSO₄ + 2NaOH → Cu(OH)₂↓ + Na₂SO₄',t:'Kết tủa xanh lam — nhận biết Cu²⁺',e:'Cu(OH)₂ màu xanh lam đặc trưng. Đun nóng ra CuO màu đen.'},
+  {i:'BaCl2 + Na2SO4 -> BaSO4 + NaCl',b:'BaCl₂ + Na₂SO₄ → BaSO₄↓ + 2NaCl',t:'Kết tủa trắng — nhận biết SO₄²⁻',e:'BaSO₄ trắng, không tan trong axit loãng.'},
+  {i:'Cu + AgNO3 -> CuNO32 + Ag',b:'Cu + 2AgNO₃ → Cu(NO₃)₂ + 2Ag',t:'Thế kim loại — Cu đẩy Ag',e:'Cu hoạt động mạnh hơn Ag, đẩy Ag ra tạo bạc trắng bóng.'},
+  {i:'Na2CO3 + HCl -> NaCl + H2O + CO2',b:'Na₂CO₃ + 2HCl → 2NaCl + H₂O + CO₂↑',t:'Muối + axit — sinh CO₂',e:'Na₂CO₃ (soda) phản ứng với HCl tạo bọt CO₂ dễ quan sát.'},
+];
+function buildSamples(){
+  var el=document.getElementById('sample-chips');
+  el.innerHTML=RXN.map(function(r,i){return'<div class="chip" onclick="loadRxn('+i+')"><div class="chip-eq">'+r.i+'</div><div class="chip-type">'+r.t+'</div></div>';}).join('');
+}
+function buildRxnLib(){
+  var el=document.getElementById('rxn-lib');
+  el.innerHTML=RXN.map(function(r,i){return'<div class="rxn-item" onclick="loadRxn('+i+');goTo(\'tools\')"><div class="rxn-eq">'+r.b+'</div><div class="rxn-type">'+r.t+'</div></div>';}).join('');
+}
+function loadRxn(i){
+  var r=RXN[i];
+  document.getElementById('eq-inp').value=r.i;
+  document.getElementById('eq-out').textContent=r.b;
+  document.getElementById('eq-type').textContent='Loại: '+r.t;
+  document.getElementById('eq-explain').textContent=r.e;
+  document.getElementById('eq-result').classList.add('show');
+}
+function doBalance(){
+  var v=document.getElementById('eq-inp').value.trim();
+  if(!v){toast('Nhập phương trình trước!');return;}
+  var norm=v.replace(/\s/g,'').toLowerCase();
+  var m=RXN.find(function(r){return r.i.replace(/\s/g,'').toLowerCase()===norm;});
+  if(m){loadRxn(RXN.indexOf(m));toast('Cân bằng xong!');return;}
+  var t='Phan ung hoa hoc',e='Áp dụng bảo toàn nguyên tố để cân bằng hệ số.';
+  if(norm.indexOf('naoh')>=0||norm.indexOf('koh')>=0){t='Trung hoa';e='Axit + Bazơ → Muối + Nước.';}
+  if(norm.indexOf('co2')>=0){t='Sinh khi CO2';e='Muối cacbonat + axit → CO₂ bay lên.';}
+  var parts=v.replace('->','→').split('→');
+  document.getElementById('eq-out').textContent=(parts[0]||v).trim()+' → '+(parts[1]||'?').trim()+' (kiem tra thu cong)';
+  document.getElementById('eq-type').textContent='Loại: '+t;
+  document.getElementById('eq-explain').textContent=e+' Hãy thử chọn phản ứng mẫu bên dưới!';
+  document.getElementById('eq-result').classList.add('show');
+}
+function eqClear(){document.getElementById('eq-inp').value='';document.getElementById('eq-result').classList.remove('show');}
+
+function updateMol(){
+  var m=document.getElementById('mol-method').value;
+  document.getElementById('mol-res').classList.remove('show');
+  var f=document.getElementById('mol-fields');
+  if(m==='mass')f.innerHTML='<label class="lbl">Khoi luong m (gam)</label><input class="inp" id="m-m" type="number" placeholder="VD: 18" min="0"><label class="lbl">Khoi luong mol M (g/mol)</label><input class="inp" id="m-M" type="number" placeholder="VD: 18 cho H₂O" min="0">';
+  else if(m==='gas')f.innerHTML='<label class="lbl">The tich V (lit, o dtc 0°C, 1atm)</label><input class="inp" id="m-V" type="number" placeholder="VD: 11.2" min="0">';
+  else f.innerHTML='<label class="lbl">So hat N</label><input class="inp" id="m-N" type="number" placeholder="VD: 6.022e23" min="0">';
+}
+function calcMol(){
+  var m=document.getElementById('mol-method').value,n,steps;
+  if(m==='mass'){var mw=+document.getElementById('m-m').value,M=+document.getElementById('m-M').value;if(!mw||!M){toast('Nhập đủ m và M!');return;}n=mw/M;steps='Công thức: n = m / M\nn = '+mw+' / '+M+' = '+n.toFixed(4)+' mol';}
+  else if(m==='gas'){var V=+document.getElementById('m-V').value;if(!V){toast('Nhập thể tích V!');return;}n=V/22.4;steps='Công thức: n = V / 22.4\nn = '+V+' / 22.4 = '+n.toFixed(4)+' mol\n(dtc: 0°C, 1 atm)';}
+  else{var N=+document.getElementById('m-N').value;if(!N){toast('Nhập số hạt N!');return;}n=N/6.022e23;steps='Công thức: n = N / Na\nNa = 6.022x10^23\nn = '+n.toExponential(4)+' mol';}
+  document.getElementById('mol-val').textContent='n = '+(n<0.001?n.toExponential(3):n.toFixed(4))+' mol';
+  document.getElementById('mol-steps').textContent=steps;
+  document.getElementById('mol-res').classList.add('show');
+}
+function updateConc(){
+  var t=document.getElementById('conc-type').value;
+  document.getElementById('conc-res').classList.remove('show');
+  var f=document.getElementById('conc-fields');
+  if(t==='cm')f.innerHTML='<label class="lbl">So mol chat tan n (mol)</label><input class="inp" id="c-n" type="number" placeholder="VD: 0.5" min="0"><label class="lbl">The tich dung dich V (lit)</label><input class="inp" id="c-V" type="number" placeholder="VD: 1" min="0">';
+  else f.innerHTML='<label class="lbl">Khoi luong chat tan m_ct (gam)</label><input class="inp" id="c-mct" type="number" placeholder="VD: 20" min="0"><label class="lbl">Khoi luong dung dich m_dd (gam)</label><input class="inp" id="c-mdd" type="number" placeholder="VD: 100" min="0">';
+}
+function calcConc(){
+  var t=document.getElementById('conc-type').value,val,steps;
+  if(t==='cm'){var n=+document.getElementById('c-n').value,V=+document.getElementById('c-V').value;if(!n||!V){toast('Nhập đủ n và V!');return;}val=n/V;steps='Công thức: Cm = n / V\nCm = '+n+' / '+V+' = '+val.toFixed(4)+' mol/L';document.getElementById('conc-val').textContent='Cm = '+val.toFixed(4)+' M';}
+  else{var mct=+document.getElementById('c-mct').value,mdd=+document.getElementById('c-mdd').value;if(!mct||!mdd){toast('Nhập đủ m_ct và m_dd!');return;}val=(mct/mdd)*100;steps='Công thức: C% = (m_ct / m_dd) x 100%\nC% = ('+mct+' / '+mdd+') x 100 = '+val.toFixed(2)+'%';document.getElementById('conc-val').textContent='C% = '+val.toFixed(2)+'%';}
+  document.getElementById('conc-steps').textContent=steps;
+  document.getElementById('conc-res').classList.add('show');
+}
+
+// FORMULAS (LaTeX)
+var FD=[
+  {t:'Đại Lượng Cơ Bản',c:'#69F0AE',icon:'⚗️',items:[
+    {n:'Quy tắc hóa trị',e:'$x \\cdot a = y \\cdot b$',x:'a, b là hóa trị; x, y là chỉ số nguyên tử'},
+    {n:'Số mol (khối lượng)',e:'$n = \\dfrac{m}{M}$',x:'m (g), M (g/mol)'},
+    {n:'Số mol (thể tích khí chuẩn)',e:'$n = \\dfrac{V}{24{,}79}$',x:'Điều kiện chuẩn: 25°C, 1 bar'},
+    {n:'Số mol (số hạt)',e:'$n = \\dfrac{N}{N_A}$',x:'$N_A \\approx 6{,}022 \\times 10^{23}$'},
+    {n:'Tỉ khối chất khí A/B',e:'$d_{A/B} = \\dfrac{M_A}{M_B}$',x:'$d_{A/\\text{kk}} = \\dfrac{M_A}{29}$'},
+    {n:'Khối lượng hạt nhân',e:'$A = Z + N$',x:'Z: số proton, N: số neutron'},
+    {n:'Hiệu suất phản ứng',e:'$H\\% = \\dfrac{m_{\\text{tt}}}{m_{\\text{lt}}} \\times 100\\%$',x:'tt: thực tế; lt: lý thuyết'},
+  ]},
+  {t:'Dung Dịch & Nồng Độ',c:'#4DD0E1',icon:'🫧',items:[
+    {n:'Nồng độ phần trăm',e:'$C\\% = \\dfrac{m_{ct}}{m_{dd}} \\times 100\\%$',x:'$m_{dd} = m_{ct} + m_{dm}$'},
+    {n:'Nồng độ mol',e:'$C_M = \\dfrac{n}{V_{dd}}$',x:'V tính bằng lít'},
+    {n:'Khối lượng dung dịch',e:'$m_{dd} = V_{dd} \\cdot D$',x:'D: khối lượng riêng (g/ml)'},
+    {n:'Độ tan (S)',e:'$S = \\dfrac{m_{ct}}{m_{dm}} \\times 100$',x:'Tính trên 100 g dung môi'},
+    {n:'Chuyển đổi nồng độ',e:'$C_M = \\dfrac{10 \\cdot D \\cdot C\\%}{M}$',x:'Liên hệ C% và $C_M$'},
+    {n:'Pha loãng',e:'$C_1 V_1 = C_2 V_2$',x:'Bảo toàn số mol khi pha loãng'},
+  ]},
+  {t:'Vật Lý Hoá & Động Học',c:'#CE93D8',icon:'⚡',items:[
+    {n:'Biến thiên Enthalpy (nhiệt tạo thành)',e:'$\\Delta_r H^\\circ_{298} = \\sum \\Delta_f H^\\circ(sp) - \\sum \\Delta_f H^\\circ(cd)$',x:'sp: sản phẩm; cd: chất đầu'},
+    {n:'Biến thiên Enthalpy (năng lượng liên kết)',e:'$\\Delta_r H^\\circ_{298} = \\sum E_b(cd) - \\sum E_b(sp)$',x:'$E_b$: năng lượng liên kết'},
+    {n:'Tốc độ trung bình',e:'$\\bar{v} = \\dfrac{1}{a} \\left|\\dfrac{\\Delta C_A}{\\Delta t}\\right|$',x:'a: hệ số tỉ lượng chất A'},
+    {n:'Định luật tác dụng khối lượng',e:'$v = k \\cdot [A]^a \\cdot [B]^b$',x:'Phản ứng đơn giản $aA + bB \\to$ sp'},
+    {n:'Hằng số cân bằng $K_c$',e:'$K_c = \\dfrac{[C]^c \\cdot [D]^d}{[A]^a \\cdot [B]^b}$',x:'Tại trạng thái cân bằng'},
+    {n:'Chỉ số pH',e:'$\\text{pH} = -\\log[\\text{H}^+]$',x:'$[\\text{H}^+] = 10^{-\\text{pH}}$'},
+    {n:'Tích số ion nước',e:'$[\\text{H}^+][\\text{OH}^-] = 10^{-14}$',x:'Tại 25°C; pH + pOH = 14'},
+  ]},
+  {t:'Hoá Hữu Cơ & Điện Hoá',c:'#FFB74D',icon:'🔗',items:[
+    {n:'Độ bất bão hoà (k)',e:'$k = \\dfrac{2\\sum n_4 - \\sum n_1 + \\sum n_3 + 2}{2}$',x:'$n_i$: số nguyên tử hoá trị i'},
+    {n:'Định luật Faraday',e:'$m = \\dfrac{A \\cdot I \\cdot t}{n \\cdot F}$',x:'$F \\approx 96500$ C/mol'},
+    {n:'Suất điện động chuẩn pin',e:'$E^\\circ_{\\text{pin}} = E^\\circ_{\\text{cathode}} - E^\\circ_{\\text{anode}}$',x:'Thế điện cực chuẩn'},
+    {n:'Hệ số polymer hoá',e:'$n = \\dfrac{M_{\\text{polymer}}}{M_{\\text{mắt xích}}}$',x:'Số mắt xích trong mạch'},
+  ]},
+  {t:'Bảo Toàn & Tính Nhanh',c:'#FFD54F',icon:'⚖️',items:[
+    {n:'Bảo toàn khối lượng',e:'$\\sum m_{\\text{trước}} = \\sum m_{\\text{sau}}$',x:'Đúng cho mọi phản ứng'},
+    {n:'Bảo toàn electron',e:'$\\sum n_{e\\text{(nhường)}} = \\sum n_{e\\text{(nhận)}}$',x:'Phản ứng oxi hoá–khử'},
+    {n:'Bảo toàn điện tích',e:'$\\sum q_{(+)} = \\sum q_{(-)}$',x:'Trong dung dịch ion'},
+    {n:'Khối lượng muối clorua',e:'$m_{\\text{muối}} = m_{\\text{KL}} + 71 \\cdot n(\\text{H}_2)$',x:'Kim loại + HCl'},
+    {n:'Khối lượng muối sunfat',e:'$m_{\\text{muối}} = m_{\\text{KL}} + 96 \\cdot n(\\text{H}_2)$',x:'Kim loại + $\\text{H}_2\\text{SO}_4$ loãng'},
+  ]},
+  {t:'Khí Lý Tưởng & Nhiệt Hoá',c:'#EF9A9A',icon:'🌡️',items:[
+    {n:'Phương trình trạng thái khí',e:'$PV = nRT$',x:'$R = 0{,}0821$ L·atm/mol·K'},
+    {n:'Thể tích mol (đktc 0°C)',e:'$V = 22{,}4 \\times n$',x:'0°C, 1 atm'},
+    {n:'Thể tích mol (chuẩn 25°C)',e:'$V = 24{,}79 \\times n$',x:'25°C, 1 bar'},
+    {n:'Tỉ khối so với không khí',e:'$d = \\dfrac{M}{29}$',x:'$M_{\\text{kk}} = 29$ g/mol'},
+    {n:'Nhiệt lượng',e:'$Q = m \\cdot c \\cdot \\Delta T$',x:'$c_{\\text{nước}} = 4{,}18$ J/g·K'},
+    {n:'Enthalpy phản ứng',e:'$\\Delta H = \\sum H_{\\text{sp}} - \\sum H_{\\text{cd}}$',x:'ΔH < 0: toả nhiệt; ΔH > 0: thu nhiệt'},
+  ]},
+];
+function buildFormulas(){
+  var grid = document.getElementById('f-grid');
+  grid.innerHTML = FD.map(function(cat){
+    return '<div class="f-card"><div class="f-head" style="background:'+cat.c+';"><span class="f-head-icon">'+(cat.icon||'📋')+'</span><span class="f-head-title">'+cat.t+'</span><span style="margin-left:auto;font-size:0.72rem;font-weight:800;opacity:0.7;">'+cat.items.length+' CT</span></div><div class="f-items">'+
+      cat.items.map(function(it){
+        return '<div class="f-item"><div class="f-name">'+it.n+'</div><div class="f-eq f-eq-math">'+it.e+'</div><div class="f-note">'+it.x+'</div></div>';
+      }).join('')+
+    '</div></div>';
+  }).join('');
+  // Trigger MathJax render on the formulas grid
+  if(window.MathJax && MathJax.typesetPromise){
+    MathJax.typesetPromise([grid]).catch(function(e){console.warn('MathJax formula error:',e);});
+  }
+}
+
+var _tt;
+function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){t.classList.remove('show');},2200);}
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeEl();if(document.getElementById('lab').classList.contains('active'))goTo('home');}});
+
+buildPT();buildSamples();buildRxnLib();buildFormulas();updateMol();updateConc();
+
+/* ═══════════════════════════════════════════════════
+   🔊 SOUND SYSTEM — Web Audio API
+═══════════════════════════════════════════════════ */
+var _audioCtx=null, _soundOn=true;
+function getAudio(){ if(!_audioCtx){try{_audioCtx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}} return _audioCtx; }
+function playTone(o){
+  if(!_soundOn)return; var ac=getAudio(); if(!ac)return;
+  try{
+    var osc=ac.createOscillator(), g=ac.createGain(), now=ac.currentTime;
+    osc.type=o.type||'sine'; osc.frequency.setValueAtTime(o.freq||440,now);
+    if(o.freq2)osc.frequency.exponentialRampToValueAtTime(o.freq2,now+(o.dur||0.12));
+    g.gain.setValueAtTime(o.vol||0.15,now);
+    g.gain.exponentialRampToValueAtTime(0.001,now+(o.dur||0.12));
+    osc.connect(g);g.connect(ac.destination);osc.start(now);osc.stop(now+(o.dur||0.12)+0.02);
+  }catch(e){}
+}
+function playChord(freqs,vol,dur,type){ freqs.forEach(function(f,i){setTimeout(function(){playTone({freq:f,vol:vol||0.1,dur:dur||0.18,type:type||'sine'});},i*30);}); }
+var SFX={
+  click:function(){playTone({freq:800,freq2:600,vol:0.2,dur:0.08,type:'square'});playTone({freq:1200,vol:0.09,dur:0.06,type:'sine'});},
+  hover:function(){playTone({freq:620,freq2:700,vol:0.05,dur:0.06,type:'sine'});},
+  navClick:function(){playChord([523,659,784],0.11,0.14,'triangle');},
+  scroll:function(){playTone({freq:310,freq2:330,vol:0.035,dur:0.05,type:'sine'});},
+  keyPress:function(){var n=[261,294,329,349,392,440,494,523];playTone({freq:n[Math.floor(Math.random()*n.length)],vol:0.07,dur:0.07,type:'triangle'});},
+  success:function(){playChord([523,659,784,1047],0.14,0.22,'sine');},
+  error:function(){playTone({freq:200,freq2:150,vol:0.18,dur:0.22,type:'sawtooth'});},
+  pop:function(){playTone({freq:1000,freq2:500,vol:0.16,dur:0.06,type:'sine'});},
+  lab:function(){playChord([392,494,587],0.09,0.28,'triangle');},
+  pageOpen:function(){playChord([330,415,523,659],0.12,0.2,'sine');},
+  toggle:function(){playTone({freq:_soundOn?400:600,vol:0.18,dur:0.1,type:'square'});}
+};
+function toggleSound(){
+  _soundOn=!_soundOn;
+  var btn=document.getElementById('sound-toggle');
+  if(btn)btn.textContent=_soundOn?'🔊':'🔇';
+  SFX.toggle();
+}
+function attachSounds(){
+  document.querySelectorAll('button,.dash-card,.nav-btn,.bb,.tool-btn,.chip,.rxn-item,.pt-cell').forEach(function(el){
+    if(el._snd)return; el._snd=true;
+    el.addEventListener('mouseenter',function(){SFX.hover();});
+    el.addEventListener('click',function(){
+      if(el.classList.contains('nav-btn'))SFX.navClick();
+      else if(el.classList.contains('pt-cell'))SFX.pop();
+      else if(el.classList.contains('chip')||el.classList.contains('rxn-item'))SFX.lab();
+      else SFX.click();
+    });
+  });
+  document.querySelectorAll('input,textarea,select').forEach(function(el){
+    if(el._snd)return; el._snd=true;
+    el.addEventListener('keydown',function(e){if(e.key.length===1||e.key==='Backspace')SFX.keyPress();});
+    el.addEventListener('change',function(){SFX.pop();});
+  });
+}
+new MutationObserver(function(){attachSounds();}).observe(document.body,{childList:true,subtree:true});
+var _lastSS=0;
+window.addEventListener('scroll',function(){var n=Date.now();if(n-_lastSS>130){_lastSS=n;SFX.scroll();}},{passive:true});
+var _origGoTo=goTo;
+goTo=function(id){SFX.pageOpen();_origGoTo(id);setTimeout(attachSounds,200);};
+setTimeout(attachSounds,400);
+
+/* ═══════════════════════════════════════════════════
+   🎬 3D CINEMATIC CHEMISTRY SCENE (disabled — replaced by Three.js 3D flask)
+═══════════════════════════════════════════════════ */
+(function(){
+  var canvas=document.getElementById('cinematic-canvas');
+  if(!canvas)return;
+  var ctx=canvas.getContext('2d');
+  var W,H=340;
+  function resize(){W=canvas.offsetWidth||800;canvas.width=W;canvas.height=H;}
+  resize(); window.addEventListener('resize',resize);
+
+  var SCENES=[
+    {name:'⚗️ Phản ứng trung hoà — HCl + NaOH',fn:scene1},
+    {name:'🟦 Kết tủa xanh lam — Cu(OH)₂',fn:scene2},
+    {name:'💨 Sinh khí H₂ — Zn + HCl',fn:scene3},
+    {name:'🔶 Thế kim loại — Fe + CuSO₄',fn:scene4},
+    {name:'🌡️ Nhiệt phân — CaCO₃',fn:scene5},
+  ];
+  var curScene=0,sceneT=0,sceneDur=380,parts=[];
+  var dotsEl=document.getElementById('cin-dots');
+  SCENES.forEach(function(_,i){var d=document.createElement('div');d.className='cdot'+(i===0?' active':'');dotsEl.appendChild(d);});
+  function updateDots(){dotsEl.querySelectorAll('.cdot').forEach(function(d,i){d.classList.toggle('active',i===curScene);});}
+
+  function spawn(x,y,vx,vy,life,sz,col){parts.push({x:x,y:y,vx:vx,vy:vy,life:life,ml:life,sz:sz,col:col});}
+  function drawParts(){
+    for(var i=parts.length-1;i>=0;i--){
+      var p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vy-=0.025;p.life--;
+      if(p.life<=0){parts.splice(i,1);continue;}
+      ctx.save();ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function bg(){
+    var g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#080c18');g.addColorStop(1,'#0d1220');
+    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='rgba(0,188,212,0.04)';ctx.lineWidth=1;
+    for(var i=0;i<W;i+=44){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke();}
+    for(var j=0;j<H;j+=44){ctx.beginPath();ctx.moveTo(0,j);ctx.lineTo(W,j);ctx.stroke();}
+  }
+  function table(y){
+    var g=ctx.createLinearGradient(0,y,0,y+20);
+    g.addColorStop(0,'#5D4037');g.addColorStop(1,'#3E2723');
+    ctx.fillStyle=g;ctx.fillRect(0,y,W,20);
+    ctx.fillStyle='rgba(255,255,255,0.07)';ctx.fillRect(0,y,W,3);
+  }
+  function beaker(x,y,w,h,lc,lh,lbl){
+    ctx.save();ctx.beginPath();ctx.rect(x+4,y+h-lh-2,w-8,lh+2);ctx.clip();
+    var g=ctx.createLinearGradient(x,0,x+w,0);
+    g.addColorStop(0,lc);g.addColorStop(1,lc);
+    ctx.fillStyle=g;ctx.fillRect(x+4,y+h-lh-2,w-8,lh+4);
+    ctx.fillStyle='rgba(255,255,255,0.13)';ctx.fillRect(x+8,y+h-lh,5,lh*0.55);
+    ctx.restore();
+    ctx.beginPath();ctx.moveTo(x+6,y);ctx.lineTo(x,y+h*0.14);ctx.lineTo(x,y+h);
+    ctx.lineTo(x+w,y+h);ctx.lineTo(x+w,y+h*0.14);ctx.lineTo(x+w-6,y);ctx.closePath();
+    ctx.strokeStyle='rgba(200,235,255,0.88)';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='rgba(200,235,255,0.06)';ctx.fill();
+    ctx.beginPath();ctx.moveTo(x-2,y);ctx.lineTo(x+w+2,y);
+    ctx.strokeStyle='rgba(200,235,255,0.75)';ctx.lineWidth=3;ctx.stroke();
+    if(lbl){ctx.fillStyle='rgba(255,255,255,0.82)';ctx.font='bold 12px Be Vietnam Pro,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,x+w/2,y+h+18);}
+  }
+  function flask(x,y,r,nh,lc,lf,lbl){
+    ctx.save();ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.clip();
+    ctx.fillStyle=lc;ctx.fillRect(x-r,y-r,r*2,r*2);
+    ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(x-r*0.4,y-r*0.6,r*0.25,r*0.5);
+    ctx.restore();
+    ctx.fillStyle='rgba(200,235,255,0.07)';ctx.fillRect(x-8,y-r-nh,16,nh);
+    ctx.strokeStyle='rgba(200,235,255,0.82)';ctx.lineWidth=2;ctx.strokeRect(x-8,y-r-nh,16,nh);
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.strokeStyle='rgba(200,235,255,0.82)';ctx.lineWidth=2.5;ctx.stroke();
+    ctx.fillStyle='rgba(200,235,255,0.05)';ctx.fill();
+    if(lbl){ctx.fillStyle='rgba(255,255,255,0.82)';ctx.font='bold 12px Be Vietnam Pro,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,x,y+r+20);}
+  }
+  function bunsen(x,y){
+    ctx.fillStyle='#777';ctx.fillRect(x-13,y,26,8);ctx.fillRect(x-5,y-28,10,28);
+    var t=Date.now()/1000,fh=20+Math.sin(t*9)*4;
+    var fg=ctx.createRadialGradient(x,y-28-fh*0.4,1,x,y-28-fh*0.3,fh);
+    fg.addColorStop(0,'rgba(160,210,255,0.95)');
+    fg.addColorStop(0.35,'rgba(60,140,255,0.75)');
+    fg.addColorStop(1,'rgba(255,130,0,0)');
+    ctx.beginPath();ctx.moveTo(x-7,y-28);
+    ctx.quadraticCurveTo(x-3,y-28-fh,x,y-28-fh-5);
+    ctx.quadraticCurveTo(x+3,y-28-fh,x+7,y-28);
+    ctx.fillStyle=fg;ctx.fill();
+    if(Math.random()<0.04)spawn(x+(Math.random()-0.5)*4,y-28-fh-5,(Math.random()-0.5)*0.3,-0.7,35,2,'rgba(160,160,190,0.35)');
+  }
+  function label(text,x,y,color){
+    ctx.fillStyle=color||'rgba(100,255,180,0.95)';
+    ctx.font='bold 13px Be Vietnam Pro,sans-serif';
+    ctx.textAlign='center';ctx.fillText(text,x,y);
+  }
+
+  function scene1(t,p){/* Neutralisation */
+    var ty=H-55,cx=W/2,bw=58,bh=86;
+    bg();table(ty);
+    var sep=Math.max(0,70*(1-p*2.2));
+    beaker(cx-sep-bw-8,ty-bh,bw,bh,'rgba(255,235,90,0.72)',bh*0.58,'HCl');
+    beaker(cx+sep+8,ty-bh,bw,bh,'rgba(100,175,255,0.72)',bh*0.58,'NaOH');
+    if(p>0.32){
+      var pp=Math.min(1,(p-0.32)/0.38);
+      var rc=p>0.55?'rgba(170,230,160,0.75)':'rgba(200,230,140,0.65)';
+      beaker(cx-bw/2,ty-bh,bw,bh,rc,bh*0.62,'NaCl+H₂O');
+      var glow=ctx.createRadialGradient(cx,ty-bh*0.35,0,cx,ty-bh*0.35,55);
+      glow.addColorStop(0,'rgba(100,255,100,0.2)');glow.addColorStop(1,'transparent');
+      ctx.fillStyle=glow;ctx.fillRect(cx-60,ty-bh,120,bh);
+      if(Math.random()<0.1)spawn(cx-18+Math.random()*36,ty-bh,(Math.random()-0.5)*0.8,-1-Math.random()*1.4,28+Math.random()*18,2+Math.random()*2,'rgba(190,255,190,0.8)');
+    }
+    if(p>0.62)label('pH ≈ 7 ✓ Trung tính!',cx,ty-bh-18);
+    bunsen(cx+155,ty);drawParts();
+  }
+  function scene2(t,p){/* Precipitate */
+    var ty=H-55,cx=W/2,bw=62,bh=88;
+    bg();table(ty);
+    beaker(cx-88,ty-bh,bw,bh,'rgba(28,125,215,0.75)',bh*0.55,'CuSO₄');
+    beaker(cx+28,ty-bh,bw,bh,'rgba(215,240,255,0.72)',bh*0.55,'NaOH');
+    if(p>0.22){
+      var pp=Math.min(1,(p-0.22)/0.42),ph=bh*0.55*pp*0.72;
+      beaker(cx-bw/2,ty-bh,bw,bh,'rgba(175,220,255,0.62)',bh*0.55,'Hỗn hợp');
+      ctx.save();ctx.beginPath();ctx.rect(cx-bw/2+4,ty-ph*2-2,bw-8,ph*2);ctx.clip();
+      var pg=ctx.createLinearGradient(0,ty-ph*2,0,ty);
+      pg.addColorStop(0,'rgba(0,75,195,0.3)');pg.addColorStop(1,'rgba(0,95,215,0.88)');
+      ctx.fillStyle=pg;ctx.fillRect(cx-bw/2+4,ty-ph*2-2,bw-8,ph*2+4);ctx.restore();
+      if(pp<0.88&&Math.random()<0.16)spawn(cx-20+Math.random()*(bw-16),ty-bh*0.42,(Math.random()-0.5)*0.3,0.55+Math.random()*0.75,32,2+Math.random()*2,'rgba(0,95,215,0.8)');
+      if(pp>0.65)label('Cu(OH)₂↓ kết tủa xanh lam!',cx,ty-bh-16,'rgba(100,180,255,0.95)');
+    }
+    bunsen(cx+165,ty);drawParts();
+  }
+  function scene3(t,p){/* Bubbles H2 */
+    var ty=H-55,cx=W/2,bw=68,bh=96;
+    bg();table(ty);
+    var lc=p>0.18?'rgba(195,232,195,0.72)':'rgba(218,242,218,0.72)';
+    beaker(cx-bw/2,ty-bh,bw,bh,lc,bh*0.7,'HCl');
+    if(p<0.28){
+      var zy=30+(ty-bh*0.88-30)*(p/0.28);
+      ctx.fillStyle='#aaa';ctx.strokeStyle='#888';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.rect(cx-8,zy-8,16,16);ctx.fill();ctx.stroke();
+      ctx.fillStyle='rgba(200,200,200,0.9)';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText('Zn',cx,zy+4);
+    } else {
+      var diss=Math.min(1,(p-0.28)/0.5);
+      var zs=Math.max(1,16*(1-diss));
+      ctx.fillStyle='rgba(155,155,155,'+(1-diss)+')';ctx.fillRect(cx-zs/2,ty-10-zs/2,zs,zs);
+      if(Math.random()<Math.min(0.38,diss*0.38))spawn(cx-18+Math.random()*36,ty-18,(Math.random()-0.5)*0.5,-1.2-Math.random()*1.4,38+Math.random()*22,2+Math.random()*4,'rgba(200,242,255,0.72)');
+      if(diss>0.48){
+        label('H₂↑ sủi bọt bay lên!',cx,ty-bh-16,'rgba(190,255,200,0.95)');
+        if(Math.random()<0.07)spawn(cx-8+Math.random()*16,ty-bh-4,(Math.random()-0.5)*1.1,-1.8-Math.random()*1.8,48,3+Math.random()*3,'rgba(218,255,218,0.6)');
+      }
+    }
+    bunsen(cx+165,ty);drawParts();
+  }
+  function scene4(t,p){/* Metal displacement */
+    var ty=H-55,cx=W/2,bw=70,bh=92;
+    bg();table(ty);
+    var blue=Math.max(0,1-p*1.15);
+    var lc='rgba('+(28+Math.round(blue*2))+','+(100+Math.round(blue*32))+','+(215-Math.round(blue*38))+',0.75)';
+    beaker(cx-bw/2,ty-bh,bw,bh,lc,bh*0.65,'CuSO₄');
+    // Iron nail
+    ctx.strokeStyle='#999';ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(cx,ty-bh+8);ctx.lineTo(cx,ty-bh*0.38);ctx.stroke();
+    ctx.fillStyle='#888';ctx.beginPath();ctx.moveTo(cx-7,ty-bh+8);ctx.lineTo(cx+7,ty-bh+8);ctx.lineTo(cx+3,ty-bh+20);ctx.lineTo(cx-3,ty-bh+20);ctx.fill();
+    if(p>0.22){
+      var dp=Math.min(1,(p-0.22)/0.5);
+      ctx.strokeStyle='rgba(200,108,38,'+Math.min(0.9,dp*1.1)+')';
+      ctx.lineWidth=4+dp*5;
+      ctx.beginPath();ctx.moveTo(cx,ty-bh*0.58);ctx.lineTo(cx,ty-12);ctx.stroke();
+      if(Math.random()<dp*0.18)spawn(cx-5+Math.random()*10,ty-24,(Math.random()-0.5)*1.4,0.3+Math.random()*0.7,24,2+Math.random()*3,'rgba(198,108,38,0.85)');
+    }
+    if(p>0.62){label('Cu bám vào đinh Fe!',cx,ty-bh-16,'rgba(255,180,78,0.95)');label('Dung dịch mất màu xanh.',cx,ty-bh-32,'rgba(255,160,58,0.82)');}
+    bunsen(cx+165,ty);drawParts();
+  }
+  function scene5(t,p){/* Heating */
+    var ty=H-55,cx=W/2,bh=84;
+    bg();table(ty);
+    var tc=p>0.18?'rgba('+(255)+','+(Math.round(248-p*75))+','+(Math.round(228-p*168))+',0.75)':'rgba(255,250,228,0.72)';
+    flask(cx,ty-bh-22,bh*0.41,26,tc,0.55,'CaCO₃');
+    bunsen(cx,ty);
+    if(p>0.14){
+      var hp=(p-0.14)/0.6;
+      for(var i=0;i<4;i++){
+        var hy=ty-38-i*20,wb=Math.sin(sceneT*0.1+i*1.2)*7*hp;
+        ctx.strokeStyle='rgba(255,145,45,'+0.055*hp+')';ctx.lineWidth=11;
+        ctx.beginPath();ctx.moveTo(cx-18,hy);ctx.quadraticCurveTo(cx+wb,hy-9,cx+18,hy);ctx.stroke();
+      }
+      if(hp>0.28&&Math.random()<hp*0.22)spawn(cx-14+Math.random()*28,ty-bh-22,(Math.random()-0.5)*0.7,-1.4-Math.random()*1.8,42+Math.random()*18,2+Math.random()*4,'rgba(238,238,255,0.65)');
+      if(hp>0.5){
+        label('CaCO₃ → CaO + CO₂↑',cx,ty-bh-52,'rgba(255,200,78,0.95)');
+        label('Nhiệt phân — '+Math.round(700+p*195)+'°C',cx,ty-bh-36,'rgba(255,160,58,0.82)');
+      }
+    }
+    drawParts();
+  }
+
+  var loop=function(){
+    sceneT++;
+    var p=(sceneT%sceneDur)/sceneDur;
+    if(sceneT%sceneDur===0){
+      parts=[];curScene=(curScene+1)%SCENES.length;updateDots();
+      var ne=document.getElementById('cin-scene-name');if(ne)ne.textContent=SCENES[curScene].name;
+      if(_soundOn)SFX.lab();
+    }
+    try{SCENES[curScene].fn(sceneT,p);}catch(e){}
+    requestAnimationFrame(loop);
+  };
+  var ne=document.getElementById('cin-scene-name');if(ne)ne.textContent=SCENES[0].name;
+  requestAnimationFrame(loop);
+})();
+</script>
+<button id="sound-toggle" onclick="toggleSound()" title="Bật/tắt âm thanh">🔊</button>
+
+<script>
+// ═══ AUTH FUNCTIONS ═══
+window._currentUser = null;
+window._userHistory = [];
+
+function openAuth() {
+  document.getElementById('auth-overlay').classList.add('open');
+  switchAuthTab('login');
+}
+function closeAuth() {
+  document.getElementById('auth-overlay').classList.remove('open');
+}
+function switchAuthTab(tab) {
+  document.getElementById('form-login').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('form-register').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+  document.getElementById('login-err').classList.remove('show');
+  document.getElementById('reg-err').classList.remove('show');
+}
+
+function showAuthErr(formId, msg) {
+  var el = document.getElementById(formId + '-err');
+  el.textContent = '⚠️ ' + msg;
+  el.classList.add('show');
+}
+
+function translateFirebaseErr(code) {
+  var msgs = {
+    'auth/email-already-in-use': 'Email này đã được sử dụng.',
+    'auth/invalid-email': 'Email không hợp lệ.',
+    'auth/weak-password': 'Mật khẩu phải có ít nhất 6 ký tự.',
+    'auth/user-not-found': 'Không tìm thấy tài khoản với email này.',
+    'auth/wrong-password': 'Mật khẩu không đúng.',
+    'auth/invalid-credential': 'Email hoặc mật khẩu không đúng.',
+    'auth/too-many-requests': 'Quá nhiều lần thử. Vui lòng thử lại sau.',
+    'auth/network-request-failed': 'Lỗi kết nối mạng.',
+  };
+  return msgs[code] || 'Đã có lỗi xảy ra. Vui lòng thử lại.';
+}
+
+async function doLogin() {
+  var email = document.getElementById('login-email').value.trim();
+  var pass = document.getElementById('login-password').value;
+  if (!email || !pass) { showAuthErr('login', 'Vui lòng điền đầy đủ thông tin.'); return; }
+  var btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = '⏳ Đang đăng nhập...';
+  try {
+    var { signInWithEmailAndPassword } = window._fbFns;
+    await signInWithEmailAndPassword(window._fbAuth, email, pass);
+    closeAuth();
+    showToast('✅ Đăng nhập thành công!');
+  } catch(e) {
+    showAuthErr('login', translateFirebaseErr(e.code));
+  } finally {
+    btn.disabled = false; btn.innerHTML = '🚀 ĐĂNG NHẬP';
+  }
+}
+
+async function doRegister() {
+  var name = document.getElementById('reg-name').value.trim();
+  var email = document.getElementById('reg-email').value.trim();
+  var pass = document.getElementById('reg-password').value;
+  if (!name || !email || !pass) { showAuthErr('reg', 'Vui lòng điền đầy đủ thông tin.'); return; }
+  if (pass.length < 6) { showAuthErr('reg', 'Mật khẩu phải có ít nhất 6 ký tự.'); return; }
+  var btn = document.getElementById('reg-btn');
+  btn.disabled = true; btn.textContent = '⏳ Đang tạo tài khoản...';
+  try {
+    var { createUserWithEmailAndPassword, updateProfile } = window._fbFns;
+    var cred = await createUserWithEmailAndPassword(window._fbAuth, email, pass);
+    await updateProfile(cred.user, { displayName: name });
+    closeAuth();
+    showToast('🎉 Tạo tài khoản thành công! Chào mừng ' + name + '!');
+  } catch(e) {
+    showAuthErr('reg', translateFirebaseErr(e.code));
+  } finally {
+    btn.disabled = false; btn.innerHTML = '⚗️ TẠO TÀI KHOẢN';
+  }
+}
+
+async function doLogout() {
+  try {
+    var { signOut } = window._fbFns;
+    await signOut(window._fbAuth);
+    showToast('👋 Đã đăng xuất!');
+  } catch(e) { console.warn(e); }
+}
+
+function updateNavForLoggedIn(user) {
+  var name = user.displayName || user.email.split('@')[0];
+  var initial = name.charAt(0).toUpperCase();
+  document.getElementById('nav-login-btn').style.display = 'none';
+  var ua = document.getElementById('nav-user-area');
+  ua.style.display = 'flex';
+  document.getElementById('nav-avatar').textContent = initial;
+  document.getElementById('nav-username').textContent = name;
+  // Show history section
+  document.getElementById('history-section').classList.add('show');
+  document.getElementById('history-login-prompt').style.display = 'none';
+}
+
+function updateNavForLoggedOut() {
+  document.getElementById('nav-login-btn').style.display = 'flex';
+  document.getElementById('nav-user-area').style.display = 'none';
+  document.getElementById('history-section').classList.remove('show');
+  document.getElementById('history-login-prompt').style.display = 'block';
+}
+
+// ═══ HISTORY FUNCTIONS ═══
+function renderHistoryList() {
+  var hist = window._userHistory || [];
+  var listEl = document.getElementById('history-list');
+  var emptyEl = document.getElementById('history-empty');
+  var countEl = document.getElementById('history-count');
+  listEl.innerHTML = '';
+  countEl.textContent = hist.length > 0 ? hist.length + ' bài đã học' : '';
+  if (hist.length === 0) {
+    emptyEl.style.display = 'block'; return;
+  }
+  emptyEl.style.display = 'none';
+  // Show most recent first (last 20)
+  var display = hist.slice().reverse().slice(0, 20);
+  display.forEach(function(item) {
+    var div = document.createElement('div');
+    div.className = 'history-item';
+    div.onclick = function() { goTo('lessons'); };
+    var timeStr = item.time ? new Date(item.time).toLocaleString('vi-VN', {hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}) : '';
+    div.innerHTML = '<div class="history-item-icon">' + (item.icon || '📚') + '</div>' +
+      '<div class="history-item-info">' +
+        '<div class="history-item-name">' + (item.lesson || 'Bài học') + '</div>' +
+        '<div class="history-item-time">🕐 ' + timeStr + (item.section ? ' · ' + item.section : '') + '</div>' +
+      '</div>' +
+      '<div class="history-item-badge">✓ Đã xem</div>';
+    listEl.appendChild(div);
+  });
+}
+
+// Call this function to record a lesson visit
+window.recordLesson = async function(lessonName, sectionName, icon) {
+  if (!window._currentUser || !window._fbDb) return;
+  var entry = {
+    lesson: lessonName || 'Bài học',
+    section: sectionName || '',
+    icon: icon || '📚',
+    time: new Date().toISOString()
+  };
+  // Add locally
+  if (!window._userHistory) window._userHistory = [];
+  window._userHistory.push(entry);
+  renderHistoryList();
+  // Save to Firestore
+  try {
+    var { doc, updateDoc, arrayUnion } = window._fbFns;
+    await updateDoc(doc(window._fbDb, 'users', window._currentUser.uid), {
+      lessonHistory: arrayUnion(entry)
+    });
+  } catch(e) { console.warn('Could not save lesson history:', e); }
+};
+
+// Keyboard shortcut: Enter in auth inputs
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && document.getElementById('auth-overlay').classList.contains('open')) {
+    var loginActive = document.getElementById('form-login').style.display !== 'none';
+    if (loginActive) doLogin(); else doRegister();
+  }
+});
+
+// Initialize UI on page load (before Firebase resolves)
+updateNavForLoggedOut();
+
+// ── MOBILE UX ENHANCEMENTS ──
+(function(){
+  // 1. Prevent double-tap zoom on buttons (iOS Safari)
+  var lastTap = 0;
+  document.addEventListener('touchend', function(e) {
+    var now = Date.now();
+    if (now - lastTap < 300 && e.target.tagName === 'BUTTON') {
+      e.preventDefault();
+    }
+    lastTap = now;
+  }, { passive: false });
+
+  // 2. Close auth modal on back button (Android)
+  window.addEventListener('popstate', function() {
+    var authOverlay = document.getElementById('auth-overlay');
+    var elOverlay = document.getElementById('el-overlay');
+    if (authOverlay && authOverlay.classList.contains('open')) {
+      closeAuth();
+    } else if (elOverlay && elOverlay.classList.contains('open')) {
+      closeEl();
+    }
+  });
+
+  // 3. Push a history state so back button works
+  history.pushState({ page: 'home' }, '', '');
+
+  // 4. Add touch-active states for instant feedback
+  document.addEventListener('touchstart', function(e) {
+    var t = e.target.closest('.bb, .tool-btn, .dash-go, .nav-btn, .q-opt, .solve-act, .solve-go');
+    if (t) t.style.opacity = '0.82';
+  }, { passive: true });
+  document.addEventListener('touchend', function(e) {
+    var t = e.target.closest('.bb, .tool-btn, .dash-go, .nav-btn, .q-opt, .solve-act, .solve-go');
+    if (t) setTimeout(function(){ t.style.opacity = ''; }, 180);
+  }, { passive: true });
+
+  // 5. Element modal — swipe down to close on mobile
+  var elModal = document.getElementById('el-modal');
+  if (elModal) {
+    var touchStartY = 0;
+    elModal.addEventListener('touchstart', function(e) {
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    elModal.addEventListener('touchend', function(e) {
+      var dy = e.changedTouches[0].clientY - touchStartY;
+      if (dy > 80) closeEl(); // swipe down 80px = close
+    }, { passive: true });
+  }
+
+  // 6. iOS: prevent body scroll when modals are open
+  ['auth-overlay', 'el-overlay'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var observer = new MutationObserver(function() {
+      var isOpen = el.classList.contains('open') || el.style.display === 'flex';
+      document.body.classList.toggle('modal-open', isOpen);
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
+  });
+
+  // 7. Auto-resize 3D canvas hero on orientation change
+  window.addEventListener('orientationchange', function() {
+    setTimeout(function() {
+      var c = document.getElementById('thtml-container');
+      if (c) {
+        c.style.height = (window.innerHeight - 54) + 'px';
+      }
+    }, 300);
+  });
+})();
+</script>
+</body>
+</html>

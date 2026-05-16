@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChemCraft - Hệ Thống Huấn Luyện & Khảo Thí</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <!-- Firebase -->
+    <script type="module">
+        import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js';
+        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js';
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCInWZftP-u5zcCJ5ikJdVYcoR_OwPU9_0",
+            authDomain: "chemcraft-e8e6e.firebaseapp.com",
+            projectId: "chemcraft-e8e6e",
+            storageBucket: "chemcraft-e8e6e.firebasestorage.app",
+            messagingSenderId: "606315063236",
+            appId: "1:606315063236:web:e31d93413d2bb577c0e691",
+            measurementId: "G-NXCLLTKZ6S"
+        };
+
+        const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        async function getOrCreateUserDoc(user) {
+            const ref = doc(db, 'users', user.uid);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) {
+                await setDoc(ref, {
+                    email: user.email,
+                    displayName: user.displayName || '',
+                    lessonHistory: [],
+                    lessonProgress: {},
+                    createdAt: serverTimestamp()
+                });
+                return { lessonHistory: [], lessonProgress: {} };
+            }
+            return snap.data();
+        }
+
+        window.fbRecordLesson = async function(entry) {
+            if (!auth.currentUser) return;
+            try {
+                const ref = doc(db, 'users', auth.currentUser.uid);
+                await updateDoc(ref, { lessonHistory: arrayUnion(entry) });
+            } catch(e) {
+                await getOrCreateUserDoc(auth.currentUser);
+                const ref = doc(db, 'users', auth.currentUser.uid);
+                await updateDoc(ref, { lessonHistory: arrayUnion(entry) });
+            }
+        };
+
+        // === LƯU CỤC BỘ (localStorage) — phòng khi mất mạng / chưa đăng nhập ===
+        const LOCAL_PROGRESS_KEY = 'chemcraft_local_progress_v1';
+        window.loadLocalProgress = function() {
+            try { return JSON.parse(localStorage.getItem(LOCAL_PROGRESS_KEY)) || {}; }
+            catch(e) { return {}; }
+        };
+        window.saveLocalProgress = function(patch) {
+            try {
+                const cur = window.loadLocalProgress();
+                const next = Object.assign({}, cur, patch || {});
+                localStorage.setItem(LOCAL_PROGRESS_KEY, JSON.stringify(next));
+            } catch(e) {}
+        };
+
+        window.fbSaveProgress = async function(taskId, maxUnlocked, currentScore) {
+            // 1) Luôn lưu vào localStorage trước (đồng bộ, không phụ thuộc đăng nhập)
+            const patch = {};
+            if (taskId && taskId !== '_tick') patch[taskId] = true;
+            const prevLocal = window.loadLocalProgress();
+            const prevMax = prevLocal._maxUnlocked || 1;
+            patch._maxUnlocked = Math.max(maxUnlocked || 1, prevMax);
+            patch._score = currentScore;
+            window.saveLocalProgress(patch);
+
+            // 2) Nếu đã đăng nhập, đồng bộ lên Firestore
+            if (!auth.currentUser) return;
+            const ref = doc(db, 'users', auth.currentUser.uid);
+            
+            const doUpdate = async (ref) => {
+                let dbMax = 1;
+                try {
+                    const snap = await getDoc(ref);
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        dbMax = (data.lessonProgress && data.lessonProgress._maxUnlocked) || 1;
+                    }
+                } catch(e) {}
+                const safeMax = Math.max(maxUnlocked, dbMax);
+                const update = {};
+                if (taskId && taskId !== '_tick') {
+                    update[`lessonProgress.${taskId}`] = true;
+                }
+                update['lessonProgress._maxUnlocked'] = safeMax;
+                update['lessonProgress._score'] = currentScore;
+                await updateDoc(ref, update);
+            };
+
+            try {
+                await doUpdate(ref);
+            } catch(e) {
+                await getOrCreateUserDoc(auth.currentUser);
+                await doUpdate(ref);
+            }
+        };
+
+        onAuthStateChanged(auth, async (user) => {
+            window._currentUser = user || null;
+            const badge = document.getElementById('auth-badge');
+            if (!user) {
+                if (badge) badge.classList.add('hidden');
+                return;
+            }
+            if (badge) {
+                const name = user.displayName || user.email.split('@')[0];
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_5px_#4ade80] inline-block"></span> ${name}`;
+                badge.classList.remove('hidden');
+            }
+            try {
+                const data = await getOrCreateUserDoc(user);
+                const remote = data.lessonProgress || {};
+                const local = window.loadLocalProgress();
+                // Hợp nhất: ưu tiên giá trị "tiến xa hơn"
+                const merged = Object.assign({}, local, remote);
+                merged._maxUnlocked = Math.max(local._maxUnlocked || 1, remote._maxUnlocked || 1);
+                merged._score = Math.max(local._score || 0, remote._score || 0);
+                // Lưu lại bản hợp nhất xuống local để lần sau khôi phục tức thì
+                window.saveLocalProgress(merged);
+                if (merged._score) window._restoredScore = merged._score;
+                if (merged._maxUnlocked) window._restoredMaxUnlocked = merged._maxUnlocked;
+                window._restoredTasks = merged;
+                if (typeof window.restoreProgress === 'function') {
+                    window.restoreProgress(merged);
+                } else {
+                    window._pendingRestore = merged;
+                }
+            } catch(e) { console.warn('Load progress error:', e); }
+        });
+
+        // === KHÔI PHỤC NGAY TỪ localStorage (không chờ Firebase) ===
+        window.addEventListener('DOMContentLoaded', () => {
+            const local = window.loadLocalProgress();
+            if (!local || Object.keys(local).length === 0) return;
+            window._restoredTasks = Object.assign({}, window._restoredTasks || {}, local);
+            if (local._score) window._restoredScore = local._score;
+            if (local._maxUnlocked) window._restoredMaxUnlocked = local._maxUnlocked;
+            const tryRestore = () => {
+                if (typeof window.restoreProgress === 'function') {
+                    window.restoreProgress(local);
+                } else {
+                    setTimeout(tryRestore, 50);
+                }
+            };
+            tryRestore();
+        });
+    </script>
+
+    <!-- MathJax -->
+    <script>
+        window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --panel-bg: rgba(255, 255, 255, 0.85);
+            --neon-main: #22c55e;
+            --neon-sec: #10b981;
+            --text-main: #1e293b;
+        }
+        body { 
+            background-color: var(--bg-color); 
+            color: var(--text-main); 
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased; 
+            overflow-x: hidden;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--neon-main); }
+        .ambient-light-1 { position: fixed; top: -20%; left: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(34,197,94,0.15) 0%, transparent 60%); border-radius: 50%; z-index: -1; pointer-events: none; filter: blur(60px); }
+        .ambient-light-2 { position: fixed; bottom: -20%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(16,185,129,0.15) 0%, transparent 60%); border-radius: 50%; z-index: -1; pointer-events: none; filter: blur(60px); }
+        .sci-fi-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.05), 0 5px 15px rgba(34, 197, 94, 0.05);
+            border-radius: 20px;
+        }
+        .text-glow-main { color: #16a34a; text-shadow: 0 0 10px rgba(34,197,94,0.4); }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .step-line { position: absolute; left: 19px; top: 40px; bottom: -10px; width: 2px; background: rgba(0,0,0,0.1); z-index: 0; }
+        .step-item:last-child .step-line { display: none; }
+        .step-icon { position: relative; z-index: 1; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .step-item.active .step-icon { background: #f0fdf4; color: var(--neon-main); border: 1px solid var(--neon-main); box-shadow: 0 0 15px rgba(34,197,94,0.3), inset 0 0 10px rgba(34,197,94,0.1); }
+        .step-item.active .step-title { color: #15803d; font-weight: 700; text-shadow: 0 0 8px rgba(34,197,94,0.2); }
+        .step-item { cursor: pointer; transition: all 0.2s; border-radius: 12px; padding: 10px 8px; margin-left: -8px; }
+        .step-item:hover:not(.locked) { background-color: rgba(0,0,0,0.02); transform: translateX(4px); }
+        .step-item.locked { opacity: 0.5; filter: grayscale(100%); cursor: not-allowed; }
+        .tab-content, .lesson-content { display: none; animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .tab-content.active, .lesson-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .btn-hologram { position: relative; overflow: hidden; background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(16,185,129,0.1)); border: 1px solid rgba(34,197,94,0.4); color: #15803d; font-weight: 600; letter-spacing: 0.5px; padding: 12px 24px; border-radius: 12px; transition: all 0.3s; cursor: pointer; box-shadow: 0 4px 10px rgba(34,197,94,0.1); }
+        .btn-hologram:hover { background: linear-gradient(135deg, rgba(34,197,94,0.8), rgba(16,185,129,0.8)); border-color: var(--neon-main); color: #fff; box-shadow: 0 0 20px rgba(34,197,94,0.4), inset 0 0 10px rgba(255,255,255,0.2); transform: translateY(-2px); }
+        .btn-outline { background: #fff; border: 1px solid rgba(0,0,0,0.1); color: #64748b; padding: 12px 24px; border-radius: 12px; transition: all 0.3s; font-weight: 500; }
+        .btn-outline:hover { border-color: rgba(0,0,0,0.2); color: #1e293b; background: rgba(0,0,0,0.02); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 10px; border-radius: 4px; background: #fff; border: 2px solid var(--neon-main); cursor: pointer; margin-top: -8px; box-shadow: 0 0 8px rgba(34,197,94,0.5); transition: all 0.2s; }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); background: #f0fdf4; box-shadow: 0 0 12px var(--neon-main); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(0,0,0,0.1); border-radius: 2px; }
+        .lab-container { background: radial-gradient(circle at center, rgba(255,255,255,1) 0%, rgba(241,245,249,0.8) 100%); position: relative; border-radius: 16px; box-shadow: inset 0 0 20px rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05); }
+        .beaker { position: relative; width: 150px; height: 200px; border: 2px solid rgba(0,0,0,0.1); border-top: none; border-radius: 0 0 20px 20px; background: linear-gradient(90deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.8) 20%, rgba(255,255,255,0.2) 100%); box-shadow: inset -5px -5px 20px rgba(0,0,0,0.05), 0 10px 20px rgba(0,0,0,0.05); margin: 0 auto; overflow: hidden; backdrop-filter: blur(4px); }
+        .beaker::before { content: ''; position: absolute; top: -6px; left: -10px; right: -10px; height: 6px; border: 2px solid rgba(0,0,0,0.15); border-radius: 50%; background: transparent; }
+        .liquid { position: absolute; bottom: 0; left: 0; right: 0; transition: all 0.5s ease-out; border-radius: 0 0 18px 18px; box-shadow: inset 0 5px 15px rgba(0,0,0,0.1); background: rgba(34, 197, 94, 0.3); backdrop-filter: blur(2px); }
+        .liquid::after { content: ''; position: absolute; top: -2px; left: 0; right: 0; height: 4px; background: rgba(255,255,255,0.6); border-radius: 50%; box-shadow: 0 0 8px rgba(255,255,255,0.8); }
+        .bubble { position: absolute; background: rgba(255, 255, 255, 0.8); border-radius: 50%; bottom: -10px; animation: rise linear infinite; box-shadow: inset -1px -1px 2px rgba(0,0,0,0.1), 0 0 4px rgba(255,255,255,0.6); }
+        @keyframes rise { 0% { bottom: 0px; transform: translateX(0) scale(0.8); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 0.8; } 100% { bottom: 100%; transform: translateX(-15px) scale(1.5); opacity: 0; } }
+        .thermometer-wrapper { position: relative; height: 240px; display: flex; flex-direction: column; align-items: center; }
+        .thermometer-glass { width: 16px; height: 200px; background: rgba(255,255,255,0.5); border: 1px solid rgba(0,0,0,0.1); border-radius: 10px 10px 0 0; position: relative; z-index: 1; box-shadow: inset 2px 0 4px rgba(0,0,0,0.05); }
+        .thermometer-bulb { width: 36px; height: 36px; background: #ef4444; border: 1px solid rgba(0,0,0,0.1); border-radius: 50%; margin-top: -10px; z-index: 2; transition: background 0.5s; box-shadow: inset -5px -5px 10px rgba(0,0,0,0.2), 0 5px 10px rgba(239,68,68,0.2); }
+        .thermometer-mercury { position: absolute; bottom: 0; left: 1px; right: 1px; height: 25%; background: #ef4444; border-radius: 8px; transition: height 0.3s ease-out, background 0.5s; box-shadow: inset -2px 0 3px rgba(0,0,0,0.2); }
+        .temp-marks { position: absolute; right: -30px; top: 10px; bottom: 40px; display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; color: rgba(0,0,0,0.4); font-family: 'JetBrains Mono', monospace; font-weight: bold; }
+        .stopwatch { font-family: 'JetBrains Mono', monospace; font-size: 2.8rem; font-weight: 700; color: var(--neon-main); background: #1e293b; padding: 12px 24px; border-radius: 12px; border: 2px solid rgba(34,197,94,0.3); display: inline-block; text-shadow: 0 0 10px var(--neon-main); box-shadow: inset 0 0 15px rgba(0,0,0,0.5), 0 5px 15px rgba(0,0,0,0.1); }
+        .ampoule { width: 100px; height: 160px; border-radius: 50px 50px 20px 20px; border: 2px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.5); position: relative; overflow: hidden; box-shadow: inset 0 0 20px rgba(0,0,0,0.05), 0 10px 20px rgba(0,0,0,0.05); margin: 0 auto; backdrop-filter: blur(2px); transition: all 0.5s; }
+        .amp-gas { position: absolute; top:0; left:0; right:0; bottom:0; transition: background 1s ease; }
+        .amp-liquid { position: absolute; bottom:0; left:0; right:0; height: 0%; transition: all 1s ease; border-radius: 0 0 18px 18px; }
+        .amp-solid { position: absolute; bottom:5px; left:20%; right:20%; height: 0%; background: #4c1d95; border-radius: 5px; opacity: 0; transition: all 1s ease; }
+        .syringe-wrap { position: relative; width: 100px; height: 200px; display: flex; flex-direction: column; align-items: center; margin: 0 auto;}
+        .syringe-body { width: 80px; height: 160px; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px; position: relative; background: rgba(255,255,255,0.7); overflow: hidden; }
+        .syringe-piston { position: absolute; top: 0%; left: 0; right: 0; height: 10px; background: #64748b; border-bottom: 2px solid #334155; transition: top 0.3s; z-index: 2; }
+        .syringe-rod { position: absolute; top: -40px; left: 36px; width: 8px; height: 200px; background: #cbd5e1; transition: transform 0.3s; z-index: 1;}
+        .syringe-gas { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(34,197,94,0.15); transition: height 0.3s; border-top: 2px dashed rgba(34,197,94,0.4); }
+        .task-item { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); background: #fff; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .task-item:hover { border-color: rgba(34,197,94,0.3); transform: translateY(-2px); box-shadow: 0 5px 15px rgba(34,197,94,0.1); }
+        .task-item.done { background: #f0fdf4; border-color: rgba(34,197,94,0.4); box-shadow: 0 4px 12px rgba(34,197,94,0.1); }
+        .task-item.done .task-icon { color: var(--neon-main); text-shadow: 0 0 10px rgba(34,197,94,0.4); }
+        .task-item.done .task-text { text-decoration: line-through; color: #16a34a; opacity: 0.6; }
+        .quiz-option { background: #fff; border: 2px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; font-weight: 500; }
+        .quiz-option:hover { border-color: rgba(34, 197, 94, 0.4); background: #f8fafc; }
+        .quiz-option.selected { border-color: var(--neon-main); background: #f0fdf4; box-shadow: 0 0 15px rgba(34,197,94,0.15); color: #15803d; }
+        .quiz-option .opt-letter { width: 32px; height: 32px; border-radius: 8px; background: rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: center; font-weight: 700; margin-right: 16px; transition: all 0.2s; }
+        .quiz-option.selected .opt-letter { background: var(--neon-main); color: white; }
+        .quiz-option.correct { border-color: var(--neon-main); background: #f0fdf4; color: #15803d; }
+        .quiz-option.correct .opt-letter { background: var(--neon-main); color: white; }
+        .quiz-option.incorrect { border-color: #ef4444; background: #fef2f2; color: #b91c1c; }
+        .quiz-option.incorrect .opt-letter { background: #ef4444; color: white; }
+        .progress-bar-wrap { width: 100%; height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; margin-top: 16px; }
+        .progress-bar-fill { height: 100%; background: var(--neon-main); transition: width 0.3s ease; box-shadow: 0 0 8px rgba(34,197,94,0.6); }
+        .mini-lab-container { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    </style>
+</head>
+<body>
+    <div class="ambient-light-1"></div>
+    <div class="ambient-light-2"></div>
+
+    <div class="flex-grow max-w-7xl mx-auto w-full px-4 py-8 flex flex-col md:flex-row gap-8 mt-4">
+        
+        <!-- SIDEBAR LỘ TRÌNH -->
+        <aside class="w-full md:w-72 shrink-0">
+            <div class="sci-fi-panel p-6 sticky top-8">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center"><span class="w-2 h-2 rounded-full bg-green-500 mr-2 shadow-[0_0_5px_#22c55e]"></span>BÀI HỌC</h2>
+                <div id="auth-badge" class="hidden mb-5 text-xs font-bold text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2 tracking-wide">
+                    <span class="w-2 h-2 rounded-full bg-green-400"></span> Đang tải...
+                </div>
+                <div id="progress-saved-msg" class="hidden mb-3 text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                    <span class="material-icons-round text-xs text-green-500">cloud_done</span> Tiến trình đã lưu
+                </div>
+                <div class="relative" id="roadmap">
+                    <div class="step-item relative flex gap-4 pb-6 active" id="step-1" onclick="loadLesson(1)">
+                        <div class="step-line"></div>
+                        <div class="step-icon w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 shrink-0" id="icon-1"><span class="material-icons-round text-sm">local_fire_department</span></div>
+                        <div class="pt-1"><h3 class="step-title font-medium text-slate-700 text-sm tracking-wide">Biến thiên Enthalpy</h3><p class="text-xs text-slate-500 mt-1.5" id="desc-1">Năng lượng phản ứng</p></div>
+                    </div>
+                    <div class="step-item locked relative flex gap-4 pb-6" id="step-2" onclick="loadLesson(2)">
+                        <div class="step-line"></div>
+                        <div class="step-icon w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0" id="icon-2"><span class="material-icons-round text-sm">lock</span></div>
+                        <div class="pt-1"><h3 class="step-title font-medium text-slate-700 text-sm tracking-wide">Tốc độ phản ứng</h3><p class="text-xs text-slate-500 mt-1.5" id="desc-2">Chưa mở khóa</p></div>
+                    </div>
+                    <div class="step-item locked relative flex gap-4 pb-6" id="step-3" onclick="loadLesson(3)">
+                        <div class="step-line"></div>
+                        <div class="step-icon w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0" id="icon-3"><span class="material-icons-round text-sm">lock</span></div>
+                        <div class="pt-1"><h3 class="step-title font-medium text-slate-700 text-sm tracking-wide">Nhóm Halogen</h3><p class="text-xs text-slate-500 mt-1.5" id="desc-3">Chưa mở khóa</p></div>
+                    </div>
+                    <div class="step-item locked relative flex gap-4 pb-6" id="step-4" onclick="loadLesson(4)">
+                        <div class="step-line"></div>
+                        <div class="step-icon w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0" id="icon-4"><span class="material-icons-round text-sm">lock</span></div>
+                        <div class="pt-1"><h3 class="step-title font-medium text-slate-700 text-sm tracking-wide">Định luật Avogadro</h3><p class="text-xs text-slate-500 mt-1.5" id="desc-4">Chưa mở khóa</p></div>
+                    </div>
+                    <div class="step-item locked relative flex gap-4 pb-6" id="step-5" onclick="loadLesson(5)">
+                        <div class="step-line"></div>
+                        <div class="step-icon w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0" id="icon-5"><span class="material-icons-round text-sm">lock</span></div>
+                        <div class="pt-1"><h3 class="step-title font-medium text-slate-700 text-sm tracking-wide">Oxi hóa - Khử</h3><p class="text-xs text-slate-500 mt-1.5" id="desc-5">Chưa mở khóa</p></div>
+                    </div>
+                    <div class="step-item locked relative flex gap-4 pb-6" id="step-6" onclick="loadLesson(6)">
+                        <div class="step-line"></div>
+                        <div class="step-icon w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0" id="icon-6"><span class="material-icons-round text-sm">lock</span></div>
+                        <div class="pt-1"><h3 class="step-title font-medium text-slate-700 text-sm tracking-wide">Chuẩn độ Acid-Base</h3><p class="text-xs text-slate-500 mt-1.5" id="desc-6">Chưa mở khóa</p></div>
+                    </div>
+                    <div class="step-item locked relative flex gap-4 pb-6" id="step-7" onclick="loadLesson(7)">
+                        <div class="step-line"></div>
+                        <div class="step-icon w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0" id="icon-7"><span class="material-icons-round text-sm">lock</span></div>
+                        <div class="pt-1"><h3 class="step-title font-medium text-slate-700 text-sm tracking-wide">Phản ứng Tráng bạc</h3><p class="text-xs text-slate-500 mt-1.5" id="desc-7">Chưa mở khóa</p></div>
+                    </div>
+                    <div class="step-item locked relative flex gap-4" id="step-8" onclick="loadLesson(8)">
+                        <div class="step-icon w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0" id="icon-8"><span class="material-icons-round text-sm">lock</span></div>
+                        <div class="pt-1"><h3 class="step-title font-medium text-slate-700 text-sm tracking-wide">Bài Kiểm Tra</h3><p class="text-xs text-slate-500 mt-1.5" id="desc-8">Chưa mở khóa</p></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- NỘI DUNG CHÍNH -->
+        <main class="flex-grow flex flex-col gap-6">
+            <!-- Navigation Tabs -->
+            <div class="sci-fi-panel overflow-hidden p-1.5" id="nav-tabs">
+                <div class="flex gap-2 flex-wrap md:flex-nowrap">
+                    <button onclick="switchTab('theory')" id="tabBtn-theory" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-semibold text-green-600 bg-green-50 border border-green-500/30 rounded-xl transition-all shadow-[inset_0_0_10px_rgba(34,197,94,0.1)]"><span class="material-icons-round align-middle mr-1 text-base">menu_book</span> LÝ THUYẾT</button>
+                    <button onclick="switchTab('lab')" id="tabBtn-lab" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-green-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all"><span class="material-icons-round align-middle mr-1 text-base">biotech</span> THỰC HÀNH</button>
+                    <button onclick="switchTab('mission')" id="tabBtn-mission" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-green-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all relative"><span class="material-icons-round align-middle mr-1 text-base">assignment</span> NHIỆM VỤ</button>
+                </div>
+            </div>
+
+            <!-- LÝ THUYẾT -->
+            <div id="tab-theory" class="tab-content active sci-fi-panel p-8 md:p-10">
+                <div id="theory-1" class="lesson-content active">
+                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 01</div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Năng lượng & Biến thiên Enthalpy</h1>
+                    <p class="mb-8 text-slate-600 text-lg leading-relaxed">Biến thiên enthalpy chuẩn ($\Delta_rH^o_{298}$) là lượng nhiệt giải phóng hoặc hấp thụ của một hệ hóa học ở điều kiện tiêu chuẩn.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="rounded-2xl p-6 bg-white border border-slate-100 shadow-sm hover:border-red-400 hover:shadow-md transition duration-300 group">
+                            <div class="w-12 h-12 bg-red-50 border border-red-100 text-red-500 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] transition"><span class="material-icons-round text-2xl">local_fire_department</span></div>
+                            <h2 class="text-xl font-bold text-slate-800 mb-2 group-hover:text-red-500 transition">Tỏa Nhiệt ($\Delta_rH < 0$)</h2>
+                            <p class="text-sm text-slate-500 leading-relaxed">Hệ hóa học xả nhiệt năng vào môi trường xung quanh (Nóng lên). Các liên kết mới hình thành vững chắc hơn.</p>
+                        </div>
+                        <div class="rounded-2xl p-6 bg-white border border-slate-100 shadow-sm hover:border-blue-400 hover:shadow-md transition duration-300 group">
+                            <div class="w-12 h-12 bg-blue-50 border border-blue-100 text-blue-500 rounded-xl flex items-center justify-center mb-4 group-hover:shadow-[0_0_15px_rgba(59,130,246,0.2)] transition"><span class="material-icons-round text-2xl">ac_unit</span></div>
+                            <h2 class="text-xl font-bold text-slate-800 mb-2 group-hover:text-blue-500 transition">Thu Nhiệt ($\Delta_rH > 0$)</h2>
+                            <p class="text-sm text-slate-500 leading-relaxed">Hệ hút nhiệt từ môi trường để phá vỡ liên kết (Lạnh đi). Yêu cầu cung cấp năng lượng liên tục.</p>
+                        </div>
+                    </div>
+                </div>
+                <div id="theory-2" class="lesson-content">
+                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 02</div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Động học Phản ứng</h1>
+                    <p class="mb-6 text-slate-600 text-lg">Phân tích vận tốc biến đổi nồng độ chất phản ứng trong một đơn vị thời gian.</p>
+                    <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm">
+                        <h3 class="font-bold text-green-600 text-lg mb-5 flex items-center tracking-wide"><span class="material-icons-round mr-2 text-green-500">insights</span> CÁC THAM SỐ ẢNH HƯỞNG:</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="p-2 bg-yellow-100 text-yellow-600 rounded-lg mr-4"><span class="material-icons-round text-xl">grain</span></div><div><b class="text-slate-800">Nồng độ:</b> <span class="text-slate-600 text-sm block mt-1">Mật độ hạt tăng $\rightarrow$ Xác suất va chạm hiệu quả tăng $\rightarrow$ Tốc độ gia tăng mạnh.</span></div></div>
+                            <div class="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="p-2 bg-red-100 text-red-600 rounded-lg mr-4"><span class="material-icons-round text-xl">thermostat</span></div><div><b class="text-slate-800">Nhiệt độ (Van't Hoff):</b> <span class="text-slate-600 text-sm block mt-1">Tăng $10^\circ C$, tốc độ tăng $\gamma$ lần. Phương trình: $v_{t2} = v_{t1} \cdot \gamma^{\frac{t2-t1}{10}}$</span></div></div>
+                            <div class="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="p-2 bg-purple-100 text-purple-600 rounded-lg mr-4"><span class="material-icons-round text-xl">science</span></div><div><b class="text-slate-800">Chất xúc tác:</b> <span class="text-slate-600 text-sm block mt-1">Hạ thấp Năng lượng hoạt hóa ($E_a$), mở ra "đường tắt" cho phản ứng.</span></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="theory-3" class="lesson-content">
+                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 03</div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Tương tác Phân tử Halogen</h1>
+                    <p class="mb-6 text-slate-600 text-lg">Phân tích vi mô Nhóm VIIA - Những phi kim hoạt động mạnh nhất vũ trụ.</p>
+                    <div class="bg-green-50/50 p-6 rounded-2xl border border-green-200 mb-6">
+                        <h3 class="font-bold text-green-700 text-lg mb-4 flex items-center"><span class="material-icons-round mr-2 text-green-500">scatter_plot</span> Lực Van der Waals:</h3>
+                        <p class="text-slate-700 leading-relaxed text-sm">Đi từ $F_2$ đến $I_2$, khối lượng và bán kính nguyên tử tăng $\rightarrow$ Đám mây electron lỏng lẻo dễ biến dạng $\rightarrow$ <b class="text-green-700 bg-green-100 px-2 py-0.5 rounded">Lực hút tĩnh điện yếu (Van der Waals) mạnh dần lên</b>.</p>
+                        <div class="mt-4 bg-white p-4 rounded-xl text-slate-700 text-sm border border-green-200 shadow-sm font-mono">Khí ($F_2, Cl_2$) $\rightarrow$ Lỏng ($Br_2$) $\rightarrow$ Rắn ($I_2$)</div>
+                    </div>
+                </div>
+                <div id="theory-4" class="lesson-content">
+                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 04</div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Định luật Avogadro</h1>
+                    <p class="mb-6 text-slate-600 text-lg">Định luật cơ bản về mối quan hệ giữa thể tích khí và lượng chất.</p>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm mb-6">
+                        <h3 class="font-bold text-slate-800 text-lg mb-3">Phát biểu định luật:</h3>
+                        <p class="text-slate-600 mb-4 italic">"Trong cùng điều kiện về nhiệt độ và áp suất, những thể tích bằng nhau của mọi chất khí đều chứa cùng một số phân tử (hay cùng số mol)."</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div class="bg-blue-50 border border-blue-100 p-4 rounded-xl"><h4 class="font-bold text-blue-700 text-sm mb-1">Công thức tính</h4><p class="text-blue-900 font-mono">$V = n \times 24.79$</p><p class="text-xs text-blue-600 mt-1">(Ở đkc 25°C, 1 bar)</p></div></div>
+                    </div>
+                </div>
+                <div id="theory-5" class="lesson-content">
+                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 05 (LỚP 10)</div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Phản ứng Oxi hóa - Khử</h1>
+                    <p class="mb-6 text-slate-600 text-lg">Phản ứng hóa học có sự chuyển dịch electron giữa các chất phản ứng.</p>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><ul class="space-y-4 text-slate-700"><li><b class="text-red-500">Chất khử:</b> Là chất nhường electron (Số oxi hóa tăng sau phản ứng).</li><li><b class="text-blue-500">Chất oxi hóa:</b> Là chất nhận electron (Số oxi hóa giảm sau phản ứng).</li><li class="bg-slate-50 p-4 rounded-lg border border-slate-200"><b>Thí nghiệm tiêu biểu:</b> $KMnO_4$ + $FeSO_4$ + $H_2SO_4$. Thuốc tím $KMnO_4$ (chất oxi hóa mạnh) bị mất màu tím đặc trưng khi tác dụng với chất khử $Fe^{2+}$.</li></ul></div>
+                </div>
+                <div id="theory-6" class="lesson-content">
+                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 06 (LỚP 11)</div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Chuẩn độ Acid - Base</h1>
+                    <p class="mb-6 text-slate-600 text-lg">Phương pháp phân tích thể tích để xác định nồng độ của một dung dịch chưa biết.</p>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><ul class="space-y-4 text-slate-700"><li><b class="text-slate-800">Nguyên tắc:</b> Dùng dung dịch chuẩn (đã biết chính xác nồng độ) từ Buret nhỏ từ từ xuống bình nón chứa dung dịch mẫu.</li><li><b class="text-slate-800">Điểm tương đương:</b> Thời điểm số mol ion $H^+$ vừa đủ phản ứng hết với số mol ion $OH^-$.</li><li class="bg-slate-50 p-4 rounded-lg border border-slate-200"><b>Thí nghiệm tiêu biểu:</b> Chuẩn độ dung dịch $HCl$ bằng $NaOH$ chuẩn, dùng chất chỉ thị Phenolphthalein. Điểm dừng là khi dung dịch chuyển sang màu hồng nhạt bền vững.</li></ul></div>
+                </div>
+                <div id="theory-7" class="lesson-content">
+                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 07 (LỚP 12)</div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Phản ứng Tráng bạc</h1>
+                    <p class="mb-6 text-slate-600 text-lg">Phản ứng đặc trưng của nhóm chức Aldehyde (-CHO) và các loại đường khử (như Glucose).</p>
+                    <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><ul class="space-y-4 text-slate-700"><li><b class="text-slate-800">Thuốc thử Tollens:</b> Phức bạc amoniac $[Ag(NH_3)_2]OH$.</li><li><b class="text-slate-800">Hiện tượng:</b> Ion $Ag^+$ bị khử thành kim loại $Ag$ bám dính vào thành ống nghiệm, tạo ra một lớp gương sáng bóng.</li><li class="bg-slate-50 p-4 rounded-lg border border-slate-200 font-mono text-sm overflow-x-auto">$R-CHO + 2[Ag(NH_3)_2]OH \xrightarrow{t^\circ} R-COONH_4 + 2Ag\downarrow + 3NH_3 + H_2O$</li></ul></div>
+                </div>
+            </div>
+
+            <!-- THỰC HÀNH -->
+            <div id="tab-lab" class="tab-content sci-fi-panel overflow-hidden">
+                <div class="p-5 bg-white/80 border-b border-slate-100 flex justify-between items-center backdrop-blur-md"><h2 class="font-bold text-slate-700 flex items-center tracking-wide"><span class="material-icons-round mr-2 text-green-500">biotech</span> MÔI TRƯỜNG GIẢ LẬP</h2></div>
+                <!-- Lab 1: Enthalpy -->
+                <div id="lab-1" class="lesson-content active lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row items-center justify-center gap-12 lg:gap-24"><div class="flex items-center gap-8"><div class="thermometer-wrapper"><div class="thermometer-glass"><div class="thermometer-mercury" id="l1-mercury"></div></div><div class="thermometer-bulb" id="l1-bulb"></div><div class="temp-marks"><span>100°</span><span>50°</span><span>0°</span></div></div><div class="text-center"><div class="text-6xl font-mono text-glow-main mb-2" id="l1-tempDisplay">25°</div><div class="text-xs font-bold text-green-600 bg-white border border-green-200 px-3 py-1.5 rounded tracking-widest uppercase shadow-sm" id="l1-tempStatus">Bình thường</div></div></div><div class="flex flex-col items-center"><div class="beaker" id="l1-beaker"><div class="liquid" id="l1-liquid" style="height:40%;"></div></div><div class="mt-6 text-sm font-mono text-slate-600 bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm" id="l1-liquidName">H₂O (Nước cất)</div></div><div class="w-full md:w-64 flex flex-col gap-4"><button onclick="l1_add('CaO')" class="btn-hologram" style="border-color: rgba(239,68,68,0.5); color: #dc2626; background: rgba(254,226,226,0.5);">+ Thêm Vôi Sống (CaO)</button><button onclick="l1_add('NH4NO3')" class="btn-hologram" style="border-color: rgba(59,130,246,0.5); color: #2563eb; background: rgba(219,234,254,0.5);">+ Thêm Nitrat (NH₄NO₃)</button><button onclick="l1_reset()" class="btn-outline mt-4">Xả hệ thống</button></div></div></div>
+                <!-- Lab 2: Tốc độ phản ứng -->
+                <div id="lab-2" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col lg:flex-row items-center justify-around gap-12"><div class="text-center"><div class="stopwatch" id="l2-stopwatch">00.0s</div><div class="mt-4 px-4 py-3 bg-white border border-green-200 rounded-lg text-sm text-green-600 font-bold font-mono shadow-sm" id="l2-rateDisplay">TỐC ĐỘ: 0.00 /s</div></div><div class="flex flex-col items-center"><div class="beaker" id="l2-beaker"><div class="liquid" id="l2-liquid" style="height:60%;"></div><div class="mg-block" id="l2-mg"></div></div></div><div class="w-full md:w-80 bg-white/80 backdrop-blur-md p-6 rounded-2xl border border-slate-200 flex flex-col gap-6 shadow-xl"><div><div class="flex justify-between text-sm mb-3"><span class="font-medium text-slate-600 text-xs">Nồng độ HCl</span><span class="text-green-600 font-mono bg-green-50 border border-green-200 px-2 py-0.5 rounded" id="l2-valConc">1.0 M</span></div><input type="range" id="l2-sliderConc" min="0.1" max="3.0" step="0.1" value="1.0" oninput="l2_updateUI()"></div><div><div class="flex justify-between text-sm mb-3"><span class="font-medium text-slate-600 text-xs">Nhiệt độ (T)</span><span class="text-red-500 font-mono bg-red-50 border border-red-200 px-2 py-0.5 rounded" id="l2-valTemp">20 °C</span></div><input type="range" id="l2-sliderTemp" min="20" max="80" step="10" value="20" oninput="l2_updateUI()"></div><button id="l2-btnStart" onclick="l2_start()" class="btn-hologram w-full text-base py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white border-transparent shadow-md">KÍCH HOẠT</button><button id="l2-btnReset" onclick="l2_reset()" class="btn-outline w-full hidden">TÁI THIẾT LẬP</button></div></div></div>
+                <!-- Lab 3: Halogen -->
+                <div id="lab-3" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row items-center justify-center gap-12"><div class="flex flex-col items-center"><div class="ampoule" id="l3-ampoule"><div class="amp-gas" id="l3-gas"></div><div class="amp-liquid" id="l3-liquid"></div><div class="amp-solid" id="l3-solid"></div></div><div class="mt-6 text-center"><h3 class="font-bold text-slate-800 text-xl" id="l3-name">Chọn Halogen</h3><div class="text-sm font-mono text-slate-500 mt-1" id="l3-state">Trạng thái: ---</div></div></div><div class="w-full md:w-80 flex flex-col gap-4"><div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs font-bold text-slate-400 mb-2">LỰC VAN DER WAALS</div><div class="w-full bg-slate-100 rounded-full h-3 mb-1 overflow-hidden"><div class="bg-green-500 h-3 rounded-full transition-all duration-500" id="l3-vdw" style="width: 0%"></div></div><div class="text-right text-xs text-slate-500 font-mono" id="l3-vdw-text">Thấp</div></div><div class="grid grid-cols-2 gap-3"><button onclick="l3_select('F2')" class="btn-outline hover:bg-yellow-50 hover:text-yellow-600 hover:border-yellow-300">Fluorine (F₂)</button><button onclick="l3_select('Cl2')" class="btn-outline hover:bg-lime-50 hover:text-lime-600 hover:border-lime-300">Chlorine (Cl₂)</button><button onclick="l3_select('Br2')" class="btn-outline hover:bg-red-50 hover:text-red-600 hover:border-red-300">Bromine (Br₂)</button><button onclick="l3_select('I2')" class="btn-outline hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300">Iodine (I₂)</button></div></div></div></div>
+                <!-- Lab 4: Avogadro -->
+                <div id="lab-4" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row justify-center gap-12 lg:gap-20"><div class="flex flex-col items-center w-full md:w-64"><div class="text-sm font-bold text-slate-500 mb-4 bg-white px-4 py-1.5 rounded-full border border-slate-200">XILANH A (Khí $H_2$)</div><div class="syringe-wrap mb-6"><div class="syringe-rod" id="l4-rodA" style="transform: translateY(0px)"></div><div class="syringe-body"><div class="syringe-piston" id="l4-pistonA" style="top: 0%"></div><div class="syringe-gas bg-blue-100 border-blue-300" id="l4-gasA" style="height: 0%"></div></div></div><div class="w-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center"><div class="text-xs font-bold text-slate-400 mb-1">SỐ MOL KHÍ ($n$)</div><div class="text-2xl font-mono font-bold text-blue-600" id="l4-molA">0.00 mol</div><input type="range" id="l4-volA" class="mt-4" min="0" max="50" step="0.1" value="0" oninput="l4_update()"><div class="text-xs text-slate-500 mt-2 font-mono" id="l4-volA-text">V = 0.0 L</div></div></div><div class="flex flex-col items-center w-full md:w-64"><div class="text-sm font-bold text-slate-500 mb-4 bg-white px-4 py-1.5 rounded-full border border-slate-200">XILANH B (Khí $O_2$)</div><div class="syringe-wrap mb-6"><div class="syringe-rod" id="l4-rodB" style="transform: translateY(0px)"></div><div class="syringe-body"><div class="syringe-piston" id="l4-pistonB" style="top: 0%"></div><div class="syringe-gas bg-red-100 border-red-300" id="l4-gasB" style="height: 0%"></div></div></div><div class="w-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center"><div class="text-xs font-bold text-slate-400 mb-1">SỐ MOL KHÍ ($n$)</div><div class="text-2xl font-mono font-bold text-red-600" id="l4-molB">0.00 mol</div><input type="range" id="l4-volB" class="mt-4" min="0" max="50" step="0.1" value="0" oninput="l4_update()"><div class="text-xs text-slate-500 mt-2 font-mono" id="l4-volB-text">V = 0.0 L</div></div></div></div><div class="mt-10 flex justify-center"><button onclick="l4_check()" class="btn-hologram bg-gradient-to-r from-blue-500 to-green-500 text-white border-transparent px-8 py-3 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all"><span class="material-icons-round align-middle mr-2">verified</span> XÁC NHẬN SỐ LIỆU BƠM</button></div></div>
+                <!-- Lab 5 -->
+                <div id="lab-5" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-blue-500 mb-6 drop-shadow-md" id="l5-lab-icon">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 10 — Oxi hóa - Khử</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Nhiệm vụ: <b class="text-purple-600">Làm mất màu thuốc tím KMnO₄</b> bằng chất khử (FeSO₄ + H₂SO₄). Hoàn thành thí nghiệm rồi nhấn "Trở về bài học" để hệ thống ghi nhận.</p><div id="l5-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-green-50 border border-green-300 text-green-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=kmno4&lesson=5" onclick="startLabMission('kmno4')" class="btn-hologram bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — LÀM MẤT MÀU KMnO₄</a></div>
+                <!-- Lab 6 -->
+                <div id="lab-6" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-purple-500 mb-6 drop-shadow-md">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 11 — Chuẩn độ Acid-Base</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Thao tác chuẩn độ HCl bằng NaOH chuẩn, dùng chỉ thị Phenolphthalein. Dừng đúng điểm tương đương (màu hồng nhạt bền).</p><div id="l6-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-green-50 border border-green-300 text-green-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=titration&lesson=6" onclick="startLabMission('titration')" class="btn-hologram bg-gradient-to-r from-purple-500 to-pink-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — CHUẨN ĐỘ ACID-BASE</a></div>
+                <!-- Lab 7 -->
+                <div id="lab-7" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-amber-500 mb-6 drop-shadow-md">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 12 — Phản ứng Tráng bạc</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Nhiệm vụ: <b class="text-amber-600">Phản ứng tráng bạc</b> — pha thuốc thử Tollens, thêm Glucose và đun nóng để tạo lớp bạc sáng bóng.</p><div id="l7-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-green-50 border border-green-300 text-green-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=silver&lesson=7" onclick="startLabMission('silver')" class="btn-hologram bg-gradient-to-r from-amber-500 to-orange-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — TRÁNG BẠC</a></div>
+            </div>
+
+            <!-- NHIỆM VỤ -->
+            <div id="tab-mission" class="tab-content sci-fi-panel p-8 md:p-10">
+                <div class="mb-8 border-b border-slate-100 pb-4"><h1 class="text-2xl font-bold text-slate-800 tracking-wide">MỤC TIÊU CHIẾN LƯỢC</h1><p class="text-slate-500 mt-1 text-sm">Hoàn thành để mở khóa bài học tiếp theo.</p></div>
+                <div id="mission-1" class="lesson-content active flex flex-col gap-4"><div id="t1-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Giao thức Rã đông</h3><p class="text-slate-500 text-sm mt-1">Đẩy nhiệt độ <b class="text-red-500">vượt mốc 80°C</b>.</p></div></div><div id="t1-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Giao thức Làm mát</h3><p class="text-slate-500 text-sm mt-1">Hạ nhiệt độ <b class="text-blue-500">xuống dưới 10°C</b>.</p></div></div></div>
+                <div id="mission-2" class="lesson-content flex flex-col gap-4"><div id="t2-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Phân rã Siêu tốc</h3><p class="text-slate-500 text-sm mt-1">Nung chảy Mg <b class="text-red-500">dưới 2.0 giây</b>.</p></div></div><div id="t2-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Kiểm soát Kìm hãm</h3><p class="text-slate-500 text-sm mt-1">Phân rã chậm <b class="text-green-600">hơn 8.0 giây</b>.</p></div></div></div>
+                <div id="mission-3" class="lesson-content flex flex-col gap-4"><div id="t3-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Truy tìm Tinh thể</h3><p class="text-slate-500 text-sm mt-1">Tìm Halogen <b class="text-purple-600">Rắn</b>.</p></div></div><div id="t3-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Liên kết Yếu nhất</h3><p class="text-slate-500 text-sm mt-1">Lực VdW <b class="text-yellow-500">thấp nhất</b>.</p></div></div></div>
+                <div id="mission-4" class="lesson-content flex flex-col gap-4"><div id="t4-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Định mức Khối lượng</h3><p class="text-slate-500 text-sm mt-1">Bơm vào Xilanh A chính xác <b class="text-blue-600">1.0 gam</b> khí $H_2$ (Cho $M_H=1$).</p></div></div><div id="t4-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Phản ứng Hoàn toàn</h3><p class="text-slate-500 text-sm mt-1">Bơm vào Xilanh B lượng khí $O_2$ <b class="text-red-500">vừa đủ để phản ứng cháy hoàn toàn</b> với lượng $H_2$ trên.</p></div></div></div>
+                <div id="mission-5" class="lesson-content flex flex-col gap-4"><div id="t5-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div class="flex-grow"><h3 class="task-text font-bold text-slate-800">Mất màu thuốc tím</h3><p class="text-slate-500 text-sm mt-1">Hoàn thành thí nghiệm Oxi hóa - Khử thành công tại file lab.html.</p></div><button onclick="simulateSync('t5-1', 't5-2')" class="btn-outline text-xs px-4 py-2 whitespace-nowrap"><span class="material-icons-round align-middle text-sm mr-1">sync</span> Đồng bộ KQ</button></div><div id="t5-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div class="flex-grow"><h3 class="task-text font-bold text-slate-800">Hoàn thành lý thuyết</h3><p class="text-slate-500 text-sm mt-1">Hệ thống ghi nhận bạn đã hiểu rõ cơ chế nhường và nhận electron.</p></div></div></div>
+                <div id="mission-6" class="lesson-content flex flex-col gap-4"><div id="t6-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div class="flex-grow"><h3 class="task-text font-bold text-slate-800">Điểm tương đương</h3><p class="text-slate-500 text-sm mt-1">Dừng chuẩn độ chính xác khi dung dịch xuất hiện màu hồng nhạt.</p></div><button onclick="simulateSync('t6-1', 't6-2')" class="btn-outline text-xs px-4 py-2 whitespace-nowrap"><span class="material-icons-round align-middle text-sm mr-1">sync</span> Đồng bộ KQ</button></div><div id="t6-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div class="flex-grow"><h3 class="task-text font-bold text-slate-800">Kiểm tra kết quả</h3><p class="text-slate-500 text-sm mt-1">Dữ liệu phân tích thể tích trùng khớp với nồng độ ẩn của hệ thống.</p></div></div></div>
+                <div id="mission-7" class="lesson-content flex flex-col gap-4"><div id="t7-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div class="flex-grow"><h3 class="task-text font-bold text-slate-800">Tạo kết tủa Bạc</h3><p class="text-slate-500 text-sm mt-1">Pha chế đúng tỷ lệ thuốc thử Tollens và tạo lớp tráng gương hoàn hảo.</p></div><button onclick="simulateSync('t7-1', 't7-2')" class="btn-outline text-xs px-4 py-2 whitespace-nowrap"><span class="material-icons-round align-middle text-sm mr-1">sync</span> Đồng bộ KQ</button></div><div id="t7-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div class="flex-grow"><h3 class="task-text font-bold text-slate-800">Nhiệm vụ cuối cùng</h3><p class="text-slate-500 text-sm mt-1">Hệ thống ghi nhận bạn đã sẵn sàng cho Bài Kiểm Tra đánh giá năng lực.</p></div></div></div>
+            </div>
+
+            <!-- BÀI KIỂM TRA -->
+            <div id="tab-quiz" class="tab-content sci-fi-panel p-8 md:p-10 relative overflow-hidden">
+                <div id="quiz-start" class="text-center py-10"><span class="material-icons-round text-7xl text-slate-800 mb-6 drop-shadow-md">assignment_turned_in</span><h2 class="text-3xl font-bold text-slate-800 mb-4">Đánh Giá Năng Lực Toàn Diện</h2><p class="text-slate-500 mb-8 max-w-2xl mx-auto">Bài thi gồm 40 câu hỏi. Bao gồm 38 câu trắc nghiệm lý thuyết/tính toán và 2 câu hỏi thực hành tương tác ảo. Yêu cầu vận dụng tư duy và kỹ năng phòng thí nghiệm.</p><button onclick="startQuiz()" class="btn-hologram bg-slate-800 text-white border-transparent text-lg px-8 py-3 shadow-[0_5px_15px_rgba(0,0,0,0.2)] hover:bg-slate-700 hover:text-white hover:border-transparent">BẮT ĐẦU THI</button></div>
+                <div id="quiz-area" class="hidden"><div class="flex justify-between items-center mb-6 border-b border-slate-200 pb-4"><div class="text-sm font-bold text-slate-500 tracking-wider">CÂU <span id="q-current" class="text-green-600 text-xl">1</span> / 40</div><div class="text-sm font-mono text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-200">CHEMCRAFT ĐÁNH GIÁ</div></div><div id="q-text" class="text-xl font-medium text-slate-800 mb-8 leading-relaxed">Nội dung câu hỏi...</div><div id="q-options" class="flex flex-col gap-4 mb-8"></div><div id="q-practical" class="hidden mb-8 w-full"><div class="mini-lab-container w-full" id="mini-lab-zone"></div><div id="q-practical-status" class="mt-4 text-center font-bold text-red-500">Chưa đạt mục tiêu</div></div><div class="flex justify-between items-center mt-10"><button onclick="prevQuestion()" class="btn-outline"><span class="material-icons-round align-middle mr-1">arrow_back</span> Câu trước</button><button id="btn-next-q" onclick="nextQuestion()" class="btn-hologram bg-gradient-to-r from-green-500 to-emerald-500 text-white border-transparent">Câu tiếp <span class="material-icons-round align-middle ml-1">arrow_forward</span></button></div><div class="progress-bar-wrap"><div id="quiz-progress" class="progress-bar-fill" style="width: 2.5%"></div></div></div>
+                <div id="quiz-result" class="hidden text-center py-10"><div class="inline-flex justify-center items-center w-40 h-40 rounded-full border-8 border-green-500 text-5xl font-bold text-slate-800 mb-6 shadow-[0_0_20px_rgba(34,197,94,0.3)]"><span id="res-score">0</span><span class="text-2xl text-slate-400">/40</span></div><h2 class="text-3xl font-bold text-slate-800 mb-2" id="res-title">Hoàn Thành!</h2><p class="text-slate-500 mb-8" id="res-message">Bạn đã nỗ lực rất tuyệt vời.</p><button onclick="reviewQuiz()" class="btn-outline mr-4">Xem đáp án</button><button onclick="resetQuizUI()" class="btn-hologram bg-slate-800 text-white border-transparent">Về trang chủ</button></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTone(freq, type, duration, vol) {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
+        }
+        function playHover() { playTone(800, 'sine', 0.05, 0.02); }
+        function playClick() { playTone(1200, 'triangle', 0.1, 0.05); }
+        function playSuccess() { playTone(523.25, 'sine', 0.1, 0.1); setTimeout(() => playTone(659.25, 'sine', 0.1, 0.1), 100); setTimeout(() => playTone(1046.50, 'sine', 0.4, 0.15), 300); }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const interactables = document.querySelectorAll('button, .step-item');
+            interactables.forEach(el => {
+                el.addEventListener('mouseenter', playHover);
+                el.addEventListener('click', playClick);
+            });
+            // Re-apply ngay khi DOM sẵn sàng (không chờ Firebase)
+            try { _reapplyTaskDoneFromLocal(); } catch(e) {}
+            // Lặp lại sau ngắn để bắt trường hợp Firebase mới merge xong
+            setTimeout(() => { try { _reapplyTaskDoneFromLocal(); } catch(e) {} }, 800);
+            setTimeout(() => { try { _reapplyTaskDoneFromLocal(); } catch(e) {} }, 2500);
+        });
+
+        let currentLesson = 1;
+        let maxUnlockedLesson = 1;
+        let score = 0;
+        window._progressRestored = false;   // CỜ BÁO ĐÃ KHÔI PHỤC XONG
+
+        const lessonData = {
+            2: { icon: 'speed', desc: 'Yếu tố động học' },
+            3: { icon: 'bubble_chart', desc: 'Lực Van der Waals' },
+            4: { icon: 'pie_chart', desc: 'Thể tích & Số mol' },
+            5: { icon: 'compare_arrows', desc: 'Oxi hóa - Khử (Lớp 10)' },
+            6: { icon: 'opacity', desc: 'Chuẩn độ (Lớp 11)' },
+            7: { icon: 'wb_sunny', desc: 'Tráng bạc (Lớp 12)' },
+            8: { icon: 'quiz', desc: 'Đánh giá năng lực' }
+        };
+
+        function showToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-5 right-5 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-lg border border-slate-700 z-[100] transform transition-all translate-y-10 opacity-0 font-medium tracking-wide flex items-center gap-3';
+            toast.innerHTML = `<span class="material-icons-round text-green-400">lock_open</span> ${msg}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.classList.remove('translate-y-10', 'opacity-0'), 100);
+            setTimeout(() => {
+                toast.classList.add('translate-y-10', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function unlockLesson(id, silent) {
+            if (id > 8 || id <= maxUnlockedLesson) return;
+            maxUnlockedLesson = id;
+            const step = document.getElementById('step-' + id);
+            if(!step) return;
+            step.classList.remove('locked');
+            const iconDiv = document.getElementById('icon-' + id);
+            const iconSpan = iconDiv.querySelector('.material-icons-round');
+            const descP = document.getElementById('desc-' + id);
+            const data = lessonData[id];
+            iconSpan.innerText = data.icon;
+            descP.innerText = data.desc;
+            if(id === 8) {
+                iconDiv.className = 'step-icon w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-yellow-400 shrink-0 shadow-sm';
+                if (!silent) showToast("Đã mở khóa BÀI KIỂM TRA Cuối Khóa!");
+            } else {
+                iconDiv.className = 'step-icon w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 shadow-sm';
+                if (!silent) showToast("Đã mở khóa Bài " + id + "!");
+            }
+        }
+
+        function checkLessonCompletion() {
+            const tasks = { 1: ['t1-1', 't1-2'], 2: ['t2-1', 't2-2'], 3: ['t3-1', 't3-2'], 4: ['t4-1', 't4-2'], 5: ['t5-1', 't5-2'], 6: ['t6-1', 't6-2'], 7: ['t7-1', 't7-2'] };
+            for (let l = 1; l <= 7; l++) {
+                const allDone = tasks[l].every(t => document.getElementById(t).classList.contains('done'));
+                if (allDone && maxUnlockedLesson < l + 1) {
+                    setTimeout(() => { unlockLesson(l + 1); saveMaxUnlocked(); }, 1000);
+                }
+            }
+        }
+
+        async function saveMaxUnlocked() {
+            if (typeof window.fbSaveProgress === 'function') {
+                try { await window.fbSaveProgress('_tick', maxUnlockedLesson, score); } 
+                catch(e) { console.warn('saveMaxUnlocked error:', e); }
+            }
+        }
+
+        const LESSON_NAMES = { 1:'Biến thiên Enthalpy', 2:'Tốc độ phản ứng', 3:'Nhóm Halogen', 4:'Định luật Avogadro', 5:'Oxi hóa - Khử', 6:'Chuẩn độ Acid-Base', 7:'Phản ứng Tráng bạc', 8:'Kiểm tra cuối khóa' };
+        const LESSON_ICONS = { 1:'🔥', 2:'⚡', 3:'🧪', 4:'📐', 5:'⚗️', 6:'💧', 7:'✨', 8:'🏆' };
+
+        function loadLesson(id) {
+            if (id > maxUnlockedLesson) { playHover(); showToast("⚠️ Hoàn thành Nhiệm Vụ bài trước để mở khóa!"); return; }
+            currentLesson = id;
+            document.querySelectorAll('.step-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('step-' + id).classList.add('active');
+            document.querySelectorAll('.lesson-content').forEach(el => el.classList.remove('active'));
+            if(id === 8) {
+                document.getElementById('nav-tabs').style.display = 'none';
+                document.getElementById('tab-theory').classList.remove('active');
+                document.getElementById('tab-lab').classList.remove('active');
+                document.getElementById('tab-mission').classList.remove('active');
+                document.getElementById('tab-quiz').classList.add('active');
+            } else {
+                document.getElementById('nav-tabs').style.display = 'block';
+                document.getElementById('tab-quiz').classList.remove('active');
+                document.getElementById(`theory-${id}`).classList.add('active');
+                document.getElementById(`lab-${id}`).classList.add('active');
+                document.getElementById(`mission-${id}`).classList.add('active');
+                switchTab('theory');
+            }
+            recordLessonVisit(id, 'Đang học');
+            // Re-apply ticks từ localStorage để các nhiệm vụ đã hoàn thành luôn hiện
+            try { _reapplyTaskDoneFromLocal(); } catch(e) {}
+        }
+
+        // Mô phỏng đồng bộ (chỉ dùng test, không ảnh hưởng chính)
+        function simulateSync(t1, t2) {
+            playClick();
+            showToast("Đang đồng bộ dữ liệu với file lab.html...");
+            setTimeout(() => {
+                markTaskDone(t1);
+                setTimeout(() => markTaskDone(t2), 500);
+            }, 1000);
+        }
+
+        function startLabMission(missionId) {
+            try {
+                localStorage.setItem('chemcraft_active_mission', missionId);
+                localStorage.removeItem('chemcraft_mission_' + missionId);
+            } catch(e) {}
+            showToast('🚀 Đang mở Lab — hoàn thành thí nghiệm và nhấn "Trở về bài học" để ghi nhận!');
+        }
+
+        // HÀM KIỂM TRA KẾT QUẢ TỪ LAB (ĐÃ SỬA)
+        function checkLabMissions() {
+            // Cho phép nhận kết quả từ Lab ngay cả khi chưa đăng nhập
+            if (!window._restoredTasks) {
+                window._restoredTasks = (typeof window.loadLocalProgress === 'function') ? window.loadLocalProgress() : {};
+            }
+            try {
+                if (localStorage.getItem('chemcraft_mission_kmno4') === 'done') {
+                    const t = document.getElementById('t5-1');
+                    if (t && !t.classList.contains('done') && !window._restoredTasks['t5-1']) {
+                        showToast('✅ Lab ghi nhận: Đã làm mất màu KMnO₄!');
+                        markTaskDone('t5-1').then(() => markTaskDone('t5-2'));
+                    }
+                    localStorage.removeItem('chemcraft_mission_kmno4');
+                    const badge5 = document.getElementById('l5-already-done');
+                    if (badge5) badge5.classList.remove('hidden');
+                }
+                if (localStorage.getItem('chemcraft_mission_titration') === 'done') {
+                    const t = document.getElementById('t6-1');
+                    if (t && !t.classList.contains('done') && !window._restoredTasks['t6-1']) {
+                        showToast('💧 Lab ghi nhận: Chuẩn độ thành công!');
+                        markTaskDone('t6-1').then(() => markTaskDone('t6-2'));
+                    }
+                    localStorage.removeItem('chemcraft_mission_titration');
+                    const badge6 = document.getElementById('l6-already-done');
+                    if (badge6) badge6.classList.remove('hidden');
+                }
+                if (localStorage.getItem('chemcraft_mission_silver') === 'done') {
+                    const t = document.getElementById('t7-1');
+                    if (t && !t.classList.contains('done') && !window._restoredTasks['t7-1']) {
+                        showToast('✨ Lab ghi nhận: Đã tạo lớp tráng bạc!');
+                        markTaskDone('t7-1').then(() => markTaskDone('t7-2'));
+                    }
+                    localStorage.removeItem('chemcraft_mission_silver');
+                    const badge7 = document.getElementById('l7-already-done');
+                    if (badge7) badge7.classList.remove('hidden');
+                }
+            } catch(e) {}
+        }
+
+        window.addEventListener('storage', checkLabMissions);
+        window.addEventListener('focus', checkLabMissions);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) checkLabMissions(); });
+        window.addEventListener('load', () => {
+            checkLabMissions();
+            // Xử lý quay về từ Lab kể cả khi chưa đăng nhập Firebase
+            const labDoneParam = new URLSearchParams(location.search).get('labDone');
+            if (labDoneParam && typeof _handleLabReturn === 'function' && !window._labReturnHandled) {
+                window._labReturnHandled = true;
+                _handleLabReturn(labDoneParam);
+            }
+        });
+
+        function switchTab(tabId) {
+            playClick();
+            ['theory', 'lab', 'mission'].forEach(id => {
+                const btn = document.getElementById('tabBtn-' + id);
+                const content = document.getElementById('tab-' + id);
+                if(id === tabId) {
+                    btn.className = 'flex-1 py-3 px-2 text-center text-xs md:text-sm font-semibold text-green-600 bg-green-50 border border-green-500/30 rounded-xl transition-all shadow-[inset_0_0_10px_rgba(34,197,94,0.1)]';
+                    content.classList.add('active');
+                } else {
+                    btn.className = 'flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-green-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all';
+                    content.classList.remove('active');
+                }
+            });
+            // Khi mở tab Nhiệm vụ, luôn re-apply ticks để đảm bảo hiển thị đúng
+            if (tabId === 'mission') {
+                try { _reapplyTaskDoneFromLocal(); } catch(e) {}
+            }
+        }
+
+        function addScore(pts) {
+            score += pts;
+            const sd = document.getElementById('scoreDisplay');
+            if (sd) sd.innerText = score;
+        }
+
+        async function saveTaskProgress(taskId) {
+            if (typeof window.fbSaveProgress === 'function') {
+                try {
+                    await window.fbSaveProgress(taskId, maxUnlockedLesson, score);
+                    showSavedIndicator();
+                } catch(e) { console.warn('Save task error:', e); }
+            }
+        }
+
+        async function markTaskDone(elId) {
+            const el = document.getElementById(elId);
+            if (!el || el.classList.contains('done')) return;
+            el.classList.add('done');
+            const iconDiv = el.querySelector('.task-icon');
+            if (iconDiv) iconDiv.innerHTML = '<span class="material-icons-round text-3xl">check_circle</span>';
+            addScore(150);
+            playSuccess();
+            // Lưu ngay vào localStorage (đồng bộ) — phòng khi async fbSave bị lỗi
+            try {
+                if (typeof window.saveLocalProgress === 'function') {
+                    const patch = {}; patch[elId] = true;
+                    patch._maxUnlocked = maxUnlockedLesson;
+                    patch._score = score;
+                    window.saveLocalProgress(patch);
+                }
+            } catch(e) {}
+            checkLessonCompletion();
+            await saveTaskProgress(elId);
+        }
+
+        // SAFETY NET: re-apply task ticks từ localStorage (gọi mỗi lần loadLesson)
+        function _reapplyTaskDoneFromLocal() {
+            try {
+                const local = (typeof window.loadLocalProgress === 'function') ? window.loadLocalProgress() : null;
+                if (!local) return;
+                // Khôi phục _maxUnlocked TRƯỚC để unlockLesson chạy đúng thứ tự
+                if (local._maxUnlocked && local._maxUnlocked > maxUnlockedLesson) {
+                    for (let i = maxUnlockedLesson + 1; i <= local._maxUnlocked; i++) unlockLesson(i, true);
+                }
+                const taskIds = ['t1-1','t1-2','t2-1','t2-2','t3-1','t3-2','t4-1','t4-2','t5-1','t5-2','t6-1','t6-2','t7-1','t7-2'];
+                taskIds.forEach(tid => {
+                    if (local[tid]) {
+                        const el = document.getElementById(tid);
+                        if (el) {
+                            // Luôn set lại — kể cả khi element đang ẩn (lesson-content chưa active)
+                            el.classList.add('done');
+                            const icon = el.querySelector('.task-icon');
+                            if (icon) icon.innerHTML = '<span class="material-icons-round text-3xl">check_circle</span>';
+                        }
+                    }
+                });
+                if (local._score && local._score > score) {
+                    score = local._score;
+                    const sd = document.getElementById('scoreDisplay'); if (sd) sd.innerText = score;
+                }
+                checkLessonCompletion();
+            } catch(e) {}
+        }
+
+        // ================= LAB LOGIC =================
+        let l1_temp = 25, l1_target = 25;
+        function l1_add(type) {
+            l1_target += type === 'CaO' ? 30 : -25;
+            l1_target = Math.max(-10, Math.min(120, l1_target));
+            let b = document.createElement('div'); b.className = 'bubble'; b.style.left = (Math.random() * 80 + 10) + '%'; b.style.width = b.style.height = (Math.random() * 10 + 5) + 'px'; b.style.animationDuration = '1.5s'; document.getElementById('l1-beaker').appendChild(b); setTimeout(() => b.remove(), 1500);
+        }
+        function l1_reset() { l1_target = 25; l1_temp = 25; }
+        setInterval(() => {
+            if(l1_target > 25) l1_target -= 0.5; if(l1_target < 25) l1_target += 0.5;
+            l1_temp += (l1_target - l1_temp) * 0.1;
+            let t = Math.round(l1_temp);
+            if(document.getElementById('l1-tempDisplay')) {
+                document.getElementById('l1-tempDisplay').innerText = t + "°";
+                document.getElementById('l1-mercury').style.height = Math.max(5, Math.min(100, t)) + '%';
+                let col = '#22c55e', stat = 'BÌNH THƯỜNG';
+                if(t >= 80) { col = '#ef4444'; stat = 'QUÁ NHIỆT'; markTaskDone('t1-1'); }
+                else if(t >= 50) { col = '#f59e0b'; stat = 'ĐANG NÓNG'; }
+                else if(t <= 10) { col = '#3b82f6'; stat = 'ĐÓNG BĂNG'; markTaskDone('t1-2'); }
+                document.getElementById('l1-tempDisplay').style.color = col; document.getElementById('l1-tempDisplay').style.textShadow = `0 0 15px rgba(${col}, 0.5)`;
+                document.getElementById('l1-mercury').style.background = col; document.getElementById('l1-bulb').style.background = col; document.getElementById('l1-liquid').style.background = col;
+                document.getElementById('l1-tempStatus').innerText = stat; document.getElementById('l1-tempStatus').style.color = col; document.getElementById('l1-tempStatus').style.borderColor = col;
+            }
+        }, 100);
+
+        let l2_running = false, l2_time = 0, l2_interval = null, l2_mgMass = 100;
+        function l2_updateUI() {
+            if(l2_running) return;
+            let c = document.getElementById('l2-sliderConc').value, t = document.getElementById('l2-sliderTemp').value;
+            document.getElementById('l2-valConc').innerText = c + " M"; document.getElementById('l2-valTemp').innerText = t + " °C";
+            document.getElementById('l2-rateDisplay').innerText = `TỐC ĐỘ: ${(0.05 * Math.pow(c, 2) * Math.pow(2, (t - 20) / 10)).toFixed(2)} /s`;
+        }
+        function l2_start() {
+            if(l2_running) return; l2_running = true;
+            document.getElementById('l2-btnStart').classList.add('hidden'); document.getElementById('l2-sliderConc').disabled = true; document.getElementById('l2-sliderTemp').disabled = true;
+            let rate = Math.max(0.01, 0.05 * Math.pow(document.getElementById('l2-sliderConc').value, 2) * Math.pow(2, (document.getElementById('l2-sliderTemp').value - 20) / 10));
+            l2_interval = setInterval(() => {
+                l2_time += 0.1; document.getElementById('l2-stopwatch').innerText = l2_time.toFixed(1) + "s";
+                l2_mgMass -= (rate * 10);
+                if(l2_mgMass <= 0) { l2_mgMass = 0; clearInterval(l2_interval); document.getElementById('l2-btnReset').classList.remove('hidden'); document.getElementById('l2-mg').style.display = 'none'; if(l2_time < 2.0) markTaskDone('t2-1'); if(l2_time > 8.0) markTaskDone('t2-2'); }
+                document.getElementById('l2-mg').style.width = (40 * l2_mgMass / 100) + 'px'; document.getElementById('l2-mg').style.height = (20 * l2_mgMass / 100) + 'px'; document.getElementById('l2-mg').style.opacity = l2_mgMass / 100;
+                if(Math.random() < rate) { let b = document.createElement('div'); b.className = 'bubble'; b.style.left = '45%'; b.style.width = b.style.height = (Math.random() * 8 + 4) + 'px'; b.style.animationDuration = (0.5 / Math.max(0.1, rate)) + 's'; document.getElementById('l2-beaker').appendChild(b); setTimeout(() => b.remove(), 2000); }
+            }, 100);
+        }
+        function l2_reset() { l2_running = false; l2_time = 0; l2_mgMass = 100; document.getElementById('l2-stopwatch').innerText = "00.0s"; document.getElementById('l2-btnStart').classList.remove('hidden'); document.getElementById('l2-btnReset').classList.add('hidden'); document.getElementById('l2-sliderConc').disabled = false; document.getElementById('l2-sliderTemp').disabled = false; let mg = document.getElementById('l2-mg'); mg.style.display = 'block'; mg.style.width = '40px'; mg.style.height = '20px'; mg.style.opacity = '1'; document.querySelectorAll('#l2-beaker .bubble').forEach(b => b.remove()); }
+
+        function l3_select(h) {
+            let l = document.getElementById('l3-liquid'), s = document.getElementById('l3-solid'), v = document.getElementById('l3-vdw');
+            l.style.height = '0%'; s.style.opacity = '0'; s.style.height = '0%';
+            if(h==='F2'){ document.getElementById('l3-gas').style.background='rgba(253,224,71,0.4)'; v.style.width='10%'; v.style.background='#eab308'; markTaskDone('t3-2'); }
+            else if(h==='Cl2'){ document.getElementById('l3-gas').style.background='rgba(163,230,53,0.5)'; v.style.width='30%'; v.style.background='#84cc16'; }
+            else if(h==='Br2'){ document.getElementById('l3-gas').style.background='rgba(185,28,28,0.2)'; l.style.height='30%'; l.style.background='rgba(185,28,28,0.85)'; v.style.width='60%'; v.style.background='#dc2626'; }
+            else if(h==='I2'){ document.getElementById('l3-gas').style.background='rgba(147,51,234,0.15)'; s.style.opacity='1'; s.style.height='20%'; v.style.width='95%'; v.style.background='#7e22ce'; markTaskDone('t3-1'); }
+        }
+
+        function l4_update() {
+            let va = parseFloat(document.getElementById('l4-volA').value);
+            let vb = parseFloat(document.getElementById('l4-volB').value);
+            let nA = (va/24.79);
+            let nB = (vb/24.79);
+            document.getElementById('l4-molA').innerText = nA.toFixed(2)+" mol"; 
+            document.getElementById('l4-molB').innerText = nB.toFixed(2)+" mol";
+            let ha = (va/50)*100, hb = (vb/50)*100;
+            document.getElementById('l4-gasA').style.height = ha+'%'; document.getElementById('l4-gasB').style.height = hb+'%';
+            document.getElementById('l4-pistonA').style.top = (100-ha)+'%'; document.getElementById('l4-pistonB').style.top = (100-hb)+'%';
+            document.getElementById('l4-rodA').style.transform = `translateY(-${ha}px)`; document.getElementById('l4-rodB').style.transform = `translateY(-${hb}px)`;
+        }
+        function l4_check() {
+            let va = parseFloat(document.getElementById('l4-volA').value);
+            let vb = parseFloat(document.getElementById('l4-volB').value);
+            let nA = (va/24.79);
+            let nB = (vb/24.79);
+            let t41_done = document.getElementById('t4-1').classList.contains('done');
+            let t42_done = document.getElementById('t4-2').classList.contains('done');
+            let newly_done = false;
+            if(Math.abs(nA - 0.50) <= 0.02 && !t41_done) { markTaskDone('t4-1'); t41_done = true; newly_done = true; }
+            if(Math.abs(nB - 0.25) <= 0.02 && !t42_done) { markTaskDone('t4-2'); t42_done = true; newly_done = true; }
+            if (newly_done) showToast("Tuyệt vời! Dữ liệu bơm hoàn toàn chính xác.");
+            else if (t41_done && t42_done) showToast("Bạn đã hoàn thành bài học này rồi.");
+            else { playTone(300, 'square', 0.2, 0.1); showToast("Số liệu sai! Hãy tính lại số mol cẩn thận nhé."); }
+        }
+
+        // ================= QUIZ =================
+        const quizData = [
+            { q: "Phản ứng tỏa nhiệt là phản ứng có:", opts: ["ΔrH < 0, làm môi trường nóng lên", "ΔrH > 0, làm môi trường nóng lên", "ΔrH < 0, làm môi trường lạnh đi", "ΔrH > 0, làm môi trường lạnh đi"], ans: 0 },
+            { q: "Nhiệt tạo thành chuẩn (ΔfHo) của một đơn chất bền vững (VD: O2, H2) bằng:", opts: ["< 0", "1", "0", "Phụ thuộc nhiệt độ"], ans: 2 },
+            { q: "Khi hòa tan Vôi sống (CaO) vào nước, cốc thủy tinh nóng lên rất nhanh. Phương trình nhiệt hóa học có:", opts: ["ΔH > 0", "ΔH = 0", "ΔH < 0", "Không xác định được"], ans: 2 },
+            { q: "Ứng dụng của phản ứng thu nhiệt trong đời sống là:", opts: ["Đốt than cháy", "Túi chườm lạnh y tế", "Túi sưởi ấm tay", "Pin điện hóa"], ans: 1 },
+            { q: "Cho PT: C(s) + O2(g) -> CO2(g)  ΔrH = -393.5 kJ. Khi đốt cháy 1 mol Carbon, hệ sẽ:", opts: ["Hấp thụ 393.5 kJ", "Tỏa ra 393.5 kJ", "Tỏa ra 787 kJ", "Không đổi nhiệt"], ans: 1 },
+            { q: "Năng lượng liên kết càng lớn thì liên kết đó càng:", opts: ["Kém bền", "Dễ đứt gãy", "Bền vững", "Dễ phản ứng"], ans: 2 },
+            { q: "Biến thiên Enthalpy của phản ứng có thể tính bằng:", opts: ["Tổng năng lượng liên kết chất tham gia - Tổng NL liên kết sản phẩm", "Tổng khối lượng tham gia - sản phẩm", "Nhiệt độ lúc sau trừ lúc đầu", "Thể tích bình chứa"], ans: 0 },
+            { q: "Quá trình nước đá tan thành nước lỏng là quá trình:", opts: ["Tỏa nhiệt", "Thu nhiệt", "Không có sự trao đổi nhiệt", "Phản ứng hóa học"], ans: 1 },
+            { q: "Điều kiện chuẩn của Enthalpy là:", opts: ["0 độ C, 1 atm", "25 độ C, 1 bar", "100 độ C, 1 bar", "25 độ K, 1 atm"], ans: 1 },
+            { q: "Khi tăng nồng độ chất phản ứng, tốc độ phản ứng tăng do:", opts: ["Tăng nhiệt độ hệ", "Tăng mật độ hạt, dẫn đến tăng số va chạm hiệu quả", "Giảm năng lượng hoạt hóa", "Tăng thể tích khí"], ans: 1 },
+            { q: "Hệ số nhiệt độ Van't Hoff (γ) bằng 2. Khi tăng nhiệt độ thêm 30 độ C, tốc độ phản ứng sẽ tăng:", opts: ["2 lần", "6 lần", "8 lần", "16 lần"], ans: 2 },
+            { q: "Chất xúc tác làm tăng tốc độ phản ứng bằng cách:", opts: ["Làm tăng nhiệt độ phản ứng", "Làm giảm năng lượng hoạt hóa", "Tăng nồng độ chất tham gia", "Tăng diện tích tiếp xúc"], ans: 1 },
+            { q: "Hành động nào sau đây là ứng dụng của việc tăng diện tích tiếp xúc?", opts: ["Nấu chín thức ăn bằng nồi áp suất", "Bảo quản thực phẩm trong tủ lạnh", "Chẻ nhỏ củi trước khi đốt", "Quạt gió vào bếp lò"], ans: 2 },
+            { q: "Cho Mg vào HCl. Tốc độ phản ứng sẽ NHANH NHẤT khi dùng:", opts: ["Mg dạng khối, HCl 1M, 20°C", "Mg dạng bột, HCl 1M, 20°C", "Mg dạng bột, HCl 2M, 50°C", "Mg dạng khối, HCl 2M, 50°C"], ans: 2 },
+            { q: "Bơm oxy nguyên chất vào bệnh nhân khó thở là ứng dụng tăng tốc độ quá trình hô hấp dựa trên yếu tố:", opts: ["Chất xúc tác", "Nhiệt độ", "Áp suất / Nồng độ", "Diện tích tiếp xúc"], ans: 2 },
+            { q: "Phương trình v = k[A]^a[B]^b. Nếu hằng số tốc độ (k) rất lớn, phản ứng đó:", opts: ["Xảy ra rất chậm", "Xảy ra rất nhanh", "Là phản ứng thu nhiệt", "Không bao giờ xảy ra"], ans: 1 },
+            { q: "Phản ứng quang hợp của cây xanh xảy ra nhanh hơn khi trời nắng. Yếu tố ảnh hưởng là:", opts: ["Nồng độ CO2", "Nhiệt độ & Ánh sáng", "Chất xúc tác", "Áp suất"], ans: 1 },
+            { q: "Để hãm tốc độ phản ứng ôi thiu của thịt cá, người ta dùng cách:", opts: ["Tăng nhiệt độ", "Thêm chất xúc tác", "Giảm nhiệt độ (bỏ tủ lạnh)", "Nghiền nhỏ thịt"], ans: 2 },
+            { q: "Trong nhóm Halogen, nguyên tố nào ở trạng thái Lỏng ở điều kiện thường?", opts: ["Fluorine (F2)", "Chlorine (Cl2)", "Bromine (Br2)", "Iodine (I2)"], ans: 2 },
+            { q: "Nhiệt độ sôi của nhóm Halogen tăng dần từ F2 đến I2 do:", opts: ["Lực Van der Waals tăng", "Khối lượng giảm", "Bán kính nguyên tử giảm", "Tính phi kim tăng"], ans: 0 },
+            { q: "Khí Halogen nào có màu vàng lục, rất độc và thường dùng khử trùng nước tiểu?", opts: ["F2", "Cl2", "Br2", "I2"], ans: 1 },
+            { q: "Lực Van der Waals hình thành do:", opts: ["Sự cho nhận electron hoàn toàn", "Sự dùng chung electron", "Sự xuất hiện lưỡng cực tạm thời và cảm ứng", "Lực hút lực đẩy hạt nhân"], ans: 2 },
+            { q: "Iodine (I2) có đặc tính vật lý nổi bật nào?", opts: ["Chất lỏng màu nâu đỏ", "Chất rắn màu đen tím, dễ thăng hoa", "Khí không màu", "Khí màu vàng lục"], ans: 1 },
+            { q: "Độ âm điện của nhóm Halogen biến đổi thế nào từ F đến I?", opts: ["Tăng dần", "Giảm dần", "Không đổi", "Tăng rồi giảm"], ans: 1 },
+            { q: "Lý do F2 không có dạng lỏng ở nhiệt độ thường là vì:", opts: ["Khối lượng phân tử quá lớn", "Lực tương tác Van der Waals cực kỳ yếu", "Nó có liên kết ion", "Nó phản ứng với không khí"], ans: 1 },
+            { q: "Halogen có tính oxy hóa mạnh nhất là:", opts: ["I2", "Br2", "Cl2", "F2"], ans: 3 },
+            { q: "Khi nhỏ dung dịch hồ tinh bột vào I2 sẽ xuất hiện màu:", opts: ["Đỏ", "Xanh đen (tím than)", "Vàng", "Mất màu"], ans: 1 },
+            { q: "Theo định luật Avogadro, ở cùng T và P, hai thể tích khí bằng nhau sẽ có:", opts: ["Cùng khối lượng", "Cùng số phân tử (số mol)", "Cùng khối lượng riêng", "Cùng màu sắc"], ans: 1 },
+            { q: "Thể tích mol của chất khí ở điều kiện chuẩn (25°C, 1 bar) là bao nhiêu Lít?", opts: ["22.4 L", "24.79 L", "24.0 L", "22.7 L"], ans: 1 },
+            { q: "Bơm 10 Lít khí O2 và 10 Lít khí H2 vào 2 bình ở cùng đkc. Khẳng định nào đúng?", opts: ["Bình O2 nặng hơn bình H2", "Bình H2 có nhiều phân tử hơn", "Cả 2 bình nặng bằng nhau", "Bình O2 có áp suất lớn hơn"], ans: 0 },
+            { q: "Nếu có 0.5 mol khí CO2 ở đkc, thể tích chiếm chỗ là:", opts: ["11.2 L", "12.395 L", "24.79 L", "5.6 L"], ans: 1 },
+            { q: "Để 2 xilanh chứa khí N2 và O2 cân bằng số mol, ta cần:", opts: ["Bơm thể tích N2 bằng với thể tích O2", "Bơm N2 nhiều hơn", "Bơm O2 nhiều hơn", "Không thể cân bằng"], ans: 0 },
+            { q: "Phản ứng nào sau đây thuộc loại phản ứng thu nhiệt?", opts: ["Đốt cháy cồn", "Phân hủy đá vôi CaCO3", "Hòa tan acid sulfuric vào nước", "Oxy hóa quặng sắt"], ans: 1 },
+            { q: "Trộn 2 thể tích khí bằng nhau, khí A có M=2, khí B có M=32. Số hạt vi mô trong khí B bằng bao nhiêu lần khí A?", opts: ["16 lần", "8 lần", "1 lần (bằng nhau)", "1/16 lần"], ans: 2 },
+            { q: "Nhận xét đúng về Lực Van der Waals:", opts: ["Là lực liên kết hóa học rất mạnh", "Chỉ có ở chất khí", "Có bản chất tĩnh điện, rất yếu", "Cản trở sự bay hơi của nước"], ans: 2 },
+            { q: "Khi tăng nhiệt độ 40 độ C, v tăng 16 lần. Hỏi hệ số nhiệt độ γ là bao nhiêu?", opts: ["1", "2", "3", "4"], ans: 1 },
+            { type: "practical", id: "p1", q: "THỰC HÀNH 1: Sử dụng bộ dụng cụ ảo, hãy pha chế hóa chất sao cho nhiệt độ của cốc thủy tinh hạ xuống còn DƯỚI 10°C để hãm tốc phản ứng." },
+            { type: "practical", id: "p2", q: "THỰC HÀNH 2: Trạm Vũ Trụ cần chính xác 16.0 gam khí O2 (Cho M_O = 16). Hãy tính toán số mol và kéo xilanh ảo dưới đây để bơm đúng lượng khí đó (sai số ± 0.02 mol)." }
+        ];
+
+        let currentQIndex = 0;
+        let userAnswers = new Array(quizData.length).fill(null);
+        let isReviewMode = false;
+        let practicalInterval = null;
+
+        function startQuiz() {
+            document.getElementById('quiz-start').classList.add('hidden');
+            document.getElementById('quiz-result').classList.add('hidden');
+            document.getElementById('quiz-area').classList.remove('hidden');
+            currentQIndex = 0;
+            userAnswers = new Array(quizData.length).fill(null);
+            isReviewMode = false;
+            renderQuizQuestion();
+        }
+
+        function renderQuizQuestion() {
+            document.getElementById('q-current').innerText = currentQIndex + 1;
+            document.getElementById('quiz-progress').style.width = ((currentQIndex + 1) / quizData.length * 100) + '%';
+            let qData = quizData[currentQIndex];
+            document.getElementById('q-text').innerText = qData.q;
+            const optContainer = document.getElementById('q-options');
+            const pracContainer = document.getElementById('q-practical');
+            if(practicalInterval) clearInterval(practicalInterval);
+            if (qData.type === 'practical') {
+                optContainer.classList.add('hidden');
+                pracContainer.classList.remove('hidden');
+                const miniLabZone = document.getElementById('mini-lab-zone');
+                document.getElementById('btn-next-q').disabled = !userAnswers[currentQIndex] && !isReviewMode;
+                document.getElementById('btn-next-q').style.opacity = (!userAnswers[currentQIndex] && !isReviewMode) ? "0.5" : "1";
+                if (qData.id === 'p1') {
+                    miniLabZone.innerHTML = `<div class="flex items-center gap-6"><div class="text-4xl font-mono text-slate-800" id="qz-t-display">25°</div><div class="flex flex-col gap-2"><button onclick="qz_p1_add('H')" class="btn-hologram bg-red-50 border-red-300 text-red-600 shadow-none">+ CaO (Nóng)</button><button onclick="qz_p1_add('C')" class="btn-hologram bg-blue-50 border-blue-300 text-blue-600 shadow-none">+ NH4NO3 (Lạnh)</button></div></div>`;
+                    window.qz_p1_temp = 25;
+                    window.qz_p1_add = function(type) { qz_p1_temp += (type==='H'?15:-15); };
+                    if(!isReviewMode) {
+                        document.getElementById('q-practical-status').innerText = userAnswers[currentQIndex] ? "Tuyệt vời! Đã đạt mục tiêu." : "Đang chờ thao tác...";
+                        document.getElementById('q-practical-status').className = userAnswers[currentQIndex] ? "mt-4 text-center font-bold text-green-500" : "mt-4 text-center font-bold text-slate-500";
+                        practicalInterval = setInterval(() => {
+                            if(qz_p1_temp > 25) qz_p1_temp -= 0.5; if(qz_p1_temp < 25) qz_p1_temp += 0.5;
+                            if(document.getElementById('qz-t-display')) document.getElementById('qz-t-display').innerText = Math.round(qz_p1_temp) + "°";
+                            if (qz_p1_temp <= 10 && !userAnswers[currentQIndex]) {
+                                userAnswers[currentQIndex] = true; 
+                                document.getElementById('q-practical-status').innerText = "Tuyệt vời! Đã đạt mục tiêu. Nhấn Câu Tiếp.";
+                                document.getElementById('q-practical-status').className = "mt-4 text-center font-bold text-green-500";
+                                document.getElementById('btn-next-q').disabled = false;
+                                document.getElementById('btn-next-q').style.opacity = "1";
+                                playSuccess();
+                                clearInterval(practicalInterval);
+                            }
+                        }, 200);
+                    } else {
+                        document.getElementById('q-practical-status').innerText = userAnswers[currentQIndex] ? "Thực hành ĐẠT" : "Thực hành KHÔNG ĐẠT";
+                    }
+                } else if (qData.id === 'p2') {
+                    miniLabZone.innerHTML = `<div class="w-full max-w-sm text-center"><div class="text-2xl font-mono text-blue-600 font-bold mb-4" id="qz-mol-display">0.00 mol</div><input type="range" id="qz-vol" min="0" max="50" step="0.1" value="0" class="w-full"><div class="text-slate-500 mt-2 text-sm mb-4">Điều chỉnh thanh trượt để bơm lượng khí đã tính</div><button id="qz-btn-check" class="btn-hologram bg-blue-500 text-white w-full border-transparent shadow-md hover:text-white hover:bg-blue-600 transition-all">XÁC NHẬN KẾT QUẢ</button></div>`;
+                    if(!isReviewMode) {
+                        document.getElementById('q-practical-status').innerText = userAnswers[currentQIndex] ? "Tuyệt vời! Đã bơm chính xác." : "Hãy tính toán cẩn thận và nhấn nút Xác Nhận.";
+                        document.getElementById('q-practical-status').className = userAnswers[currentQIndex] ? "mt-4 text-center font-bold text-green-500" : "mt-4 text-center font-bold text-slate-500";
+                        document.getElementById('qz-vol').addEventListener('input', function() {
+                            let mol = (this.value / 24.79);
+                            document.getElementById('qz-mol-display').innerText = mol.toFixed(2) + " mol";
+                        });
+                        document.getElementById('qz-btn-check').addEventListener('click', function() {
+                            let mol = (parseFloat(document.getElementById('qz-vol').value) / 24.79);
+                            if (Math.abs(mol - 0.50) <= 0.02) {
+                                if(!userAnswers[currentQIndex]) {
+                                    userAnswers[currentQIndex] = true;
+                                    document.getElementById('q-practical-status').innerText = "Chính xác! Đã bơm đúng 0.5 mol O₂.";
+                                    document.getElementById('q-practical-status').className = "mt-4 text-center font-bold text-green-500";
+                                    document.getElementById('btn-next-q').disabled = false;
+                                    document.getElementById('btn-next-q').style.opacity = "1";
+                                    playSuccess();
+                                }
+                            } else {
+                                document.getElementById('q-practical-status').innerText = "Chưa chính xác! Nhớ lấy m / M (16g / 32g/mol).";
+                                document.getElementById('q-practical-status').className = "mt-4 text-center font-bold text-red-500";
+                                playTone(300, 'square', 0.2, 0.1);
+                            }
+                        });
+                    } else {
+                        document.getElementById('q-practical-status').innerText = userAnswers[currentQIndex] ? "Thực hành ĐẠT" : "Thực hành KHÔNG ĐẠT";
+                        document.getElementById('qz-btn-check').classList.add('hidden');
+                    }
+                }
+            } else {
+                optContainer.classList.remove('hidden');
+                pracContainer.classList.add('hidden');
+                document.getElementById('btn-next-q').disabled = false;
+                document.getElementById('btn-next-q').style.opacity = "1";
+                optContainer.innerHTML = '';
+                const letters = ['A', 'B', 'C', 'D'];
+                qData.opts.forEach((opt, idx) => {
+                    let extraClass = '';
+                    if (isReviewMode) {
+                        if (idx === qData.ans) extraClass = 'correct';
+                        else if (idx === userAnswers[currentQIndex]) extraClass = 'incorrect';
+                    } else {
+                        if (idx === userAnswers[currentQIndex]) extraClass = 'selected';
+                    }
+                    optContainer.innerHTML += `<div class="quiz-option ${extraClass}" onclick="selectQuizOption(${idx})"><div class="opt-letter">${letters[idx]}</div><div>${opt}</div></div>`;
+                });
+            }
+            if(window.MathJax && MathJax.typesetPromise) { MathJax.typesetPromise(); }
+            if(currentQIndex === quizData.length - 1 && !isReviewMode) {
+                document.getElementById('btn-next-q').innerHTML = 'NỘP BÀI <span class="material-icons-round align-middle ml-1">done_all</span>';
+                document.getElementById('btn-next-q').classList.add('bg-gradient-to-r', 'from-yellow-400', 'to-orange-500');
+            } else {
+                document.getElementById('btn-next-q').innerHTML = 'Câu tiếp <span class="material-icons-round align-middle ml-1">arrow_forward</span>';
+                document.getElementById('btn-next-q').classList.remove('from-yellow-400', 'to-orange-500');
+            }
+        }
+
+        function selectQuizOption(optIdx) {
+            if(isReviewMode) return;
+            playClick();
+            userAnswers[currentQIndex] = optIdx;
+            renderQuizQuestion();
+        }
+
+        function nextQuestion() {
+            if(currentQIndex < quizData.length - 1) {
+                currentQIndex++;
+                renderQuizQuestion();
+            } else if(!isReviewMode) {
+                finishQuiz();
+            }
+        }
+
+        function prevQuestion() {
+            if(currentQIndex > 0) {
+                currentQIndex--;
+                renderQuizQuestion();
+            }
+        }
+
+        function finishQuiz() {
+            if(practicalInterval) clearInterval(practicalInterval);
+            let totalCorrect = 0;
+            quizData.forEach((q, i) => {
+                if(q.type === 'practical') { if(userAnswers[i] === true) totalCorrect++; }
+                else { if(userAnswers[i] === q.ans) totalCorrect++; }
+            });
+            document.getElementById('quiz-area').classList.add('hidden');
+            document.getElementById('quiz-result').classList.remove('hidden');
+            document.getElementById('res-score').innerText = totalCorrect;
+            let msg = "Bạn cần cố gắng nhiều hơn!";
+            if(totalCorrect >= 35) msg = "Tuyệt đỉnh! Bạn là một bậc thầy Hóa học thực thụ!";
+            else if(totalCorrect >= 25) msg = "Rất tốt! Bạn nắm vững kiến thức cơ bản.";
+            document.getElementById('res-message').innerText = msg;
+            playSuccess();
+            recordLessonVisit(8, `Điểm: ${totalCorrect}/${quizData.length}`, true);
+        }
+
+        function reviewQuiz() {
+            isReviewMode = true;
+            document.getElementById('quiz-result').classList.add('hidden');
+            document.getElementById('quiz-area').classList.remove('hidden');
+            currentQIndex = 0;
+            renderQuizQuestion();
+        }
+
+        function resetQuizUI() {
+            document.getElementById('quiz-result').classList.add('hidden');
+            document.getElementById('quiz-area').classList.add('hidden');
+            document.getElementById('quiz-start').classList.remove('hidden');
+            isReviewMode = false;
+            loadLesson(1);
+        }
+
+        // ═══════════════════════════════════════════════════
+        // 📚 HỆ THỐNG LƯU LỊCH SỬ & TIẾN TRÌNH (FIREBASE)
+        // ═══════════════════════════════════════════════════
+        async function recordLessonVisit(lessonId, statusNote, isCompletion) {
+            const entry = {
+                lesson: LESSON_NAMES[lessonId] || ('Bài ' + lessonId),
+                lessonId: lessonId,
+                icon: LESSON_ICONS[lessonId] || '📚',
+                section: statusNote || '',
+                completed: !!isCompletion,
+                time: new Date().toISOString(),
+                score: score
+            };
+            try {
+                if (window.parent && window.parent !== window && window.parent.recordLesson) window.parent.recordLesson(entry.lesson, entry.section, entry.icon);
+            } catch(e) {}
+            if (typeof window.fbRecordLesson === 'function') {
+                try { await window.fbRecordLesson(entry); showSavedIndicator(); } 
+                catch(e) { console.warn('Record lesson error:', e); }
+            }
+        }
+
+        // HÀM KHÔI PHỤC TIẾN TRÌNH TỪ FIRESTORE
+        window.restoreProgress = function(p) {
+            if (!p) return;
+            if (p._score) { score = p._score; const sd = document.getElementById('scoreDisplay'); if (sd) sd.innerText = score; }
+            // Unlock bài học TRƯỚC khi đánh dấu task
+            const savedMax = p._maxUnlocked || 1;
+            if (savedMax > 1) {
+                for (let i = 2; i <= savedMax; i++) unlockLesson(i, true);
+            }
+            const taskIds = ['t1-1','t1-2','t2-1','t2-2','t3-1','t3-2','t4-1','t4-2','t5-1','t5-2','t6-1','t6-2','t7-1','t7-2'];
+            taskIds.forEach(tid => {
+                if (p[tid]) {
+                    const el = document.getElementById(tid);
+                    if (el) {
+                        // Luôn set lại icon — kể cả khi element đang ẩn (lesson-content chưa active)
+                        el.classList.add('done');
+                        const icon = el.querySelector('.task-icon');
+                        if (icon) icon.innerHTML = '<span class="material-icons-round text-3xl">check_circle</span>';
+                    }
+                }
+            });
+            // checkLessonCompletion sau khi TẤT CẢ tasks đã được đánh dấu
+            checkLessonCompletion();
+            window._progressRestored = true;
+            const labDoneParam = new URLSearchParams(location.search).get('labDone');
+            if (labDoneParam && !window._labReturnHandled) {
+                window._labReturnHandled = true;
+                _handleLabReturn(labDoneParam);
+            } else {
+                const resumeLesson = _findResumeLesson();
+                if (resumeLesson !== currentLesson) loadLesson(resumeLesson);
+                showToast('☁️ Đã khôi phục tiến trình của bạn!');
+            }
+        };
+
+        function _findResumeLesson() {
+            const tasks = { 1:['t1-1','t1-2'],2:['t2-1','t2-2'],3:['t3-1','t3-2'],4:['t4-1','t4-2'],5:['t5-1','t5-2'],6:['t6-1','t6-2'],7:['t7-1','t7-2'] };
+            for (let l = 1; l <= Math.min(maxUnlockedLesson, 7); l++) {
+                const allDone = tasks[l].every(t => document.getElementById(t).classList.contains('done'));
+                if (!allDone) return l;
+            }
+            return Math.min(maxUnlockedLesson, 8);
+        }
+
+        function _handleLabReturn(labDoneParam) {
+            if (!labDoneParam) return;
+            window._labDoneParam = null;
+            history.replaceState({}, '', 'lesson.html');
+            const missionToLesson = { kmno4: 5, titration: 6, silver: 7 };
+            const missionLabels = {
+                kmno4: '🟣 KMnO₄ mất màu — Bài 5 hoàn thành!',
+                titration: '💧 Chuẩn độ thành công — Bài 6 hoàn thành!',
+                silver: '✨ Tráng bạc hoàn hảo — Bài 7 hoàn thành!'
+            };
+            const processAfterRestore = () => {
+                checkLabMissions();
+                const labLesson = missionToLesson[labDoneParam];
+                if (missionLabels[labDoneParam]) showToast(missionLabels[labDoneParam]);
+                const resumeLesson = _findResumeLesson();
+                loadLesson(resumeLesson);
+                setTimeout(() => switchTab('theory'), 400);
+            };
+            if (window._progressRestored) {
+                processAfterRestore();
+            } else {
+                let attempts = 0;
+                const interval = setInterval(() => {
+                    if (window._progressRestored || attempts > 50) {
+                        clearInterval(interval);
+                        processAfterRestore();
+                    }
+                    attempts++;
+                }, 100);
+            }
+        }
+
+        if (window._pendingRestore) {
+            window.restoreProgress(window._pendingRestore);
+            window._pendingRestore = null;
+        }
+
+        function showSavedIndicator() {
+            const msg = document.getElementById('progress-saved-msg');
+            if (!msg) return;
+            msg.classList.remove('hidden');
+            clearTimeout(window._savedTimer);
+            window._savedTimer = setTimeout(() => msg.classList.add('hidden'), 3000);
+        }
+    </script>
+</body>
+</html>
