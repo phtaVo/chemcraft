@@ -11,12 +11,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap" rel="stylesheet">
 <!-- Firebase -->
 <script type="module">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js';
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js';
-  import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js';
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+  import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
 
   const firebaseConfig = {
-    apiKey: "AIzaSyDFsIq90QLOIo-zqpaEl1qBLnDftAGaOww",
+    apiKey: "AIzaSyCInWZftP-u5zcCJ5ikJdVYcoR_OwPU9_0",
     authDomain: "chemcraft-e8e6e.firebaseapp.com",
     projectId: "chemcraft-e8e6e",
     storageBucket: "chemcraft-e8e6e.firebasestorage.app",
@@ -1748,7 +1748,7 @@ BẮT BUỘC:
 
         // Gọi Gemini — tối đa token + tự tiếp tục nếu bị cắt giữa chừng
         async function callChatProxy(messages) {
-            const apiKey = 'AIzaSyC-9z_RvWB4qLQ72N0A-jRDkZDS5FV3gj8';
+            const apiKey = 'AIzaSyA-3GWOCVxGEN8NLNY18tqbA9J8Mgm5ygI';
             const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             const lastMsg = messages[messages.length - 1];
             const parts = [];
@@ -2820,6 +2820,10 @@ async function doLogin() {
   var btn = document.getElementById('login-btn');
   btn.disabled = true; btn.textContent = '⏳ Đang đăng nhập...';
   try {
+    if (!window._fbAuth || !window._fbFns) {
+      showAuthErr('login', '❌ Không thể kết nối Firebase. Vui lòng tải lại trang và thử lại.');
+      btn.disabled = false; btn.innerHTML = '🚀 ĐĂNG NHẬP'; return;
+    }
     var { signInWithEmailAndPassword } = window._fbFns;
     await signInWithEmailAndPassword(window._fbAuth, email, pass);
     closeAuth();
@@ -2839,6 +2843,10 @@ async function doRegister() {
   if (pass.length < 6) { showAuthErr('reg', 'Mật khẩu phải có ít nhất 6 ký tự.'); return; }
   var btn = document.getElementById('reg-btn');
   btn.disabled = true; btn.textContent = '⏳ Đang tạo tài khoản...';
+  if (!window._fbAuth || !window._fbFns) {
+    showAuthErr('reg', '❌ Không thể kết nối Firebase. Vui lòng tải lại trang và thử lại.');
+    btn.disabled = false; btn.innerHTML = '⚗️ TẠO TÀI KHOẢN'; return;
+  }
   try {
     var { createUserWithEmailAndPassword, updateProfile } = window._fbFns;
     var cred = await createUserWithEmailAndPassword(window._fbAuth, email, pass);
