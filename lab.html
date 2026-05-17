@@ -566,7 +566,7 @@
             { id: 'SO2', name: 'SO₂ (Khí)', desc: 'Lưu huỳnh Đioxit', type: 'khác', cat: 'voco', color: '#fffde7', op: 0.08, isGas: true },
 
             // ====== CHẤT CHỈ THỊ (xếp chung kệ Vô cơ) ======
-            { id: 'Phenol', name: 'Phenolphtalein', desc: 'Chỉ thị (Hữu cơ)', type: 'chithi', cat: 'huuco', color: '#ffffff', isPaper: true },
+            { id: 'Phenol', name: 'Phenolphtalein', desc: 'Chỉ thị (Hữu cơ)', type: 'chithi', cat: 'huuco', color: '#ffffff', ph: 7, allowedStates: ['liquid'] },
             { id: 'MethylO', name: 'Methyl Orange', desc: 'Chỉ thị Cam', type: 'chithi', cat: 'voco', color: '#ff9800', isPaper: true },
             { id: 'QuyTim', name: 'Giấy Quỳ Tím', desc: 'Hộp que thử', type: 'chithi', cat: 'voco', color: '#9d00ff', isPaper: true },
             { id: 'pHPaper', name: 'Giấy pH', desc: 'Cuộn giấy pH', type: 'chithi', cat: 'voco', color: '#ffeb3b', isPaper: true },
@@ -678,6 +678,22 @@
         let globalIsHeating = false;
         let _3dBoilTimer = 0;
         let _3dBoilBubbles = [];
+        let _3dReactionBubbling = false;
+        // === ANIMATION MÀU DẦN DẦN TRONG 3D CINEMATIC ===
+        let _3dColorAnim = {
+            active: false,
+            startColor: new THREE.Color(0xdddddd),
+            endColor: new THREE.Color(0xdddddd),
+            startOpacity: 0.7,
+            endOpacity: 0.7,
+            progress: 0,
+            duration: 2.5,  // giây
+            delay: 0.6,     // chờ trước khi bắt đầu đổi màu
+            timer: 0
+        };
+        // Boiling ramp-up: tăng dần intensity khi phản ứng bắt đầu
+        let _3dBoilIntensity = 0; // 0→1 ramp
+        let _3dBoilRipples = []; // vòng gợn mặt nước
 
         // ==========================================
         // 1.5 HỆ THỐNG CANVAS 2D SANDBOX REAL-TIME
@@ -894,17 +910,22 @@
                 if (has('HCl') && has('NH3g')) { if(Math.random() < 0.5) this.spawnEffect('smoke', '#ffffff'); }
 
                 // === 2D CHUẨN ĐỘ HCl + NaOH + Phenolphthalein ===
-                // Khi có đủ HCl + NaOH + Phenol và NaOH đã đủ/dư → gợn hồng từ trên xuống
+                // Khi có đủ HCl + NaOH + Phenol và NaOH đã đủ/dư → màu nước chuyển hồng nhạt
                 if (has('HCl') && has('NaOH') && has('Phenol')) {
                     let aC = 0, bC = 0;
                     beakerState.forEach(it => { if (it.data.type === 'axit') aC += it.amount; if (it.data.type === 'bazo') bC += it.amount; });
                     if (bC >= aC && aC > 0) {
-                        // Hồng nhạt bền vững — sủi nhẹ + giọt rơi
-                        if (Math.random() < 0.35) this.spawnEffect('drop', '#ffb6d0');
-                        if (Math.random() < 0.15) this.spawnEffect('bubble', '#ffd6e6');
+                        // NaOH đủ/dư → dung dịch hồng nhạt bền vững
+                        this.targetColor = { r: 255, g: 182, b: 208, a: 0.72 };
+                        if (Math.random() < 0.25) this.spawnEffect('drop', '#ffb6d0');
+                        if (Math.random() < 0.10) this.spawnEffect('bubble', '#ffd6e6');
                     } else if (aC > 0 && bC > 0) {
-                        // Đang nhỏ NaOH, axit còn dư: thoáng có vệt hồng nhạt rồi mất
-                        if (Math.random() < 0.12) this.spawnEffect('drop', '#ffe4ee');
+                        // Axit còn dư → không màu (Phenolphtalein không đổi màu trong môi trường axit)
+                        this.targetColor = { r: 240, g: 248, b: 255, a: 0.22 };
+                        if (Math.random() < 0.10) this.spawnEffect('drop', '#ffe4ee');
+                    } else if (bC === 0 && aC > 0) {
+                        // Chỉ có HCl + Phenol, chưa thêm NaOH → không màu
+                        this.targetColor = { r: 240, g: 248, b: 255, a: 0.22 };
                     }
                 }
                 if (has('H2S') && has('PbNO32')) { if(Math.random() < 0.25) this.spawnEffect('precipitate', '#111111'); }
@@ -1205,15 +1226,17 @@
             cameraReact.position.set(0, 2, 6);
             cameraReact.lookAt(0, 0, 0);
 
-            sceneReact.add(new THREE.AmbientLight(0xffffff, 0.5));
-            const reactSpot = new THREE.SpotLight(0xffffff, 5);
-            reactSpot.position.set(0, 8, 4);
-            reactSpot.angle = Math.PI/4;
+            sceneReact.add(new THREE.AmbientLight(0x8090b0, 0.35));
+            const reactSpot = new THREE.SpotLight(0xfff8f0, 6);
+            reactSpot.position.set(2, 10, 4); reactSpot.angle = Math.PI/5; reactSpot.penumbra = 0.5;
             sceneReact.add(reactSpot);
-            
-            const reactBack = new THREE.PointLight(0x00e5ff, 2);
-            reactBack.position.set(0, 2, -4);
-            sceneReact.add(reactBack);
+            const fillLight = new THREE.PointLight(0x4488ff, 2.5, 20);
+            fillLight.position.set(-5, 2, 3); sceneReact.add(fillLight);
+            const reactBack = new THREE.PointLight(0x00e5ff, 2.5, 18);
+            reactBack.position.set(0, 2, -5); sceneReact.add(reactBack);
+            const bottomLight = new THREE.PointLight(0x00ffcc, 1.0, 10);
+            bottomLight.position.set(0, -3, 0); sceneReact.add(bottomLight);
+            sceneReact.fog = new THREE.FogExp2(0x050810, 0.045);
 
             buildReactionBeaker();
 
@@ -1626,7 +1649,7 @@
                     draggedChemId = item.getAttribute('data-id');
                     const chem = chemDB.find(c => c.id === draggedChemId);
                     const ghost = document.getElementById('drag-ghost');
-                    ghost.innerText = chem.id === 'Phenol' ? '🥃' : (chem.isPaper ? '📄' : (chem.solid ? '🧂' : '🧪'));
+                    ghost.innerText = chem.id === 'Phenol' ? '💊' : (chem.isPaper ? '📄' : (chem.solid ? '🧂' : '🧪'));
                     ghost.style.display = 'block'; ghost.style.left = e.pageX - 20 + 'px'; ghost.style.top = e.pageY - 20 + 'px';
                 }
             });
@@ -1702,7 +1725,7 @@
                 btn.setAttribute('data-id', chem.id);
                 const states = getAllowedStates(chem);
                 const badge = states.length > 1 ? `<span class="state-badge">${states.map(stateLabel).join(' / ')}</span>` : `<span class="state-badge">${stateLabel(states[0])}</span>`;
-                btn.innerHTML = `${chem.name}<span>${chem.id === 'Phenol' ? '1 cốc C₂₀H₁₄O₄' : (chem.isPaper ? '1 Que/Miếng' : chem.desc)}</span>${badge}`;
+                btn.innerHTML = `${chem.name}<span>${chem.isPaper ? '1 Que/Miếng' : chem.desc}</span>${badge}`;
                 btn.onclick = () => onChemButtonClick(chem.id);
                 container.appendChild(btn);
             });
@@ -1794,11 +1817,10 @@
 
             // Hiệu ứng theo trạng thái
             if (chemId === 'Phenol') {
-                Canvas2D.startPhenolPour();
-                // Tăng số giọt hồng nhạt từ cốc rót xuống
-                for (let i = 0; i < 10; i++) {
-                    Canvas2D.particles.push({ type: 'drop', x: Canvas2D.width/2 + (Math.random()-0.5)*30, y: 90 + Math.random()*40, vy: 4 + Math.random()*4, vx: (Math.random()-0.5)*1.5, color: Canvas2D.hexToRgb('#ff8fb3'), life: 1 });
-                }
+                // Phenolphtalein là dung dịch lỏng — rót vào rồi đổi màu toàn dung dịch ngay
+                Canvas2D.spawnDrops('#fce4ec', false, false); // giọt hồng rất nhạt rơi xuống
+                // Kiểm tra pH ngay lập tức và cập nhật màu
+                update2DUI();
             } else {
                 Canvas2D.spawnDrops(chem.color || '#ffffff', isSolidState, isGasState);
             }
@@ -1819,7 +1841,7 @@
         function update2DUI() {
             const listDiv = document.getElementById('status-list-content');
             if (beakerState.length === 0) listDiv.innerHTML = '<div style="text-align:center; color:#777; margin-top:40px; font-style:italic; font-size: 1.2rem;">Cốc đang rỗng</div>';
-            else listDiv.innerHTML = beakerState.map(item => `<div class="status-item"><span><b style="color:${item.data.color === '#ffffff' ? '#cbd5e1' : item.data.color}; font-size:1.2rem;">${item.data.name}</b></span><span style="color:#00e5ff; font-weight:bold;">${item.amount} ${item.id === 'Phenol' ? 'cốc' : (item.data.isPaper ? (item.id==='pHPaper'?'miếng':'que') : 'mL')}</span></div>`).join('');
+            else listDiv.innerHTML = beakerState.map(item => `<div class="status-item"><span><b style="color:${item.data.color === '#ffffff' ? '#cbd5e1' : item.data.color}; font-size:1.2rem;">${item.data.name}</b></span><span style="color:#00e5ff; font-weight:bold;">${item.amount} ${item.data.isPaper ? (item.id==='pHPaper'?'miếng':'que') : 'mL'}</span></div>`).join('');
             document.getElementById('total-volume-txt').innerText = `${currentTotalVolume} / 100 mL`;
             
             if (beakerState.length > 0) {
@@ -1842,7 +1864,18 @@
                 
                 let acidCount = 0; let baseCount = 0;
                 beakerState.forEach(item => { if(item.data.type === 'axit') acidCount += item.amount; if(item.data.type === 'bazo') baseCount += item.amount; });
-                 if(beakerState.some(i=>i.id==='Phenol') && baseCount > acidCount) targetC = {r: 255, g: 182, b: 208, a: 0.55};
+                 if(beakerState.some(i=>i.id==='Phenol')) {
+                    if (baseCount > acidCount) {
+                        // Bazơ > axit → HỒNG NHẠT ngay lập tức
+                        targetC = {r: 255, g: 182, b: 208, a: 0.72};
+                        // Flash màu hồng ngay (không đợi lerp chậm)
+                        Canvas2D.currentColor = {r: 255, g: 182, b: 208, a: 0.72};
+                    } else {
+                        // Axit >= bazơ → KHÔNG ĐỔI MÀU (trong suốt)
+                        // Phenolphtalein không màu trong môi trường axit/trung tính
+                        // Giữ màu hiện tại của dung dịch (không ảnh hưởng)
+                    }
+                }
                 if(beakerState.some(i=>i.id==='MethylO') && acidCount > baseCount) targetC = {r: 255, g: 23, b: 68, a: 0.8}; 
                 if(beakerState.some(i=>i.id==='Cu') && beakerState.some(i=>i.id==='HNO3')) targetC = {r: 0, g: 191, b: 255, a: 0.7};
                 
@@ -2250,10 +2283,18 @@
             _swayTimer = 1.0;
             // Reset boiling bubble tracking
             _3dBoilTimer = 0;
+            _3dReactionBubbling = false;
             if (_3dBoilBubbles) {
                 _3dBoilBubbles.forEach(b => { sceneReact.remove(b); if(b.geometry) b.geometry.dispose(); if(b.material) b.material.dispose(); });
             }
             _3dBoilBubbles = [];
+            // Reset color anim + ripples
+            _3dBoilIntensity = 0;
+            _3dColorAnim.active = false; _3dColorAnim.timer = 0; _3dColorAnim.progress = 0;
+            if (_3dBoilRipples && _3dBoilRipples.length > 0) {
+                _3dBoilRipples.forEach(r => { if(sceneReact) sceneReact.remove(r); if(r.geometry) r.geometry.dispose(); if(r.material) r.material.dispose(); });
+                _3dBoilRipples = [];
+            }
 
             // Reset camera cinematic về vị trí ban đầu an toàn
             cameraReact.position.set(0, 2, 7);
@@ -2271,12 +2312,28 @@
                 const targetH = Math.max(0.05, (currentTotalVolume / MAX_VOLUME)); 
                 reactionBeakerLiquid.scale.y = targetH;
                 
+                // Reset color animation state
+                _3dColorAnim.active = false;
+                _3dColorAnim.progress = 0;
+                _3dColorAnim.timer = 0;
+                _3dBoilIntensity = 0;
+                _3dBoilRipples = [];
+
                 let baseColor = 0xdddddd;
                 if(beakerState.some(i=>i.id==='CuSO4')) baseColor = 0x00bfff;
                 else if(beakerState.some(i=>i.id==='FeCl3')) baseColor = 0xd4a373;
                 else if(beakerState.some(i=>i.id==='FeSO4')) baseColor = 0xa8e6cf;
-                else if(beakerState.some(i=>i.id==='KMnO4')) baseColor = 0x4a148c;
+                else if(beakerState.some(i=>i.id==='KMnO4')) baseColor = 0x4a148c; // TÍM ĐẬM ban đầu
+                else if(beakerState.some(i=>i.id==='Br2')) baseColor = 0x8d4a2a; // NÂU ĐỎ ban đầu
                 else if(beakerState.some(i=>i.id==='MethylO')) baseColor = 0xff9800;
+
+                // Phenolphtalein: đổi màu dung dịch theo pH ngay trong 3D
+                if (beakerState.some(i=>i.id==='Phenol')) {
+                    let aC3d = 0, bC3d = 0;
+                    beakerState.forEach(it => { if(it.data.type==='axit') aC3d+=it.amount; if(it.data.type==='bazo') bC3d+=it.amount; });
+                    if (bC3d > aC3d) baseColor = 0xffb6d0; // hồng nhạt
+                    else baseColor = 0xf0f8ff; // không màu (trong suốt)
+                }
 
                 reactionBeakerLiquid.material.color.setHex(baseColor);
                 reactionParticles.forEach(p => { sceneReact.remove(p.mesh); reactionBeakerLiquid.remove(p.mesh); if (p.mesh.geometry) p.mesh.geometry.dispose(); if (p.mesh.material) p.mesh.material.dispose(); });
@@ -2297,9 +2354,20 @@
                 if (titrationState._dropMat) { titrationState._dropMat.dispose(); titrationState._dropMat = null; }
                 if (titrationState._swirlGeo) { titrationState._swirlGeo.dispose(); titrationState._swirlGeo = null; }
                 titrationState.active = false; titrationState.progress = 0; titrationState.dropTimer = 0; titrationState.endpointReached = false;
+                if (titrationState._endpointLight) { sceneReact.remove(titrationState._endpointLight); titrationState._endpointLight = null; }
+                _3dReactionBubbling = false;
                 
 
                 if (globalIsHeating) { burnerFlameCore.visible = true; burnerFlameGlow.visible = true; } else { burnerFlameCore.visible = false; burnerFlameGlow.visible = false; }
+
+                // Tint nền phù hợp với từng loại phản ứng
+                const resBg = evaluateReaction();
+                let bgColor = 0x050810;
+                if (resBg.type === 'titration') bgColor = 0x08030e;
+                else if (resBg.type === 'combustion' || resBg.type === 'glow_sparks') bgColor = 0x140808;
+                else if (resBg.type === 'silver_mirror') bgColor = 0x060810;
+                else if (resBg.type === 'precipitate') bgColor = 0x050b10;
+                sceneReact.background = new THREE.Color(bgColor);
 
                 if (res.hasLitmus) {
                     litmusStrip3D.visible = true; litmusStrip3D.position.set(0, 4.0, 0); litmusStrip3D.material.color.setHex(0x9d00ff); 
@@ -2314,6 +2382,18 @@
                     if(globalIsHeating && beakerState.some(i=>i.id==='Fe') && beakerState.some(i=>i.id==='S')) {
                          reactionBeakerLiquid.material.color.setHex(0x333333); 
                     }
+                    // Phenolphtalein đổi màu dung dịch trong 3D
+                    if (beakerState.some(i=>i.id==='Phenol')) {
+                        let aC3d2 = 0, bC3d2 = 0;
+                        beakerState.forEach(it => { if(it.data.type==='axit') aC3d2+=it.amount; if(it.data.type==='bazo') bC3d2+=it.amount; });
+                        if (bC3d2 > aC3d2) {
+                            reactionBeakerLiquid.material.color.set('#ffb6d0');
+                            reactionBeakerLiquid.material.opacity = 0.70;
+                        } else {
+                            reactionBeakerLiquid.material.color.set('#f0f8ff');
+                            reactionBeakerLiquid.material.opacity = 0.30;
+                        }
+                    }
                     // Màu dung dịch khi dẫn khí vào
                     if(beakerState.some(i=>i.id==='C2H4') && beakerState.some(i=>i.id==='KMnO4')) reactionBeakerLiquid.material.color.set('#e8d0f0');
                     if(beakerState.some(i=>i.id==='C2H2') && beakerState.some(i=>i.id==='KMnO4')) reactionBeakerLiquid.material.color.set('#e8d0f0');
@@ -2321,6 +2401,65 @@
                     if(beakerState.some(i=>i.id==='SO2') && beakerState.some(i=>i.id==='Br2')) reactionBeakerLiquid.material.color.set('#fefef0');
                     if(beakerState.some(i=>i.id==='C2H4') && beakerState.some(i=>i.id==='Br2')) reactionBeakerLiquid.material.color.set('#fefef0');
                     if(beakerState.some(i=>i.id==='C2H2') && beakerState.some(i=>i.id==='AgNO3')) reactionBeakerLiquid.material.color.set('#f5f0c0');
+
+                    // ============================================================
+                    // === SETUP ANIMATION MÀU DẦN DẦN (lerp) CHO CÁC PHẢN ỨNG ===
+                    // ============================================================
+                    {
+                        const startC = reactionBeakerLiquid.material.color.clone();
+                        const startOp = reactionBeakerLiquid.material.opacity;
+                        let endHex = null, endOp = startOp, dur = 2.0, del = 0.5;
+
+                        // KMnO4 mất màu tím: TÍM ĐẬM → gần trong suốt (nhạt)
+                        const hasKMnO4 = beakerState.some(i=>i.id==='KMnO4');
+                        const hasBr2 = beakerState.some(i=>i.id==='Br2');
+                        const hasReducer = beakerState.some(i=>['C2H4','C2H2','SO2','FeSO4','HCl','H2SO4'].includes(i.id));
+
+                        if (hasKMnO4 && hasReducer) {
+                            // Bắt đầu với màu tím đậm rồi fade dần
+                            reactionBeakerLiquid.material.color.setHex(0x6a1b9a); // tím đậm
+                            reactionBeakerLiquid.material.opacity = 0.85;
+                            endHex = 0xf3e5f5; endOp = 0.25; dur = 3.0; del = 0.8;
+                        } else if (hasKMnO4 && (beakerState.some(i=>i.id==='HCl') || beakerState.some(i=>i.id==='H2SO4'))) {
+                            reactionBeakerLiquid.material.color.setHex(0x6a1b9a);
+                            reactionBeakerLiquid.material.opacity = 0.85;
+                            endHex = 0xf0ffc8; endOp = 0.5; dur = 2.5; del = 0.7;
+                        } else if (hasBr2 && hasReducer) {
+                            // Nâu đỏ → gần trong suốt
+                            reactionBeakerLiquid.material.color.setHex(0x8d4a2a);
+                            reactionBeakerLiquid.material.opacity = 0.82;
+                            endHex = 0xfefef0; endOp = 0.18; dur = 2.8; del = 0.6;
+                        } else if (res.type === 'color_change' && !hasKMnO4 && !hasBr2) {
+                            // Generic color_change: animate từ màu hiện tại → màu kết quả
+                            endHex = new THREE.Color(res.color).getHex();
+                            endOp = 0.7; dur = 1.8; del = 0.4;
+                        } else if (beakerState.some(i=>i.id==='Phenol')) {
+                            let aC3d3 = 0, bC3d3 = 0;
+                            beakerState.forEach(it => { if(it.data.type==='axit') aC3d3+=it.amount; if(it.data.type==='bazo') bC3d3+=it.amount; });
+                            if (bC3d3 > aC3d3) {
+                                reactionBeakerLiquid.material.color.set('#f0f8ff'); // trong suốt trước
+                                reactionBeakerLiquid.material.opacity = 0.30;
+                                endHex = 0xffb6d0; endOp = 0.70; dur = 2.2; del = 0.5;
+                            }
+                        }
+
+                        if (endHex !== null) {
+                            _3dColorAnim.startColor = reactionBeakerLiquid.material.color.clone();
+                            _3dColorAnim.endColor = new THREE.Color(endHex);
+                            _3dColorAnim.startOpacity = reactionBeakerLiquid.material.opacity;
+                            _3dColorAnim.endOpacity = endOp;
+                            _3dColorAnim.duration = dur;
+                            _3dColorAnim.delay = del;
+                            _3dColorAnim.progress = 0;
+                            _3dColorAnim.timer = 0;
+                            _3dColorAnim.active = true;
+                        }
+                    }
+
+                    // Kích hoạt boiling ramp-up (tăng dần intensity từ 0)
+                    if (globalIsHeating || _3dReactionBubbling) {
+                        _3dBoilIntensity = 0; // sẽ ramp lên trong animate loop
+                    }
 
                     // === KÍCH HOẠT HIỆU ỨNG TRÁNG GƯƠNG BẠC ===
                     if (res.type === 'silver_mirror') {
@@ -2345,6 +2484,8 @@
                             reactionBeakerLiquid.add(sp); reactionParticles.push({ mesh: sp });
                         }
                     }
+                    // Flag bọt sôi phản ứng (không phụ thuộc heating)
+                    _3dReactionBubbling = (res.type === 'bubble' || res.type === 'combustion' || res.type === 'glow_sparks');
                     if (res.type === 'precipitate' || res.type === 'bubble' || res.type === 'combustion' || res.type === 'glow_sparks') {
                         if (res.type === 'bubble' || res.type === 'combustion' || res.type === 'glow_sparks') SoundEngine.startBubbles();
 
@@ -2706,6 +2847,9 @@
             // Xoá bọt sôi 3D
             if (_3dBoilBubbles) { _3dBoilBubbles.forEach(b => { sceneReact.remove(b); if(b.geometry) b.geometry.dispose(); if(b.material) b.material.dispose(); }); _3dBoilBubbles = []; }
             _3dBoilTimer = 0;
+            _3dBoilIntensity = 0;
+            _3dColorAnim.active = false; _3dColorAnim.timer = 0; _3dColorAnim.progress = 0;
+            if (_3dBoilRipples) { _3dBoilRipples.forEach(r => { sceneReact.remove(r); if(r.geometry) r.geometry.dispose(); if(r.material) r.material.dispose(); }); _3dBoilRipples = []; }
             reset2DBeaker(); 
             enterLab2D(); 
         }
@@ -2882,6 +3026,67 @@
                     reactionBeakerLiquid.rotation.z = _swayCurrentZ;
                 }
 
+                // === ANIMATE MÀU DẦN DẦN (lerp) ===
+                if (_3dColorAnim.active && reactionBeakerLiquid) {
+                    _3dColorAnim.timer += delta;
+                    if (_3dColorAnim.timer > _3dColorAnim.delay) {
+                        const elapsed = _3dColorAnim.timer - _3dColorAnim.delay;
+                        _3dColorAnim.progress = Math.min(1, elapsed / _3dColorAnim.duration);
+                        // Ease in-out
+                        const t = _3dColorAnim.progress;
+                        const ep = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+                        const cur = _3dColorAnim.startColor.clone().lerp(_3dColorAnim.endColor, ep);
+                        reactionBeakerLiquid.material.color.copy(cur);
+                        reactionBeakerLiquid.material.opacity = _3dColorAnim.startOpacity + (_3dColorAnim.endOpacity - _3dColorAnim.startOpacity) * ep;
+                        if (_3dColorAnim.progress >= 1) _3dColorAnim.active = false;
+                    }
+                }
+
+                // === BOILING RAMP-UP: tăng dần intensity khi phản ứng mới bắt đầu ===
+                if ((globalIsHeating || _3dReactionBubbling) && reactionBeakerLiquid && reactionBeakerLiquid.scale.y > 0.02) {
+                    _3dBoilIntensity = Math.min(1, _3dBoilIntensity + delta * 0.6); // ramp lên trong ~1.7s
+                } else {
+                    _3dBoilIntensity = Math.max(0, _3dBoilIntensity - delta * 2.0);
+                }
+
+                // === RIPPLE SURFACE khi sôi ===
+                if (_3dBoilIntensity > 0.1 && reactionBeakerLiquid && reactionBeakerLiquid.scale.y > 0.02) {
+                    // Sinh ripple mới mỗi ~0.35s
+                    if (!_3dColorAnim._rippleTimer) _3dColorAnim._rippleTimer = 0;
+                    _3dColorAnim._rippleTimer -= delta;
+                    if (_3dColorAnim._rippleTimer <= 0) {
+                        _3dColorAnim._rippleTimer = 0.28 + Math.random() * 0.2;
+                        const waterTopY = (reactionBeakerLiquid.scale.y * 3.5) - 1.98;
+                        const rippleGeo = new THREE.RingGeometry(0.04, 0.12, 20);
+                        const rippleMat = new THREE.MeshBasicMaterial({
+                            color: reactionBeakerLiquid.material.color,
+                            transparent: true, opacity: 0.55 * _3dBoilIntensity,
+                            side: THREE.DoubleSide, depthWrite: false
+                        });
+                        const ripple = new THREE.Mesh(rippleGeo, rippleMat);
+                        ripple.rotation.x = -Math.PI / 2;
+                        const rx = (Math.random() - 0.5) * 1.8;
+                        const rz = (Math.random() - 0.5) * 1.8;
+                        ripple.position.set(rx, waterTopY + 0.01, rz);
+                        ripple.userData = { life: 1.0, spd: 1.8 + Math.random() * 1.0 };
+                        sceneReact.add(ripple);
+                        _3dBoilRipples.push(ripple);
+                    }
+                }
+                // Animate và dọn ripples
+                for (let ri = _3dBoilRipples.length - 1; ri >= 0; ri--) {
+                    const rp = _3dBoilRipples[ri];
+                    rp.userData.life -= delta * 1.4;
+                    rp.scale.x += delta * rp.userData.spd;
+                    rp.scale.z += delta * rp.userData.spd;
+                    rp.material.opacity = Math.max(0, rp.userData.life * 0.5 * _3dBoilIntensity);
+                    if (rp.userData.life <= 0) {
+                        sceneReact.remove(rp);
+                        rp.geometry.dispose(); rp.material.dispose();
+                        _3dBoilRipples.splice(ri, 1);
+                    }
+                }
+
                 // Animate lớp bạc tráng gương
                 if (silverMirrorState.active && silverMirrorCoat) {
                     silverMirrorState.progress = Math.min(1, silverMirrorState.progress + delta * 0.45);
@@ -2985,56 +3190,70 @@
 
                     if (!titrationState.endpointReached && tp >= 0.78) {
                         titrationState.endpointReached = true;
-                        // Nhấp nháy nhẹ "ĐIỂM DỪNG" — dùng âm thanh thành công
                         try { SoundEngine.playSuccess(); } catch(e){}
-                        // Ghi nhận hoàn thành nhiệm vụ chuẩn độ về lesson.html
                         try { LessonMission.checkReaction(evaluateReaction()); } catch(e){ console.warn(e); }
+                        // Thêm ánh sáng hồng rực khi đạt điểm tương đương
+                        const pinkLight = new THREE.PointLight(0xff4499, 3.5, 14);
+                        pinkLight.position.set(0, 1, 2); sceneReact.add(pinkLight);
+                        titrationState._endpointLight = pinkLight;
+                    }
+                    // Nhấp nháy ánh sáng hồng sau endpoint
+                    if (titrationState.endpointReached && titrationState._endpointLight) {
+                        titrationState._endpointLight.intensity = 2.5 + Math.sin(reactionMixer * 4) * 1.5;
                     }
                 }
 
                 if (burnerFlameCore && burnerFlameCore.visible) { burnerFlameCore.scale.set(1 + Math.random()*0.2, 1 + Math.random()*0.3, 1 + Math.random()*0.2); if (burnerFlameGlow) burnerFlameGlow.intensity = 2 + Math.random(); }
 
                 // === SÔI DỐI TRONG 3D khi đang đun nóng có dung dịch ===
-                if (globalIsHeating && reactionBeakerLiquid && reactionBeakerLiquid.scale.y > 0.02) {
+                if ((globalIsHeating || _3dReactionBubbling) && reactionBeakerLiquid && reactionBeakerLiquid.scale.y > 0.02) {
                     _3dBoilTimer = (_3dBoilTimer || 0) + delta;
-                    if (_3dBoilTimer > 0.055) {
+                    // Số bọt spawn tỉ lệ với intensity (ramp-up): từ 1 bọt nhỏ → 4 bọt to
+                    const spawnInterval = Math.max(0.025, 0.08 - _3dBoilIntensity * 0.055);
+                    if (_3dBoilTimer > spawnInterval) {
                         _3dBoilTimer = 0;
-                        // Spawn bubble từ đáy cốc bay lên bề mặt
                         const waterTopY = (reactionBeakerLiquid.scale.y * 3.5) - 1.95;
-                        const startY = -1.85 + Math.random() * 0.3;
-                        const bGeo = new THREE.SphereGeometry(0.04 + Math.random()*0.04, 6, 6);
-                        const bMat = new THREE.MeshPhysicalMaterial({
-                            color: 0xffffff, transmission: 0.75, transparent: true,
-                            opacity: 0.55, roughness: 0.05, ior: 1.33
-                        });
-                        const bMesh = new THREE.Mesh(bGeo, bMat);
-                        const r = Math.random() * 1.1;
-                        const th = Math.random() * Math.PI * 2;
-                        bMesh.position.set(r * Math.cos(th), startY, r * Math.sin(th));
-                        bMesh.userData = {
-                            type: 'boilBubble',
-                            vy: 0.018 + Math.random() * 0.022,
-                            vx: (Math.random()-0.5) * 0.006,
-                            vz: (Math.random()-0.5) * 0.006,
-                            maxY: waterTopY
-                        };
-                        sceneReact.add(bMesh);
-                        _3dBoilBubbles = _3dBoilBubbles || [];
-                        _3dBoilBubbles.push(bMesh);
-                        // Giới hạn tối đa 30 bọt để không nặng
-                        if (_3dBoilBubbles.length > 30) {
+                        const SPAWN_COUNT = Math.max(1, Math.round(1 + _3dBoilIntensity * 3)); // 1→4 bọt
+                        for (let bi = 0; bi < SPAWN_COUNT; bi++) {
+                            const bSize = (0.04 + _3dBoilIntensity * 0.07) + Math.random() * 0.06; // nhỏ lúc đầu, to dần
+                            const bGeo = new THREE.SphereGeometry(bSize, 8, 8);
+                            const bMat = new THREE.MeshStandardMaterial({
+                                color: 0xffffff, transparent: true,
+                                opacity: (0.45 + _3dBoilIntensity * 0.3) + Math.random() * 0.2,
+                                roughness: 0.0, metalness: 0.0,
+                                emissive: 0xaaddff, emissiveIntensity: 0.15
+                            });
+                            const bMesh = new THREE.Mesh(bGeo, bMat);
+                            const r = Math.random() * 1.25;
+                            const th = Math.random() * Math.PI * 2;
+                            const startY = -1.88 + Math.random() * 0.35;
+                            bMesh.position.set(r * Math.cos(th), startY, r * Math.sin(th));
+                            bMesh.userData = {
+                                type: 'boilBubble',
+                                vy: (0.020 + _3dBoilIntensity * 0.025) + Math.random() * 0.025,
+                                vx: (Math.random()-0.5) * 0.012,
+                                vz: (Math.random()-0.5) * 0.012,
+                                wobble: Math.random() * Math.PI * 2,
+                                maxY: waterTopY
+                            };
+                            sceneReact.add(bMesh);
+                            _3dBoilBubbles = _3dBoilBubbles || [];
+                            _3dBoilBubbles.push(bMesh);
+                        }
+                        // Giới hạn tối đa 100 bọt
+                        while (_3dBoilBubbles.length > 100) {
                             const old = _3dBoilBubbles.shift();
                             sceneReact.remove(old);
                             if (old.geometry) old.geometry.dispose();
                             if (old.material) old.material.dispose();
                         }
                     }
-                    // Cập nhật vị trí các bọt đang bay
+                    // Cập nhật vị trí — thêm lắc ngang nhẹ
                     _3dBoilBubbles = (_3dBoilBubbles || []).filter(b => {
-                        b.position.x += b.userData.vx;
+                        b.userData.wobble += delta * 8;
+                        b.position.x += b.userData.vx + Math.sin(b.userData.wobble) * 0.003;
                         b.position.y += b.userData.vy;
-                        b.position.z += b.userData.vz;
-                        // Khi bọt chạm bề mặt → xoá
+                        b.position.z += b.userData.vz + Math.cos(b.userData.wobble) * 0.003;
                         if (b.position.y >= b.userData.maxY) {
                             sceneReact.remove(b);
                             if (b.geometry) b.geometry.dispose();
@@ -3043,8 +3262,7 @@
                         }
                         return true;
                     });
-                } else if (!globalIsHeating && _3dBoilBubbles && _3dBoilBubbles.length > 0) {
-                    // Tắt lửa → xoá hết bọt sôi
+                } else if (!globalIsHeating && !_3dReactionBubbling && _3dBoilBubbles && _3dBoilBubbles.length > 0) {
                     _3dBoilBubbles.forEach(b => {
                         sceneReact.remove(b);
                         if (b.geometry) b.geometry.dispose();
@@ -3053,17 +3271,57 @@
                     _3dBoilBubbles = [];
                 }
 
-                // Camera cinematic — dùng biến trung gian để tránh NaN
-                const _camAngle = reactionMixer * 0.5;
-                const _camX = Math.sin(_camAngle) * 7;
-                const _camZ = Math.cos(_camAngle) * 7;
-                // Kiểm tra NaN trước khi gán
-                if (isFinite(_camX) && isFinite(_camZ)) {
-                    cameraReact.position.x = _camX;
-                    cameraReact.position.z = _camZ;
+                // =============================================
+                // Camera cinematic NÂNG CẤP — nhiều góc quay
+                // =============================================
+                {
+                    const t = reactionMixer;
+                    const shotDur = 3.5;
+                    const shot = Math.floor(t / shotDur) % 6;
+                    const tLocal = (t % shotDur) / shotDur;
+                    const ease = x => x < 0.5 ? 2*x*x : 1-Math.pow(-2*x+2,2)/2;
+                    const ep = ease(Math.min(1, tLocal * 2.5));
+                    let camX, camY, camZ, lookY;
+                    if (shot === 0) {
+                        const ang = t * 0.45;
+                        const radius = 8 - ep * 2.5;
+                        camX = Math.sin(ang) * radius; camZ = Math.cos(ang) * radius;
+                        camY = 2.5 + ep * 0.5; lookY = 0.5;
+                    } else if (shot === 1) {
+                        const ang = t * 0.3 + 1.2;
+                        camX = Math.sin(ang) * 5; camZ = Math.cos(ang) * 5;
+                        camY = 5.5 - ep * 1.5; lookY = -0.5 + ep * 0.8;
+                    } else if (shot === 2) {
+                        const ang = t * 0.6 + 2.5;
+                        const radius = 3.2 + Math.sin(t * 0.8) * 0.3;
+                        camX = Math.sin(ang) * radius; camZ = Math.cos(ang) * radius;
+                        camY = 1.2 + Math.sin(t * 0.5) * 0.4; lookY = 0.0;
+                    } else if (shot === 3) {
+                        const ang = t * 0.35 + 4.1;
+                        camX = Math.sin(ang) * 6; camZ = Math.cos(ang) * 6;
+                        camY = -0.5 + ep * 1.0; lookY = 1.5;
+                    } else if (shot === 4) {
+                        camX = (ep - 0.5) * 10; camZ = 6 - ep * 1.5;
+                        camY = 2.0 + Math.sin(t * 0.7) * 0.6; lookY = 0.8;
+                    } else {
+                        const ang = t * 0.55 + 0.8;
+                        const radius = 4 + ep * 4.5;
+                        camX = Math.sin(ang) * radius; camZ = Math.cos(ang) * radius;
+                        camY = 1.8 + ep * 2.2; lookY = 0.3;
+                    }
+                    // Rung nhẹ kiểu handheld
+                    const sk = 0.04;
+                    camX += Math.sin(t * 7.3) * sk; camY += Math.cos(t * 5.7) * sk * 0.5; camZ += Math.sin(t * 6.1 + 1) * sk;
+                    if (isFinite(camX) && isFinite(camY) && isFinite(camZ)) cameraReact.position.set(camX, camY, camZ);
+                    cameraReact.lookAt(0, isFinite(lookY) ? lookY : 1, 0);
+                    // Đèn nền thay đổi màu theo thời gian tạo mood
+                    sceneReact.children.forEach(obj => {
+                        if (obj.isPointLight && obj.position.z < 0) {
+                            obj.color.setHSL((t * 0.08) % 1, 0.7, 0.5);
+                            obj.intensity = 1.5 + Math.sin(t * 1.2) * 0.8;
+                        }
+                    });
                 }
-                // lookAt an toàn — không nhận undefined
-                cameraReact.lookAt(0, 1, 0);
 
 
                 if (isLitmusDipping && litmusStrip3D.visible) {
