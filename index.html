@@ -179,14 +179,6 @@ body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--t
 .pt-filt{font-size:0.78rem;font-weight:800;padding:7px 13px;border-radius:6px;border:2px solid transparent;cursor:pointer;transition:all 0.12s;box-shadow:2px 2px 0 rgba(0,0,0,0.12);}
 .pt-filt:hover,.pt-filt.active{border-color:var(--ink);transform:translate(1px,1px);}
 /* Group + Period label wrapper */
-.pt-outer{display:flex;flex-direction:column;gap:0;}
-.pt-group-row{display:grid;grid-template-columns:auto repeat(18,minmax(0,1fr));gap:3px;margin-bottom:3px;}
-.pt-group-lbl{font-size:clamp(0.2rem,0.65vw,0.58rem);font-weight:900;color:#5C6BC0;text-align:center;display:flex;align-items:center;justify-content:center;background:rgba(92,107,192,0.09);border:1.5px solid rgba(92,107,192,0.22);border-radius:3px;aspect-ratio:1;}
-.pt-body{display:flex;gap:3px;}
-.pt-period-col{display:flex;flex-direction:column;gap:3px;}
-.pt-period-lbl{font-size:clamp(0.2rem,0.65vw,0.58rem);font-weight:900;color:#E65100;text-align:center;display:flex;align-items:center;justify-content:center;background:rgba(230,81,0,0.09);border:1.5px solid rgba(230,81,0,0.22);border-radius:3px;aspect-ratio:1;width:clamp(14px,5.2vw,68px);flex-shrink:0;}
-.pt-period-lbl.ep{background:transparent;border-color:transparent;}
-.pt-grid-wrap{flex:1;}
 .pt-grid{display:grid;grid-template-columns:repeat(18,minmax(0,1fr));gap:3px;}
 .pt-cell{aspect-ratio:1;cursor:pointer;border:2px solid rgba(0,0,0,0.18);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:transform 0.1s,box-shadow 0.1s;z-index:0;overflow:hidden;border-radius:2px;}
 .pt-cell:hover{transform:scale(1.42);z-index:6;box-shadow:0 4px 16px rgba(0,0,0,0.25);border-color:var(--ink);}
@@ -1287,16 +1279,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
       <p class="sec-sub">Click vào nguyên tố để xem thông tin chi tiết • 118 nguyên tố đầy đủ</p>
       <div class="pt-legend" id="pt-legend"></div>
       <div class="pt-filters" id="pt-filters"></div>
-      <div class="pt-outer">
-        <div class="pt-group-row" id="pt-group-row"></div>
-        <div class="pt-body">
-          <div class="pt-period-col" id="pt-period-col"></div>
-          <div class="pt-grid-wrap">
-            <div class="pt-grid" id="pt-grid"></div>
-          </div>
-        </div>
-      </div>
-      <p style="text-align:center;margin-top:11px;font-size:0.8rem;font-weight:700;color:var(--text-l);">* La-Lu <i>Z</i> = 57 − 71 &nbsp;|&nbsp; ** Ac-Lr <i>Z</i> = 89 − 103</p>
+      <div class="pt-grid" id="pt-grid"></div>
+      <p style="text-align:center;margin-top:11px;font-size:0.8rem;font-weight:700;color:var(--text-l);">* La-Lu (Z=57-71) | ** Ac-Lr (Z=89-103)</p>
     </div>
   </div>
 </section>
@@ -2148,14 +2132,6 @@ function buildPT(){
     flt.innerHTML+='<button class="pt-filt" style="background:'+e[1].color+';color:'+e[1].text+';" onclick="filterPT(\''+e[0]+'\',this)">'+e[1].label+'</button>';
   });
 
-  // Group labels (1–18) — corner spacer + 18 group cells
-  var grpRow=document.getElementById('pt-group-row');
-  var grpHtml='<div style="background:transparent;border:none;aspect-ratio:1;width:clamp(14px,5.2vw,68px);flex-shrink:0;"></div>';
-  for(var g=1;g<=18;g++){
-    grpHtml+='<div class="pt-group-lbl">'+g+'</div>';
-  }
-  grpRow.innerHTML=grpHtml;
-
   // Main grid
   var grid=document.getElementById('pt-grid');
   var rows=9,cols=18;
@@ -2183,16 +2159,6 @@ function buildPT(){
   ALL.filter(function(e){return e.z>=89&&e.z<=103;}).forEach(function(el){var cc=CATS[el.cat]||{color:'#eee',text:'#000'};html+='<div class="pt-cell" data-cat="'+el.cat+'" style="background:'+cc.color+';color:'+cc.text+';" onclick="showEl('+el.z+')"><div class="pt-z">'+el.z+'</div><div class="pt-sym">'+el.sym+'</div><div class="pt-nm">'+(el.name.length>7?el.name.substring(0,6)+'..':el.name)+'</div></div>';});
   grid.innerHTML=html;
 
-  // Period labels (1–7) on the left — 9 main rows + 1 spacer + 2 f-block rows
-  var perCol=document.getElementById('pt-period-col');
-  var perHtml='';
-  for(var p=1;p<=7;p++) perHtml+='<div class="pt-period-lbl">'+p+'</div>';
-  // Spacer row (the empty separator row between main table and f-block)
-  perHtml+='<div class="pt-period-lbl ep"></div>';
-  // f-block: Lanthanide = period 6, Actinide = period 7
-  perHtml+='<div class="pt-period-lbl">6</div>';
-  perHtml+='<div class="pt-period-lbl">7</div>';
-  perCol.innerHTML=perHtml;
 }
 function filterPT(cat,btn){
   document.querySelectorAll('.pt-filt').forEach(function(b){b.classList.remove('active');});
