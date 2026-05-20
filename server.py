@@ -12,7 +12,7 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='.')
 CORS(app)
-
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 # ── Config ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GEMINI_URL = (
