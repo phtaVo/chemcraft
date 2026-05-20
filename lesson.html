@@ -15,15 +15,14 @@
         import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js';
         import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js';
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCInWZftP-u5zcCJ5ikJdVYcoR_OwPU9_0",
-            authDomain: "chemcraft-e8e6e.firebaseapp.com",
-            projectId: "chemcraft-e8e6e",
-            storageBucket: "chemcraft-e8e6e.firebasestorage.app",
-            messagingSenderId: "606315063236",
-            appId: "1:606315063236:web:e31d93413d2bb577c0e691",
-            measurementId: "G-NXCLLTKZ6S"
-        };
+        // Lấy Firebase config từ backend (ẩn key ở server)
+        let firebaseConfig = {};
+        try {
+            const cfgResp = await fetch('/api/firebase-config');
+            firebaseConfig = await cfgResp.json();
+        } catch(e) {
+            console.warn('Không thể lấy Firebase config:', e);
+        }
 
         const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
         const auth = getAuth(app);

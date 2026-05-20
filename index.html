@@ -11,19 +11,18 @@
 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap" rel="stylesheet">
 <!-- Firebase -->
 <script type="module">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js';
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js';
-  import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js';
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+  import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyCInWZftP-u5zcCJ5ikJdVYcoR_OwPU9_0",
-    authDomain: "chemcraft-e8e6e.firebaseapp.com",
-    projectId: "chemcraft-e8e6e",
-    storageBucket: "chemcraft-e8e6e.firebasestorage.app",
-    messagingSenderId: "606315063236",
-    appId: "1:606315063236:web:e31d93413d2bb577c0e691",
-    measurementId: "G-NXCLLTKZ6S"
-  };
+  // Lấy Firebase config từ backend (không lộ key ở frontend)
+  let firebaseConfig = {};
+  try {
+    const cfgResp = await fetch('/api/firebase-config');
+    firebaseConfig = await cfgResp.json();
+  } catch(e) {
+    console.warn('Không thể lấy Firebase config từ server:', e);
+  }
 
   let app, auth, db;
   try {
@@ -36,7 +35,6 @@
 
   window._fbAuth = auth;
   window._fbDb = db;
-  window._fbApiKey = firebaseConfig.apiKey;
   window._fbFns = { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, doc, setDoc, getDoc, updateDoc, arrayUnion, serverTimestamp };
 
   // Auth state listener
@@ -178,6 +176,7 @@ body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--t
 .pt-filters{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-bottom:20px;}
 .pt-filt{font-size:0.78rem;font-weight:800;padding:7px 13px;border-radius:6px;border:2px solid transparent;cursor:pointer;transition:all 0.12s;box-shadow:2px 2px 0 rgba(0,0,0,0.12);}
 .pt-filt:hover,.pt-filt.active{border-color:var(--ink);transform:translate(1px,1px);}
+/* Group + Period label wrapper */
 .pt-grid{display:grid;grid-template-columns:repeat(18,minmax(0,1fr));gap:3px;}
 .pt-cell{aspect-ratio:1;cursor:pointer;border:2px solid rgba(0,0,0,0.18);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:transform 0.1s,box-shadow 0.1s;z-index:0;overflow:hidden;border-radius:2px;}
 .pt-cell:hover{transform:scale(1.42);z-index:6;box-shadow:0 4px 16px rgba(0,0,0,0.25);border-color:var(--ink);}
@@ -1746,70 +1745,16 @@ BẮT BUỘC:
             imageMimeType = null;
         }
 
-        // Gọi Gemini — tối đa token + tự tiếp tục nếu bị cắt giữa chừng
+        // Gọi backend proxy → Gemini (API key ẩn hoàn toàn ở server)
         async function callChatProxy(messages) {
-            const apiKey = 'AIzaSyA-3GWOCVxGEN8NLNY18tqbA9J8Mgm5ygI';
-            const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-            const lastMsg = messages[messages.length - 1];
-            const parts = [];
-            const userContent = lastMsg.content;
-            if (typeof userContent === 'string') {
-                parts.push({ text: userContent });
-            } else if (Array.isArray(userContent)) {
-                for (const item of userContent) {
-                    if (item.type === 'text') parts.push({ text: item.text });
-                    else if (item.type === 'image_url' && item.image_url?.url) {
-                        const dataUrl = item.image_url.url;
-                        const mimeMatch = dataUrl.match(/data:([^;]+);base64,/);
-                        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-                        const b64 = dataUrl.split(',')[1];
-                        parts.push({ inlineData: { mimeType, data: b64 } });
-                    }
-                }
-            }
-
-            // Helper gọi API một lần
-            async function callOnce(contents) {
-                const payload = {
-                    contents,
-                    systemInstruction: { parts: [{ text: systemPrompt }] },
-                    generationConfig: { temperature: 0.3, maxOutputTokens: 65536 }
-                };
-                const response = await fetch(GEMINI_URL, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const data = await response.json();
-                if (data.error) {
-                    const code = data.error.code || response.status;
-                    const msg = data.error.message || 'Lỗi không xác định';
-                    if (code === 429) throw new Error('Hệ thống đang bận. Vui lòng thử lại sau vài giây.');
-                    if (code === 403) throw new Error('API key chưa được cấp quyền.');
-                    throw new Error(`Lỗi Gemini (${code}): ${msg}`);
-                }
-                if (!data.candidates?.length) throw new Error('Không nhận được phản hồi từ AI.');
-                const candidate = data.candidates[0];
-                const text = (candidate.content?.parts || []).map(p => p.text || '').join('');
-                return { text, finishReason: candidate.finishReason };
-            }
-
-            // Lần gọi đầu
-            let { text: fullText, finishReason } = await callOnce([{ role: 'user', parts }]);
-
-            // Nếu bị cắt (MAX_TOKENS) → tiếp tục tối đa 3 lần
-            let tries = 0;
-            while (finishReason === 'MAX_TOKENS' && tries < 3) {
-                tries++;
-                const cont = await callOnce([
-                    { role: 'user', parts },
-                    { role: 'model', parts: [{ text: fullText }] },
-                    { role: 'user', parts: [{ text: 'Tiếp tục giải từ chỗ vừa dừng, không lặp lại phần đã có.' }] }
-                ]);
-                fullText += cont.text;
-                finishReason = cont.finishReason;
-            }
-
-            return fullText;
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages, systemPrompt })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            return data.text || '';
         }
 
         solveBtn.addEventListener('click', async () => {
@@ -2119,15 +2064,19 @@ var ALL=[];
 })();
 
 function buildPT(){
+  // Legend
   var leg=document.getElementById('pt-legend');
   Object.entries(CATS).forEach(function(e){
     leg.innerHTML+='<div class="pt-leg-item"><div class="pt-leg-dot" style="background:'+e[1].color+'"></div><span>'+e[1].label+'</span></div>';
   });
+  // Filters
   var flt=document.getElementById('pt-filters');
   flt.innerHTML='<button class="pt-filt active" style="background:#1A237E;color:#fff;" onclick="filterPT(\'all\',this)">Tất cả</button>';
   Object.entries(CATS).forEach(function(e){
     flt.innerHTML+='<button class="pt-filt" style="background:'+e[1].color+';color:'+e[1].text+';" onclick="filterPT(\''+e[0]+'\',this)">'+e[1].label+'</button>';
   });
+
+  // Main grid
   var grid=document.getElementById('pt-grid');
   var rows=9,cols=18;
   var gd=Array.from({length:rows},function(){return Array(cols).fill(null);});
@@ -2136,7 +2085,7 @@ function buildPT(){
   for(var r=0;r<rows;r++)for(var c=0;c<cols;c++){
     var el=gd[r][c];
     if(!el){
-      if((r===5||r===6)&&c===2)html+='<div class="pt-cell" style="background:#E8EAF6;border-color:#9FA8DA;cursor:default;font-size:0.26rem;color:#5C6BC0;text-align:center;padding:1px;">'+(r===5?'57-71':'89-103')+'</div>';
+      if((r===5||r===6)&&c===2)html+='<div class="pt-cell" style="background:#E8EAF6;border-color:#9FA8DA;cursor:default;font-size:0.26rem;color:#5C6BC0;text-align:center;padding:1px;">'+(r===5?'* 57-71':'** 89-103')+'</div>';
       else html+='<div class="pt-cell empty"></div>';
     }else{
       var cc=CATS[el.cat]||{color:'#eee',text:'#000'};
@@ -2144,15 +2093,16 @@ function buildPT(){
     }
   }
   html+=Array(18).fill('<div class="pt-cell empty"></div>').join('');
+  // Lanthanide row: 2 empty + 1 label + 15 elements (57-71) = 18 cols
   html+='<div class="pt-cell empty"></div><div class="pt-cell empty"></div>';
   html+='<div class="pt-cell" style="background:#607D8B;color:#fff;font-size:0.32rem;cursor:default;text-align:center;">La<br>57-71</div>';
   ALL.filter(function(e){return e.z>=57&&e.z<=71;}).forEach(function(el){var cc=CATS[el.cat]||{color:'#eee',text:'#000'};html+='<div class="pt-cell" data-cat="'+el.cat+'" style="background:'+cc.color+';color:'+cc.text+';" onclick="showEl('+el.z+')"><div class="pt-z">'+el.z+'</div><div class="pt-sym">'+el.sym+'</div><div class="pt-nm">'+(el.name.length>7?el.name.substring(0,6)+'..':el.name)+'</div></div>';});
-  html+=Array(3).fill('<div class="pt-cell empty"></div>').join('');
+  // Actinide row: 2 empty + 1 label + 15 elements (89-103) = 18 cols
   html+='<div class="pt-cell empty"></div><div class="pt-cell empty"></div>';
   html+='<div class="pt-cell" style="background:#607D8B;color:#fff;font-size:0.32rem;cursor:default;text-align:center;">Ac<br>89-103</div>';
   ALL.filter(function(e){return e.z>=89&&e.z<=103;}).forEach(function(el){var cc=CATS[el.cat]||{color:'#eee',text:'#000'};html+='<div class="pt-cell" data-cat="'+el.cat+'" style="background:'+cc.color+';color:'+cc.text+';" onclick="showEl('+el.z+')"><div class="pt-z">'+el.z+'</div><div class="pt-sym">'+el.sym+'</div><div class="pt-nm">'+(el.name.length>7?el.name.substring(0,6)+'..':el.name)+'</div></div>';});
-  html+=Array(3).fill('<div class="pt-cell empty"></div>').join('');
   grid.innerHTML=html;
+
 }
 function filterPT(cat,btn){
   document.querySelectorAll('.pt-filt').forEach(function(b){b.classList.remove('active');});
@@ -2820,6 +2770,10 @@ async function doLogin() {
   var btn = document.getElementById('login-btn');
   btn.disabled = true; btn.textContent = '⏳ Đang đăng nhập...';
   try {
+    if (!window._fbAuth || !window._fbFns) {
+      showAuthErr('login', '❌ Không thể kết nối Firebase. Vui lòng tải lại trang và thử lại.');
+      btn.disabled = false; btn.innerHTML = '🚀 ĐĂNG NHẬP'; return;
+    }
     var { signInWithEmailAndPassword } = window._fbFns;
     await signInWithEmailAndPassword(window._fbAuth, email, pass);
     closeAuth();
@@ -2839,6 +2793,10 @@ async function doRegister() {
   if (pass.length < 6) { showAuthErr('reg', 'Mật khẩu phải có ít nhất 6 ký tự.'); return; }
   var btn = document.getElementById('reg-btn');
   btn.disabled = true; btn.textContent = '⏳ Đang tạo tài khoản...';
+  if (!window._fbAuth || !window._fbFns) {
+    showAuthErr('reg', '❌ Không thể kết nối Firebase. Vui lòng tải lại trang và thử lại.');
+    btn.disabled = false; btn.innerHTML = '⚗️ TẠO TÀI KHOẢN'; return;
+  }
   try {
     var { createUserWithEmailAndPassword, updateProfile } = window._fbFns;
     var cred = await createUserWithEmailAndPassword(window._fbAuth, email, pass);
