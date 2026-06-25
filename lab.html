@@ -6063,19 +6063,28 @@ ${ctx.products.length > 0 ? `- Sản phẩm: ${ctx.products.map(p=>p.name).join(
             const userNotes = document.getElementById('notebook-user-notes')?.value || '';
             const userConclusion = document.getElementById('notebook-conclusion')?.value || '';
 
-            const prompt = `Đánh giá thí nghiệm hóa học của học sinh theo các tiêu chí sau và trả về JSON với định dạng chính xác này:
+            const prompt = `Bạn là giám khảo DỄ TÍNH và KHUYẾN KHÍCH học sinh. Tiêu chí chấm điểm DUY NHẤT: học sinh có ghi chú/mô tả đầy đủ các HIỆN TƯỢNG QUAN SÁT ĐƯỢC của thí nghiệm hay không. Không yêu cầu tính toán mol, không yêu cầu viết phương trình hoàn hảo, không khắt khe về quy trình hay an toàn.
+
+NGUYÊN TẮC CHẤM ĐIỂM (rất thoáng):
+- Nếu học sinh mô tả được hiện tượng (màu sắc, kết tủa, khí, nhiệt, mùi, thay đổi trạng thái...) dù chỉ vài ý → cho từ 85 điểm trở lên (grade A hoặc B).
+- Nếu ghi chú có nội dung liên quan đến thí nghiệm dù sơ sài → tối thiểu 75 điểm (grade B).
+- Chỉ cho dưới 70 điểm khi học sinh BỎ TRỐNG hoàn toàn cả ghi chú lẫn kết luận.
+- Tuyệt đối KHÔNG trừ điểm vì thiếu tính toán, thiếu phương trình, hay thiếu phần an toàn.
+- Phần "improvements" hãy nhẹ nhàng, mang tính gợi ý chứ không phê bình.
+
+Trả về JSON đúng định dạng:
 {
   "totalScore": <số 0-100>,
   "grade": "<A/B/C/D/F>",
   "categories": [
-    {"name": "Kiến thức phản ứng", "score": <0-25>, "maxScore": 25, "feedback": "<nhận xét>"},
-    {"name": "Tính toán Mol", "score": <0-25>, "maxScore": 25, "feedback": "<nhận xét>"},
-    {"name": "Quy trình thí nghiệm", "score": <0-25>, "maxScore": 25, "feedback": "<nhận xét>"},
-    {"name": "An toàn & Ghi chú", "score": <0-25>, "maxScore": 25, "feedback": "<nhận xét>"}
+    {"name": "Mô tả hiện tượng", "score": <0-40>, "maxScore": 40, "feedback": "<nhận xét tích cực>"},
+    {"name": "Độ chi tiết ghi chú", "score": <0-30>, "maxScore": 30, "feedback": "<nhận xét>"},
+    {"name": "Kết luận thí nghiệm", "score": <0-20>, "maxScore": 20, "feedback": "<nhận xét>"},
+    {"name": "Tinh thần học tập", "score": <0-10>, "maxScore": 10, "feedback": "<luôn cho điểm cao>"}
   ],
   "strengths": ["<điểm mạnh 1>", "<điểm mạnh 2>"],
-  "improvements": ["<cần cải thiện 1>", "<cần cải thiện 2>"],
-  "summary": "<nhận xét tổng thể ngắn>"
+  "improvements": ["<gợi ý nhẹ nhàng 1>", "<gợi ý nhẹ nhàng 2>"],
+  "summary": "<nhận xét tổng thể ngắn, mang tính động viên>"
 }
 
 Dữ liệu thí nghiệm:
@@ -6084,7 +6093,6 @@ Dữ liệu thí nghiệm:
 - Sản phẩm: ${ctx?.products?.map(p=>p.name).join(', ') || 'Không rõ'}
 - Loại phản ứng: ${getReactionTypeName(ctx?.reactionType)}
 - Đun nóng: ${ctx?.isHeating ? 'Có' : 'Không'}
-- Stoichiometry: ${ctx?.stoichData ? 'Đã tính (chất giới hạn: '+ctx.stoichData.limiting+')' : 'Chưa tính'}
 - Ghi chú học sinh: ${userNotes || 'Không có'}
 - Kết luận học sinh: ${userConclusion || 'Không có'}
 
@@ -6094,7 +6102,7 @@ Trả về JSON thuần túy, không có markdown, không có giải thích thê
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    systemPrompt: 'Bạn là giám khảo chấm thí nghiệm hóa học. Trả về JSON thuần.',
+                    systemPrompt: 'Bạn là giám khảo DỄ TÍNH, khuyến khích học sinh. Chỉ cần học sinh mô tả được hiện tượng quan sát là cho điểm cao. Trả về JSON thuần.',
                     messages: [{ role: 'user', content: prompt }]
                 })
             }).then(r => r.json()).then(data => {
