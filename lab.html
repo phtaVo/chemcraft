@@ -2476,7 +2476,7 @@
                 }
                 if (unit === 'g' && mm) {
                     const mol = val / mm;
-                    previewEl.innerHTML = `<b style="color:#00e5ff;">${selectedChemForAdd.name}</b>: ${val} g ÷ ${mm} g/mol = <b style="color:#10b981;">${mol.toFixed(4)} mol</b>`;
+                    previewEl.innerHTML = `<b style="color:#00e5ff;">${selectedChemForAdd.name}</b>: ${val} g ÷ ${mm} g/mol = <b style="color:#34d399;">${mol.toFixed(4)} mol</b>`;
                 } else if (unit === 'mL') {
                     previewEl.innerHTML = `<b style="color:#00e5ff;">${selectedChemForAdd.name}</b>: ${val} mL dung dịch (nồng độ chính xác có thể nhập thêm ở tab Stoichiometry)`;
                 } else {
@@ -5313,7 +5313,7 @@
                 const minRatio = Math.min(...Object.values(ratios));
                 const limiting = Object.keys(ratios).find(id => Math.abs(ratios[id] - minRatio) < 0.0001);
                 limitingStr = `<div style="margin:10px 0;padding:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;">
-                    <b style="color:#ef4444;">⚠️ Chất giới hạn: ${mols[limiting]?.name || limiting}</b><br>
+                    <b style="color:#f87171;">⚠️ Chất giới hạn: ${mols[limiting]?.name || limiting}</b><br>
                     <span style="color:#94a3b8;font-size:0.85rem;">Tỉ lệ mol/hệ số: ${minRatio.toFixed(4)}</span>
                 </div>`;
                 // Calculate products
@@ -6148,10 +6148,10 @@ Trả về JSON thuần túy, không có markdown, không có giải thích thê
                 </div>
                 <div style="margin-bottom:16px;">${catHtml}</div>
                 ${result.strengths?.length ? `<div style="padding:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:10px;margin-bottom:10px;">
-                    <b style="color:#10b981;">✅ Điểm mạnh:</b><br>${result.strengths.map(s=>'• '+s).join('<br>')}
+                    <b style="color:#10b981;">✅ Điểm mạnh:</b><br>${`<span style="color:#d1fae5;">${result.strengths.map(s=>'• '+s).join('<br>')}</span>`}
                 </div>` : ''}
                 ${result.improvements?.length ? `<div style="padding:12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;">
-                    <b style="color:#ef4444;">📈 Cần cải thiện:</b><br>${result.improvements.map(s=>'• '+s).join('<br>')}
+                    <b style="color:#ef4444;">📈 Cần cải thiện:</b><br>${`<span style="color:#fee2e2;">${result.improvements.map(s=>'• '+s).join('<br>')}</span>`}
                 </div>` : ''}
             `;
         }
