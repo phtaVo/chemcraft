@@ -1646,6 +1646,7 @@
             const container = document.getElementById('canvas-container');
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(getW(), getH());
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -3752,7 +3753,7 @@
                     {
                         const startC = reactionBeakerLiquid.material.color.clone();
                         const startOp = reactionBeakerLiquid.material.opacity;
-                        let endHex = null, endOp = startOp, dur = 2.0, del = 0.5;
+                        let endHex = null, endOp = startOp, dur = 2.0, del = 0.8;
 
                         // KMnO4 mất màu tím: TÍM ĐẬM → gần trong suốt (nhạt)
                         const hasKMnO4 = beakerState.some(i=>i.id==='KMnO4');
@@ -3763,27 +3764,27 @@
                             // Bắt đầu với màu tím đậm rồi fade dần
                             reactionBeakerLiquid.material.color.setHex(0x6a1b9a); // tím đậm
                             reactionBeakerLiquid.material.opacity = 0.85;
-                            endHex = 0xf3e5f5; endOp = 0.25; dur = 3.0; del = 0.8;
+                            endHex = 0xf3e5f5; endOp = 0.25; dur = 5.4; del = 1.2;
                         } else if (hasKMnO4 && (beakerState.some(i=>i.id==='HCl') || beakerState.some(i=>i.id==='H2SO4'))) {
                             reactionBeakerLiquid.material.color.setHex(0x6a1b9a);
                             reactionBeakerLiquid.material.opacity = 0.85;
-                            endHex = 0xf0ffc8; endOp = 0.5; dur = 2.5; del = 0.7;
+                            endHex = 0xf0ffc8; endOp = 0.5; dur = 4.5; del = 1.0;
                         } else if (hasBr2 && hasReducer) {
                             // Nâu đỏ → gần trong suốt
                             reactionBeakerLiquid.material.color.setHex(0x8d4a2a);
                             reactionBeakerLiquid.material.opacity = 0.82;
-                            endHex = 0xfefef0; endOp = 0.18; dur = 2.8; del = 0.6;
+                            endHex = 0xfefef0; endOp = 0.18; dur = 5.0; del = 0.9;
                         } else if (res.type === 'color_change' && !hasKMnO4 && !hasBr2) {
                             // Generic color_change: animate từ màu hiện tại → màu kết quả
                             endHex = new THREE.Color(res.color).getHex();
-                            endOp = 0.7; dur = 1.8; del = 0.4;
+                            endOp = 0.7; dur = 3.2; del = 0.6;
                         } else if (beakerState.some(i=>i.id==='Phenol')) {
                             let aC3d3 = 0, bC3d3 = 0;
                             beakerState.forEach(it => { if(it.data.type==='axit') aC3d3+=it.amount; if(it.data.type==='bazo') bC3d3+=it.amount; });
                             if (bC3d3 > aC3d3) {
                                 reactionBeakerLiquid.material.color.set('#f0f8ff'); // trong suốt trước
                                 reactionBeakerLiquid.material.opacity = 0.30;
-                                endHex = 0xffb6d0; endOp = 0.70; dur = 2.2; del = 0.5;
+                                endHex = 0xffb6d0; endOp = 0.70; dur = 4.0; del = 0.8;
                             }
                         }
 
@@ -4016,7 +4017,7 @@
                     SoundEngine.stopBubbles();
                     SoundEngine.playSuccess(); // PLAY ÂM THANH HOÀN THÀNH
 
-                }, 4500); 
+                }, 18000); 
                 setTimeout(() => { try { LessonMission.checkReaction(evaluateReaction()); } catch(e) { console.warn(e); } }, 4600);
             });
         }
@@ -7228,6 +7229,261 @@ JSON: {"equation":"...","products":["..."],"coefficients":[...],"conditions":{"c
     window.RandomTask = { onReaction, showTask, complete, minimizeView, expandView, _reactions: REACTIONS };
 })();
 
+</script>
+
+
+<style>
+/* === REACTION CINEMA v2 — Bảng quan sát 3 giai đoạn === */
+#rc-panel { position: fixed; right: 18px; top: 80px; width: 400px; max-height: 80vh; background: linear-gradient(160deg, rgba(10,15,28,0.97), rgba(15,23,42,0.95)); backdrop-filter: blur(14px); color: #e0f7fa; border: 2px solid rgba(0,229,255,0.5); border-radius: 16px; padding: 18px 20px; z-index: 200; font-family: 'Segoe UI', sans-serif; box-shadow: 0 20px 60px rgba(0,229,255,0.25), 0 0 0 1px rgba(0,229,255,0.1) inset; display: none; overflow-y: auto; animation: rcSlideIn .5s cubic-bezier(.16,1,.3,1); }
+@keyframes rcSlideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+#rc-panel h3 { margin: 0 0 12px; color: #00e5ff; font-size: 1.05rem; letter-spacing: 2px; font-weight: 700; text-shadow: 0 0 12px rgba(0,229,255,.6); display: flex; align-items: center; gap: 8px; }
+#rc-panel h3::before { content: '●'; color: #ef4444; animation: rcRec 1.2s infinite; }
+@keyframes rcRec { 0%,50% { opacity: 1; } 50.1%,100% { opacity: .2; } }
+.rc-phase { margin: 12px 0; padding: 12px 14px; border-left: 4px solid #334155; border-radius: 8px; background: rgba(15,23,42,0.7); transition: all .4s; opacity: .3; transform: scale(.98); }
+.rc-phase.active { opacity: 1; transform: scale(1); border-left-color: #00e5ff; background: rgba(0,229,255,0.08); box-shadow: 0 0 20px rgba(0,229,255,0.25); }
+.rc-phase.done { opacity: .82; border-left-color: #4ade80; background: rgba(74,222,128,0.05); }
+.rc-phase h4 { margin: 0 0 8px; font-size: .82rem; color: #93c5fd; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+.rc-phase.done h4 { color: #4ade80; }
+.rc-phase.done h4::after { content: '✓'; color: #4ade80; font-size: 1.1rem; }
+.rc-phase.active h4::after { content: '⟳'; color: #00e5ff; animation: rcSpin 2s linear infinite; }
+@keyframes rcSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+.rc-text { font-size: .94rem; line-height: 1.6; color: #f1f5f9; min-height: 22px; }
+.rc-text b { color: #fde68a; }
+.rc-cursor { display: inline-block; width: 8px; background: #00e5ff; animation: rcBlink .9s infinite; margin-left: 3px; height: 15px; vertical-align: middle; box-shadow: 0 0 8px #00e5ff; }
+@keyframes rcBlink { 0%,50% { opacity: 1; } 50.1%,100% { opacity: 0; } }
+.rc-ai { margin-top: 14px; padding: 12px 14px; background: linear-gradient(135deg, rgba(167,139,250,.18), rgba(0,229,255,.10)); border-radius: 10px; border: 1px solid rgba(167,139,250,.45); }
+.rc-ai h4 { color: #a78bfa; margin: 0 0 8px; font-size: .82rem; letter-spacing: 1.5px; font-weight: 700; }
+.rc-ai-text { font-size: .9rem; line-height: 1.55; color: #fde68a; min-height: 20px; }
+.rc-bar { height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; margin-top: 12px; }
+.rc-bar > div { height: 100%; background: linear-gradient(90deg, #00e5ff, #a78bfa, #f472b6); width: 0%; transition: width .3s linear; box-shadow: 0 0 8px rgba(0,229,255,.6); }
+
+/* Big phase banner overlay */
+#rc-banner { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); padding: 18px 40px; background: rgba(0,0,0,.85); color: #00e5ff; font-size: 2rem; font-weight: 800; letter-spacing: 5px; border-radius: 14px; border: 2px solid #00e5ff; box-shadow: 0 0 40px rgba(0,229,255,.6); z-index: 199; display: none; text-shadow: 0 0 20px #00e5ff; backdrop-filter: blur(10px); }
+#rc-shot { position: fixed; top: 22px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.85); color: #ffeb3b; padding: 8px 22px; border-radius: 22px; font-size: .9rem; letter-spacing: 3px; z-index: 199; display: none; border: 1.5px solid #ffeb3b; font-weight: 700; box-shadow: 0 0 20px rgba(255,235,59,.4); }
+</style>
+<script>
+/* ============================================================
+   🎬 REACTION CINEMA v2 — Quan sát 3 giai đoạn rõ ràng (15s)
+   ============================================================ */
+(function(){
+  const TOTAL_TIME = 16.0; // tổng thời lượng quan sát (s) — đồng bộ với 18000ms result delay
+  const PHASE1_END = 4.0;
+  const PHASE2_END = 11.0;
+  // (sau đó là phase 3 cho tới 16s)
+
+  const METAL_IDS = ['Fe','Cu','Zn','Mg','Al','Ag','Hg','Na','K','Ca','Ba','Li','Ni','Sn','Pb','Cr','Mn','Au','Pt'];
+  const COLOR_MAP = {
+    '#ffffff':'không màu / trong suốt','#fffde7':'không màu nhạt','#f0f8ff':'không màu',
+    '#4a148c':'tím đen (tinh thể) — tím đậm khi tan','#6a1b9a':'tím đậm',
+    '#00bfff':'xanh lam','#1976d2':'xanh dương đậm','#1565c0':'xanh dương đậm',
+    '#d4a373':'nâu vàng','#a8e6cf':'lục nhạt','#a5d6a7':'lục nhạt',
+    '#ffeb3b':'vàng','#fff176':'vàng nhạt','#ffe082':'vàng nhạt','#fff8e1':'kem',
+    '#b71c1c':'đỏ son','#e53935':'đỏ tươi','#d84315':'nâu đỏ','#8d4a2a':'nâu đỏ',
+    '#bdbdbd':'xám bạc','#ffb6d0':'hồng nhạt','#f3e5f5':'tím rất nhạt',
+    '#fafafa':'trắng','#1a1a1a':'đen','#ccff90':'vàng lục'
+  };
+  function colorName(hex){
+    if(!hex) return 'không xác định';
+    const h = hex.toLowerCase();
+    if (COLOR_MAP[h]) return COLOR_MAP[h];
+    return hex;
+  }
+  function chemDisplay(item){
+    const c = item.data || {};
+    let state;
+    if (c.isGas) state = 'thể khí';
+    else if (c.solid) state = METAL_IDS.includes(item.id) ? 'kim loại rắn' : 'tinh thể / bột rắn';
+    else state = 'dung dịch lỏng';
+    return `<b>${c.name || item.id}</b> — ${state}, màu ${colorName(c.color)}`;
+  }
+
+  function typeText(el, html, totalMs){
+    return new Promise(resolve => {
+      const plain = html.length || 1;
+      const speed = Math.max(8, Math.min(35, totalMs / plain));
+      let i = 0; el.innerHTML = '';
+      function tick(){
+        if (i >= html.length){ el.innerHTML = html; resolve(); return; }
+        if (html[i] === '<'){ const end = html.indexOf('>', i); if (end !== -1) i = end + 1; else i++; }
+        else i++;
+        el.innerHTML = html.slice(0, i) + '<span class="rc-cursor"></span>';
+        setTimeout(tick, speed);
+      }
+      tick();
+    });
+  }
+
+  function describePhase1(snap){
+    if (!snap || snap.length === 0) return 'Cốc trống. Phòng thí nghiệm sẵn sàng — đèn cồn, giá đỡ, cốc borosilicate đã được chuẩn bị.';
+    return '🧪 Dụng cụ: cốc thuỷ tinh borosilicate trên giá đỡ, đèn cồn bên cạnh.<br><br>📦 Trong cốc:<br>' +
+      snap.map(it => '• ' + chemDisplay(it)).join('<br>') +
+      '<br><br><i>Chưa quan sát thấy hiện tượng hoá học nào — các chất đang ở trạng thái nghỉ ban đầu.</i>';
+  }
+  function describePhase2(res){
+    if (!res || !res.hasReaction) return 'Sau khi trộn các chất, <b>không quan sát thấy phản ứng hoá học rõ rệt</b>. Có thể chỉ là hoà tan vật lý hoặc cần thêm điều kiện (nhiệt độ, xúc tác).';
+    const map = {
+      color_change: '🎨 Dung dịch <b>chuyển màu từ từ</b> — biểu hiện thay đổi trạng thái oxi hoá hoặc hình thành phức chất',
+      precipitate: '⬇ <b>Kết tủa xuất hiện và lắng dần</b> xuống đáy cốc, khối lượng tăng theo thời gian',
+      bubble: '💨 <b>Sủi bọt khí</b> thoát ra liên tục từ dung dịch — phản ứng giải phóng khí',
+      combustion: '🔥 Phản ứng <b>cháy mãnh liệt</b>, phát sáng và toả nhiệt — ngọn lửa nhiều lớp với tia lửa bắn ra',
+      glow_sparks: '✨ <b>Tia lửa loé sáng</b>, phát quang đặc trưng',
+      silver_mirror: '🪞 Lớp <b>bạc kim loại sáng bóng</b> bám và lan dần khắp thành ống — hiệu ứng "tráng gương"',
+      titration: '💧 Giọt chất chuẩn rơi đều xuống, màu chỉ thị <b>lan toả từng cuộn xoáy</b> đến điểm tương đương'
+    };
+    let s = (map[res.type] || '⚗ Đang quan sát biến đổi trên hệ');
+    if (res.hasSmoke) s += ', kèm <b>khói mù</b> bay lên';
+    s += '.<br><br>' + (res.desc || '');
+    return s;
+  }
+  function describePhase3(res){
+    if (!res || !res.hasReaction) return '⚖ Hệ đạt cân bằng vật lý — không có sản phẩm hoá học mới. Quan sát kết thúc.';
+    return '✅ Kết quả: ' + (res.desc || '') + '<br><br>📐 <b style="color:#00e5ff">' + (res.eq || '') + '</b>';
+  }
+  function aiExplain(res){
+    if (!res || !res.hasReaction) return '🤖 Cấp độ phân tử: các phân tử/ion va chạm không đủ năng lượng hoạt hoá. Hãy thử bật đèn cồn hoặc đổi tỉ lệ.';
+    const note = {
+      color_change: 'Electron chuyển dời giữa các orbital d (kim loại chuyển tiếp) hoặc trạng thái oxi hoá thay đổi → bước sóng hấp thụ thay đổi → mắt thấy màu khác.',
+      precipitate: 'Tích số ion vượt Ksp → ion gặp nhau kết tinh thành mạng tinh thể không tan, lắng xuống do trọng lực.',
+      bubble: 'Sản phẩm khí có độ tan thấp → thoát khỏi pha lỏng dạng bong bóng. Áp suất riêng phần > áp suất khí quyển cục bộ.',
+      combustion: 'Liên kết cũ bị bẻ gãy, năng lượng giải phóng vượt năng lượng tạo liên kết mới → ΔH << 0 → toả nhiệt và phát quang.',
+      silver_mirror: 'Nhóm –CHO khử Ag⁺ thành Ag⁰; Ag⁰ kết tinh đồng đều lên thuỷ tinh sạch tạo lớp gương phản chiếu.',
+      titration: 'Tại điểm tương đương: n(H⁺) = n(OH⁻). pH nhảy đột ngột → phenolphtalein ion hoá → đổi màu hồng.'
+    }[res.type] || 'Phản ứng tuân theo định luật bảo toàn khối lượng và bảo toàn electron.';
+    return '🤖 ' + note + '<br><br>⚗ Phương trình: <b>' + (res.eq || '—') + '</b>';
+  }
+
+  // ----- Cinematic camera (4 shots over 16s) -----
+  const SHOTS = [
+    { name: 'SHOT 1 · TOÀN CẢNH',    t: 0,     pos: [0, 3.6, 9.5],  look: [0, 1.2, 0] },
+    { name: 'SHOT 2 · ZOOM VÀO',     t: 4.0,   pos: [0, 2.2, 6.0],  look: [0, 1.0, 0] },
+    { name: 'SHOT 3 · CẬN CẢNH',     t: 8.0,   pos: [1.8, 1.6, 4.0],look: [0, 1.2, 0] },
+    { name: 'SHOT 4 · ORBIT 360°',   t: 11.5,  orbit: true, radius: 6.5, height: 2.3, lookY: 1.2 }
+  ];
+  let cinemaActive = false, cinemaT0 = 0;
+
+  function cinemaTick(){
+    if (!cinemaActive) return;
+    if (typeof cameraReact === 'undefined' || !cameraReact) { requestAnimationFrame(cinemaTick); return; }
+    if (typeof currentMode !== 'undefined' && currentMode !== 'REACTION_3D') { requestAnimationFrame(cinemaTick); return; }
+    const t = (performance.now() - cinemaT0) / 1000;
+    let cur = SHOTS[0];
+    for (let i = 0; i < SHOTS.length; i++) if (SHOTS[i].t <= t) cur = SHOTS[i];
+    const sb = document.getElementById('rc-shot'); if (sb) { sb.textContent = cur.name; sb.style.display = 'block'; }
+    let tx,ty,tz,lx,ly,lz;
+    if (cur.orbit){
+      const a = (t - cur.t) * 0.28;
+      tx = Math.sin(a)*cur.radius; ty = cur.height; tz = Math.cos(a)*cur.radius;
+      lx = 0; ly = cur.lookY; lz = 0;
+    } else { tx = cur.pos[0]; ty = cur.pos[1]; tz = cur.pos[2]; lx = cur.look[0]; ly = cur.look[1]; lz = cur.look[2]; }
+    const k = 0.045;
+    cameraReact.position.x += (tx - cameraReact.position.x) * k;
+    cameraReact.position.y += (ty - cameraReact.position.y) * k;
+    cameraReact.position.z += (tz - cameraReact.position.z) * k;
+    cameraReact.lookAt(lx, ly, lz);
+    if (t < 30) requestAnimationFrame(cinemaTick);
+  }
+  function startCinema(){ cinemaActive = true; cinemaT0 = performance.now(); requestAnimationFrame(cinemaTick); }
+  function stopCinema(){ cinemaActive = false; const sb = document.getElementById('rc-shot'); if (sb) sb.style.display = 'none'; }
+
+  function flashBanner(text, ms){
+    const b = document.getElementById('rc-banner'); if (!b) return;
+    b.textContent = text; b.style.display = 'block';
+    setTimeout(() => { b.style.display = 'none'; }, ms || 1800);
+  }
+
+  function buildPanel(){
+    if (document.getElementById('rc-panel')) return;
+    const p = document.createElement('div'); p.id = 'rc-panel';
+    p.innerHTML = `
+      <h3>CINEMATIC LAB OBSERVER</h3>
+      <div class="rc-phase" data-ph="1"><h4><span>① TRƯỚC PHẢN ỨNG</span></h4><div class="rc-text"></div></div>
+      <div class="rc-phase" data-ph="2"><h4><span>② ĐANG PHẢN ỨNG</span></h4><div class="rc-text"></div></div>
+      <div class="rc-phase" data-ph="3"><h4><span>③ SAU PHẢN ỨNG</span></h4><div class="rc-text"></div></div>
+      <div class="rc-ai"><h4>🤖 AI GIẢI THÍCH PHÂN TỬ</h4><div class="rc-ai-text"></div></div>
+      <div class="rc-bar"><div></div></div>
+    `;
+    document.body.appendChild(p);
+    const sb = document.createElement('div'); sb.id = 'rc-shot'; document.body.appendChild(sb);
+    const bn = document.createElement('div'); bn.id = 'rc-banner'; document.body.appendChild(bn);
+    console.log('[Cinema] Panel built');
+  }
+
+  function installOverride(){
+    if (typeof window.triggerReactionSequence !== 'function') { setTimeout(installOverride, 400); return; }
+    buildPanel();
+    const original = window.triggerReactionSequence;
+    window.triggerReactionSequence = function(){
+      console.log('[Cinema] Reaction triggered');
+      const snapshot = (typeof beakerState !== 'undefined') ? beakerState.slice() : [];
+      let res = null;
+      try { res = (typeof evaluateReaction === 'function') ? evaluateReaction() : null; } catch(e){}
+
+      const panel = document.getElementById('rc-panel');
+      panel.style.display = 'block';
+      panel.style.animation = 'none'; void panel.offsetWidth; panel.style.animation = '';
+      panel.querySelectorAll('.rc-phase').forEach(p => { p.classList.remove('active','done'); p.querySelector('.rc-text').innerHTML = ''; });
+      panel.querySelector('.rc-ai-text').innerHTML = '';
+      const bar = panel.querySelector('.rc-bar > div'); bar.style.width = '0%';
+
+      const ret = original.apply(this, arguments);
+      setTimeout(startCinema, 700);
+
+      const ph1 = panel.querySelector('.rc-phase[data-ph="1"]');
+      const ph2 = panel.querySelector('.rc-phase[data-ph="2"]');
+      const ph3 = panel.querySelector('.rc-phase[data-ph="3"]');
+      const ai = panel.querySelector('.rc-ai-text');
+
+      const t0 = performance.now();
+      function tickBar(){
+        const t = (performance.now() - t0) / 1000;
+        bar.style.width = Math.min(100, (t / TOTAL_TIME) * 100) + '%';
+        if (t < TOTAL_TIME + 0.5) requestAnimationFrame(tickBar);
+      }
+      requestAnimationFrame(tickBar);
+
+      (async () => {
+        // Phase 1 — 0 → 4s
+        await new Promise(r => setTimeout(r, 600));
+        flashBanner('GIAI ĐOẠN 1 · TRƯỚC PHẢN ỨNG', 2200);
+        ph1.classList.add('active');
+        await typeText(ph1.querySelector('.rc-text'), describePhase1(snapshot), 2400);
+        await new Promise(r => setTimeout(r, 600));
+        ph1.classList.remove('active'); ph1.classList.add('done');
+
+        // Phase 2 — 4 → 11s
+        flashBanner('GIAI ĐOẠN 2 · ĐANG PHẢN ỨNG', 2200);
+        ph2.classList.add('active');
+        await typeText(ph2.querySelector('.rc-text'), describePhase2(res), 5000);
+        await new Promise(r => setTimeout(r, 1200));
+        ph2.classList.remove('active'); ph2.classList.add('done');
+
+        // Phase 3 — 11s → 16s
+        flashBanner('GIAI ĐOẠN 3 · SAU PHẢN ỨNG', 2200);
+        ph3.classList.add('active');
+        await typeText(ph3.querySelector('.rc-text'), describePhase3(res), 3500);
+        ph3.classList.remove('active'); ph3.classList.add('done');
+        await typeText(ai, aiExplain(res), 2500);
+      })();
+
+      return ret;
+    };
+
+    ['btn-close-reaction','btn-return-3d'].forEach(id => {
+      const b = document.getElementById(id); if (!b) return;
+      const o = b.onclick;
+      b.onclick = function(e){
+        const p = document.getElementById('rc-panel'); if (p) p.style.display = 'none';
+        const bn = document.getElementById('rc-banner'); if (bn) bn.style.display = 'none';
+        stopCinema();
+        if (o) return o.call(this, e);
+      };
+    });
+    console.log('[Cinema] Override installed ✓');
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(installOverride, 800));
+  else setTimeout(installOverride, 800);
+})();
 </script>
 
 </body>
