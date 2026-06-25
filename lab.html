@@ -162,7 +162,7 @@
                 <li>Dùng <b>W, A, S, D</b> để đi quanh phòng. Dùng <b>Chuột</b> để nhìn.</li>
                 <li><b>Giai đoạn 1:</b> Khám phá các kệ, <b>Click</b> để nhặt vật phẩm.</li>
                 <li><b>Giai đoạn 2:</b> Có thể <b>tìm kiếm các chất</b> bằng cách nhấn F để hiện thanh tìm kiếm.</li>
-                <li><b>Giai đoạn 3:</b> Tới bàn trung tâm, <b>Click vào bàn thí nghiệm</b> (hoặc cốc trên bàn). Tại đây bạn <span style="color:#ffeb3b">CLICK hoặc KÉO THẢ thời gian thực</span> để pha dung dịch. Sau đó bấm <b style="color:#00e5ff">🎬 XEM THÍ NGHIỆM 3D</b> để xem thước phim phản ứng Cinematic!</li>
+                <li><b>Giai đoạn 3:</b> Tới bàn trung tâm, <b>Click vào bàn thí nghiệm</b> (hoặc cốc trên bàn). Tại đây bạn <span style="color:#ffeb3b">CLICK hoặc KÉO THẢ thời gian thực</span> để pha dung dịch. Sau đó bấm <b style="color:#00e5ff">CHẠY PHẢN ỨNG/XEM PHẢN ỨNG 3D</b> để xem thước phim phản ứng Cinematic!</li>
             </ul>
         </div>
         <a 
@@ -6088,29 +6088,29 @@ Trả về JSON thuần túy, không có markdown, không có giải thích thê
             let catHtml = (result.categories || []).map(c => {
                 const pct = (c.score / c.maxScore) * 100;
                 const barColor = pct >= 80 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#ef4444';
-                return `<div style="margin-bottom:12px;">
+                return `<div style="margin-bottom:14px;">
                     <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                        <span style="color:#e2e8f0;">${c.name}</span>
+                        <span style="color:#f1f5f9;font-weight:600;">${c.name}</span>
                         <span style="color:${barColor};font-weight:bold;">${c.score}/${c.maxScore}</span>
                     </div>
                     <div style="background:#1e293b;border-radius:6px;height:8px;overflow:hidden;">
                         <div style="width:${pct}%;height:100%;background:${barColor};border-radius:6px;transition:width 0.5s;"></div>
                     </div>
-                    <div style="color:#64748b;font-size:0.8rem;margin-top:4px;">${c.feedback}</div>
+                    <div style="color:#cbd5e1;font-size:0.82rem;margin-top:5px;line-height:1.5;">${c.feedback}</div>
                 </div>`;
             }).join('');
             div.innerHTML = `
                 <div style="text-align:center;margin-bottom:20px;">
                     <div style="font-size:4rem;font-weight:900;color:${gradeColor};">${grade}</div>
                     <div style="font-size:2rem;color:${gradeColor};font-weight:bold;">${score}/100</div>
-                    <div style="color:#94a3b8;margin-top:6px;font-size:0.9rem;">${result.summary || ''}</div>
+                    <div style="color:#cbd5e1;margin-top:6px;font-size:0.92rem;line-height:1.5;">${result.summary || ''}</div>
                 </div>
                 <div style="margin-bottom:16px;">${catHtml}</div>
-                ${result.strengths?.length ? `<div style="padding:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:10px;margin-bottom:10px;">
-                    <b style="color:#10b981;">✅ Điểm mạnh:</b><br>${result.strengths.map(s=>'• '+s).join('<br>')}
+                ${result.strengths?.length ? `<div style="padding:14px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.35);border-radius:10px;margin-bottom:10px;">
+                    <b style="color:#34d399;">✅ Điểm mạnh:</b><br><span style="color:#d1fae5;line-height:1.8;">${result.strengths.map(s=>'• '+s).join('<br>')}</span>
                 </div>` : ''}
-                ${result.improvements?.length ? `<div style="padding:12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;">
-                    <b style="color:#ef4444;">📈 Cần cải thiện:</b><br>${result.improvements.map(s=>'• '+s).join('<br>')}
+                ${result.improvements?.length ? `<div style="padding:14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.35);border-radius:10px;">
+                    <b style="color:#f87171;">📈 Cần cải thiện:</b><br><span style="color:#fee2e2;line-height:1.8;">${result.improvements.map(s=>'• '+s).join('<br>')}</span>
                 </div>` : ''}
             `;
         }
