@@ -13,6 +13,7 @@ load_dotenv()
 app = Flask(__name__, static_folder='.')
 CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+
 # ── Config ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GEMINI_URL = (
@@ -76,10 +77,10 @@ def _call_gemini_once(contents, system_prompt: str, max_tokens: int = 65536):
         json=payload,
         timeout=120,
     )
-    
+
     if not resp.content:
         raise ValueError('Gemini trả về phản hồi rỗng.')
-    
+
     try:
         data = resp.json()
     except Exception:
@@ -96,8 +97,8 @@ def _call_gemini_once(contents, system_prompt: str, max_tokens: int = 65536):
     if not candidates:
         raise ValueError('Không nhận được phản hồi từ AI.')
 
-    candidate    = candidates[0]
-    text         = ''.join(p.get('text', '') for p in candidate.get('content', {}).get('parts', []))
+    candidate     = candidates[0]
+    text          = ''.join(p.get('text', '') for p in candidate.get('content', {}).get('parts', []))
     finish_reason = candidate.get('finishReason', '')
     return text, finish_reason
 
@@ -121,8 +122,6 @@ def chat():
     if not GEMINI_API_KEY:
         return jsonify({'error': 'Server chưa cấu hình API key.'}), 500
 
-    # Build Gemini contents from the messages array
-    # Expect messages like: [{role: "user", content: "..." | [...]}]
     try:
         last_msg = messages[-1]
         user_content = last_msg.get('content', '')
@@ -180,7 +179,19 @@ def firebase_config():
 
 
 # ── Static file serving ───────────────────────────────────────────────────────
-@app.route('/', defaults={'path': 'index.html'})
+# Serve index.html at root
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
+
+# Serve lab.html explicitly (supports both /lab and /lab.html)
+@app.route('/lab')
+@app.route('/lab.html')
+@app.route('/lab__28_.html')
+def serve_lab():
+    return send_from_directory('.', 'lab.html')
+
+# Catch-all for other static assets (js, css, images, etc.)
 @app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory('.', path)
@@ -190,4 +201,7 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     print(f'🚀 ChemCraft backend đang chạy tại http://localhost:{port}')
+    print(f'   → index.html : http://localhost:{port}/')
+    print(f'   → lab.html   : http://localhost:{port}/lab')
+    print(f'   → API chat   : http://localhost:{port}/api/chat')
     app.run(host='0.0.0.0', port=port, debug=debug)
