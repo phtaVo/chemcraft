@@ -1371,7 +1371,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
           <label class="lbl">Phương pháp tính:</label>
           <select class="inp" id="mol-method" onchange="updateMol()">
             <option value="mass">Từ khối lượng — n = m / M</option>
-            <option value="gas">Từ thể tích khí đktc — n = V / 22.4</option>
+            <option value="gas">Từ thể tích khí đktc — n = V / 24.79</option>
             <option value="par">Từ số hạt — n = N / Nₐ</option>
           </select>
           <div id="mol-fields"></div>
@@ -2360,7 +2360,7 @@ function updateMol(){
 function calcMol(){
   var m=document.getElementById('mol-method').value,n,steps;
   if(m==='mass'){var mw=+document.getElementById('m-m').value,M=+document.getElementById('m-M').value;if(!mw||!M){toast('Nhập đủ m và M!');return;}n=mw/M;steps='Công thức: n = m / M\nn = '+mw+' / '+M+' = '+n.toFixed(4)+' mol';}
-  else if(m==='gas'){var V=+document.getElementById('m-V').value;if(!V){toast('Nhập thể tích V!');return;}n=V/22.4;steps='Công thức: n = V / 22.4\nn = '+V+' / 22.4 = '+n.toFixed(4)+' mol\n(dtc: 0°C, 1 atm)';}
+  else if(m==='gas'){var V=+document.getElementById('m-V').value;if(!V){toast('Nhập thể tích V!');return;}n=V/24.79;steps='Công thức: n = V / 24.79\nn = '+V+' / 24.79 = '+n.toFixed(4)+' mol\n(dtc: 0°C, 1 atm)';}
   else{var N=+document.getElementById('m-N').value;if(!N){toast('Nhập số hạt N!');return;}n=N/6.022e23;steps='Công thức: n = N / Na\nNa = 6.022x10^23\nn = '+n.toExponential(4)+' mol';}
   document.getElementById('mol-val').textContent='n = '+(n<0.001?n.toExponential(3):n.toFixed(4))+' mol';
   document.getElementById('mol-steps').textContent=steps;
