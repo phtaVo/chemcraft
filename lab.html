@@ -1760,6 +1760,9 @@
             // --- 3. GẮN SỰ KIỆN ---
             document.getElementById('start-btn').addEventListener('click', () => {
                 SoundEngine.init();
+                const el = document.documentElement;
+                const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                if (req) { try { const pr = req.call(el); if (pr && pr.catch) pr.catch(err => console.warn('Fullscreen bị từ chối:', err)); } catch(e) { console.warn(e); } }
                 enterRoom3D();
             });
             document.getElementById('btn-close-el-modal').addEventListener('click', closeElementModal);
