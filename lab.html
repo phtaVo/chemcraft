@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phòng Thí Nghiệm Hóa Học 3D Pro - Ultimate Edition</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #050505; user-select: none; }
-        #canvas-container { width: 100vw; height: 100vh; display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #050505; user-select: none; position: relative; }
+        #canvas-container { width: 100%; height: 100%; display: block; position: absolute; top: 0; left: 0; z-index: 1; }
 
         /* MÀN HÌNH BẮT ĐẦU */
         #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; color: white; text-align: center; }
@@ -127,6 +129,26 @@
         .result-eq { font-size: 2.5rem; color: #ffeb3b; font-weight: bold; margin-bottom: 25px; text-shadow: 0 0 15px rgba(255, 235, 59, 0.4); padding: 20px; background: rgba(255,255,255,0.05); border-radius: 15px;}
         .result-desc { font-size: 1.3rem; line-height: 1.8; margin-bottom: 35px; color: #e2e8f0;}
         @keyframes zoomIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* ── Responsive scaling ── */
+        @media (max-width: 900px) {
+            #ui-2d-lab { flex-direction: column; padding: 10px; }
+            #shelf-2d { margin-right: 0; margin-bottom: 10px; max-height: 220px; }
+            #desk-2d { margin-right: 0; margin-bottom: 10px; }
+            .chem-grid { grid-template-columns: repeat(3, 1fr); }
+            #sandbox-container { width: 100%; max-width: 300px; height: 240px; }
+            .result-box { padding: 20px 12px; max-width: 98vw; }
+            .result-eq { font-size: 1.4rem; }
+            .btn-action { padding: 12px; font-size: 0.95rem; }
+        }
+        @media (max-width: 600px) {
+            #start-screen h1 { font-size: 2rem; }
+            .chem-grid { grid-template-columns: repeat(2, 1fr); }
+            .result-eq { font-size: 1.1rem; }
+            .panel-header { font-size: 1.1rem; }
+            #instructions-3d { font-size: 0.82rem; padding: 10px; }
+            .btn-action { font-size: 0.82rem; padding: 10px; margin-bottom: 8px; }
+        }
         
         #tab-stoich { display: none; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; max-height: 280px; }
         #tab-composition .status-list { max-height: 200px; overflow-y: auto; }
@@ -162,7 +184,7 @@
                 <li>Dùng <b>W, A, S, D</b> để đi quanh phòng. Dùng <b>Chuột</b> để nhìn.</li>
                 <li><b>Giai đoạn 1:</b> Khám phá các kệ, <b>Click</b> để nhặt vật phẩm.</li>
                 <li><b>Giai đoạn 2:</b> Có thể <b>tìm kiếm các chất</b> bằng cách nhấn F để hiện thanh tìm kiếm.</li>
-                <li><b>Giai đoạn 3:</b> Tới bàn trung tâm, <b>Click vào bàn thí nghiệm</b> (hoặc cốc trên bàn). Tại đây bạn <span style="color:#ffeb3b">CLICK hoặc KÉO THẢ thời gian thực</span> để pha dung dịch. Sau đó bấm <b style="color:#00e5ff">CHẠY PHẢN ỨNG/XEM PHẢN ỨNG 3D</b> để xem thước phim phản ứng Cinematic!</li>
+                <li><b>Giai đoạn 3:</b> Tới bàn trung tâm, <b>Click vào bàn thí nghiệm</b> (hoặc cốc trên bàn). Tại đây bạn <span style="color:#ffeb3b">CLICK hoặc KÉO THẢ thời gian thực</span> để pha dung dịch. Sau đó bấm <b style="color:#00e5ff">CHẠY PHẢN ỨNG/XEM ANIMATION 3D</b> để xem thước phim phản ứng Cinematic!</li>
             </ul>
         </div>
         <a 
@@ -324,7 +346,7 @@
                 <button onclick="calculateStoichiometry()" style="margin-top:8px;padding:12px;background:linear-gradient(90deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:10px;font-weight:bold;cursor:pointer;font-size:0.95rem;">⚖️ Tính Stoichiometry</button>
                 <div id="stoich-result" style="margin-top:6px;padding:12px;background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.3);border-radius:10px;font-size:0.88rem;line-height:1.7;display:none;color:#e2e8f0;"></div>
             </div>
-            <button class="btn-action" id="btn-react">CHẠY PHẢN ỨNG/XEM PHẢN ỨNG 3D</button>
+            <button class="btn-action" id="btn-react">CHẠY PHẢN ỨNG/XEM ANIMATION 3D</button>
             <button class="btn-action" id="btn-reset">Đổ bỏ & Rửa cốc</button>
             <button class="btn-action" id="btn-back">⬅ Quay lại phòng</button>
         </div>
@@ -1616,10 +1638,14 @@
         // ==========================================
         let _rendererContextLost = false;
 
+        // Helper: lấy kích thước thực của container (tương thích iframe)
+        function getW() { var c = document.getElementById("canvas-container"); return (c && c.clientWidth > 0) ? c.clientWidth : window.innerWidth; }
+        function getH() { var c = document.getElementById("canvas-container"); return (c && c.clientHeight > 0) ? c.clientHeight : window.innerHeight; }
+
         function init() {
             const container = document.getElementById('canvas-container');
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setSize(getW(), getH());
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1646,7 +1672,7 @@
             sceneRoom = new THREE.Scene();
             sceneRoom.background = new THREE.Color('#0c1612');
             sceneRoom.fog = new THREE.Fog('#c9d3dc', 28, 70);
-            cameraRoom = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+            cameraRoom = new THREE.PerspectiveCamera(70, getW() / getH(), 0.1, 1000);
             cameraRoom.position.set(0, 5, 15);
 
             // Lighting — cân bằng giữa sáng & tương phản (giữ chi tiết, không bị bệt)
@@ -1713,7 +1739,7 @@
             // --- 2. SETUP REACTION SCENE (CINEMATIC) ---
             sceneReact = new THREE.Scene();
             sceneReact.background = new THREE.Color(0x050810); 
-            cameraReact = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            cameraReact = new THREE.PerspectiveCamera(45, getW() / getH(), 0.1, 100);
             cameraReact.position.set(0, 2, 6);
             cameraReact.lookAt(0, 0, 0);
 
@@ -1775,6 +1801,10 @@
             });
 
             window.addEventListener('resize', onWindowResize);
+            // ResizeObserver: bắt resize khi trong iframe hoặc layout thay đổi
+            if (window.ResizeObserver) {
+                new ResizeObserver(function() { onWindowResize(); }).observe(document.getElementById('canvas-container'));
+            }
             Canvas2D.init();
             setupInteractions();
             animate();
@@ -4464,9 +4494,9 @@
             switch(e.code) { case 'KeyW': moveF=false; break; case 'KeyS': moveB=false; break; case 'KeyA': moveL=false; break; case 'KeyD': moveR=false; break;}
         }
         function onWindowResize() {
-            cameraRoom.aspect = window.innerWidth / window.innerHeight; cameraRoom.updateProjectionMatrix();
-            cameraReact.aspect = window.innerWidth / window.innerHeight; cameraReact.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            cameraRoom.aspect = getW() / getH(); cameraRoom.updateProjectionMatrix();
+            cameraReact.aspect = getW() / getH(); cameraReact.updateProjectionMatrix();
+            renderer.setSize(getW(), getH());
         }
 
         const raycaster = new THREE.Raycaster(); const centerPos = new THREE.Vector2(0, 0);
@@ -6088,29 +6118,29 @@ Trả về JSON thuần túy, không có markdown, không có giải thích thê
             let catHtml = (result.categories || []).map(c => {
                 const pct = (c.score / c.maxScore) * 100;
                 const barColor = pct >= 80 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#ef4444';
-                return `<div style="margin-bottom:14px;">
+                return `<div style="margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                        <span style="color:#f1f5f9;font-weight:600;">${c.name}</span>
+                        <span style="color:#e2e8f0;">${c.name}</span>
                         <span style="color:${barColor};font-weight:bold;">${c.score}/${c.maxScore}</span>
                     </div>
                     <div style="background:#1e293b;border-radius:6px;height:8px;overflow:hidden;">
                         <div style="width:${pct}%;height:100%;background:${barColor};border-radius:6px;transition:width 0.5s;"></div>
                     </div>
-                    <div style="color:#cbd5e1;font-size:0.82rem;margin-top:5px;line-height:1.5;">${c.feedback}</div>
+                    <div style="color:#64748b;font-size:0.8rem;margin-top:4px;">${c.feedback}</div>
                 </div>`;
             }).join('');
             div.innerHTML = `
                 <div style="text-align:center;margin-bottom:20px;">
                     <div style="font-size:4rem;font-weight:900;color:${gradeColor};">${grade}</div>
                     <div style="font-size:2rem;color:${gradeColor};font-weight:bold;">${score}/100</div>
-                    <div style="color:#cbd5e1;margin-top:6px;font-size:0.92rem;line-height:1.5;">${result.summary || ''}</div>
+                    <div style="color:#94a3b8;margin-top:6px;font-size:0.9rem;">${result.summary || ''}</div>
                 </div>
                 <div style="margin-bottom:16px;">${catHtml}</div>
-                ${result.strengths?.length ? `<div style="padding:14px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.35);border-radius:10px;margin-bottom:10px;">
-                    <b style="color:#34d399;">✅ Điểm mạnh:</b><br><span style="color:#d1fae5;line-height:1.8;">${result.strengths.map(s=>'• '+s).join('<br>')}</span>
+                ${result.strengths?.length ? `<div style="padding:12px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:10px;margin-bottom:10px;">
+                    <b style="color:#10b981;">✅ Điểm mạnh:</b><br>${result.strengths.map(s=>'• '+s).join('<br>')}
                 </div>` : ''}
-                ${result.improvements?.length ? `<div style="padding:14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.35);border-radius:10px;">
-                    <b style="color:#f87171;">📈 Cần cải thiện:</b><br><span style="color:#fee2e2;line-height:1.8;">${result.improvements.map(s=>'• '+s).join('<br>')}</span>
+                ${result.improvements?.length ? `<div style="padding:12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;">
+                    <b style="color:#ef4444;">📈 Cần cải thiện:</b><br>${result.improvements.map(s=>'• '+s).join('<br>')}
                 </div>` : ''}
             `;
         }
