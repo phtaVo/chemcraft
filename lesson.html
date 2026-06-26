@@ -6,7 +6,7 @@
     <title>ChemCraft - Hệ Thống Huấn Luyện & Khảo Thí</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 
     <!-- Firebase -->
@@ -120,7 +120,7 @@
             }
             if (badge) {
                 const name = user.displayName || user.email.split('@')[0];
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_5px_#4ade80] inline-block"></span> ${name}`;
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_5px_#4ade80] inline-block"></span> ${name}`;
                 badge.classList.remove('hidden');
             }
             try {
@@ -170,16 +170,16 @@
 
     <style>
         :root {
-            --bg-color: #f8fafc;
+            --bg-color: #F6F8FC;
             --panel-bg: rgba(255, 255, 255, 0.85);
-            --neon-main: #22c55e;
-            --neon-sec: #10b981;
-            --text-main: #1e293b;
+            --neon-main: #06B6D4;
+            --neon-sec: #4F6BFF;
+            --text-main: #1E2433;
         }
         body { 
             background-color: var(--bg-color); 
             color: var(--text-main); 
-            font-family: 'Inter', sans-serif;
+            font-family: 'Be Vietnam Pro', 'Inter', sans-serif;
             -webkit-font-smoothing: antialiased; 
             overflow-x: hidden;
         }
@@ -187,8 +187,8 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--neon-main); }
-        .ambient-light-1 { position: fixed; top: -20%; left: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(34,197,94,0.15) 0%, transparent 60%); border-radius: 50%; z-index: -1; pointer-events: none; filter: blur(60px); }
-        .ambient-light-2 { position: fixed; bottom: -20%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(16,185,129,0.15) 0%, transparent 60%); border-radius: 50%; z-index: -1; pointer-events: none; filter: blur(60px); }
+        .ambient-light-1 { position: fixed; top: -20%; left: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(6,182,212,0.15) 0%, transparent 60%); border-radius: 50%; z-index: -1; pointer-events: none; filter: blur(60px); }
+        .ambient-light-2 { position: fixed; bottom: -20%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(14,165,196,0.15) 0%, transparent 60%); border-radius: 50%; z-index: -1; pointer-events: none; filter: blur(60px); }
         .sci-fi-panel {
             background: var(--panel-bg);
             backdrop-filter: blur(20px);
@@ -197,26 +197,26 @@
             box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.05), 0 5px 15px rgba(34, 197, 94, 0.05);
             border-radius: 20px;
         }
-        .text-glow-main { color: #16a34a; text-shadow: 0 0 10px rgba(34,197,94,0.4); }
+        .text-glow-main { color: #0891A8; text-shadow: 0 0 10px rgba(6,182,212,0.4); }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
         .step-line { position: absolute; left: 19px; top: 40px; bottom: -10px; width: 2px; background: rgba(0,0,0,0.1); z-index: 0; }
         .step-item:last-child .step-line { display: none; }
         .step-icon { position: relative; z-index: 1; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-        .step-item.active .step-icon { background: #f0fdf4; color: var(--neon-main); border: 1px solid var(--neon-main); box-shadow: 0 0 15px rgba(34,197,94,0.3), inset 0 0 10px rgba(34,197,94,0.1); }
-        .step-item.active .step-title { color: #15803d; font-weight: 700; text-shadow: 0 0 8px rgba(34,197,94,0.2); }
+        .step-item.active .step-icon { background: #E3F8FB; color: var(--neon-main); border: 1px solid var(--neon-main); box-shadow: 0 0 15px rgba(6,182,212,0.3), inset 0 0 10px rgba(6,182,212,0.1); }
+        .step-item.active .step-title { color: #075E68; font-weight: 700; text-shadow: 0 0 8px rgba(6,182,212,0.2); }
         .step-item { cursor: pointer; transition: all 0.2s; border-radius: 12px; padding: 10px 8px; margin-left: -8px; }
         .step-item:hover:not(.locked) { background-color: rgba(0,0,0,0.02); transform: translateX(4px); }
         .step-item.locked { opacity: 0.5; filter: grayscale(100%); cursor: not-allowed; }
         .tab-content, .lesson-content { display: none; animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .tab-content.active, .lesson-content.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: scale(0.98) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-        .btn-hologram { position: relative; overflow: hidden; background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(16,185,129,0.1)); border: 1px solid rgba(34,197,94,0.4); color: #15803d; font-weight: 600; letter-spacing: 0.5px; padding: 12px 24px; border-radius: 12px; transition: all 0.3s; cursor: pointer; box-shadow: 0 4px 10px rgba(34,197,94,0.1); }
-        .btn-hologram:hover { background: linear-gradient(135deg, rgba(34,197,94,0.8), rgba(16,185,129,0.8)); border-color: var(--neon-main); color: #fff; box-shadow: 0 0 20px rgba(34,197,94,0.4), inset 0 0 10px rgba(255,255,255,0.2); transform: translateY(-2px); }
+        .btn-hologram { position: relative; overflow: hidden; background: linear-gradient(135deg, rgba(6,182,212,0.1), rgba(14,165,196,0.1)); border: 1px solid rgba(6,182,212,0.4); color: #075E68; font-weight: 600; letter-spacing: 0.5px; padding: 12px 24px; border-radius: 12px; transition: all 0.3s; cursor: pointer; box-shadow: 0 4px 10px rgba(6,182,212,0.1); }
+        .btn-hologram:hover { background: linear-gradient(135deg, rgba(6,182,212,0.8), rgba(14,165,196,0.8)); border-color: var(--neon-main); color: #fff; box-shadow: 0 0 20px rgba(6,182,212,0.4), inset 0 0 10px rgba(255,255,255,0.2); transform: translateY(-2px); }
         .btn-outline { background: #fff; border: 1px solid rgba(0,0,0,0.1); color: #64748b; padding: 12px 24px; border-radius: 12px; transition: all 0.3s; font-weight: 500; }
         .btn-outline:hover { border-color: rgba(0,0,0,0.2); color: #1e293b; background: rgba(0,0,0,0.02); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 10px; border-radius: 4px; background: #fff; border: 2px solid var(--neon-main); cursor: pointer; margin-top: -8px; box-shadow: 0 0 8px rgba(34,197,94,0.5); transition: all 0.2s; }
-        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); background: #f0fdf4; box-shadow: 0 0 12px var(--neon-main); }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 10px; border-radius: 4px; background: #fff; border: 2px solid var(--neon-main); cursor: pointer; margin-top: -8px; box-shadow: 0 0 8px rgba(6,182,212,0.5); transition: all 0.2s; }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); background: #E3F8FB; box-shadow: 0 0 12px var(--neon-main); }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(0,0,0,0.1); border-radius: 2px; }
         .lab-container { background: radial-gradient(circle at center, rgba(255,255,255,1) 0%, rgba(241,245,249,0.8) 100%); position: relative; border-radius: 16px; box-shadow: inset 0 0 20px rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05); }
         .beaker { position: relative; width: 150px; height: 200px; border: 2px solid rgba(0,0,0,0.1); border-top: none; border-radius: 0 0 20px 20px; background: linear-gradient(90deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.8) 20%, rgba(255,255,255,0.2) 100%); box-shadow: inset -5px -5px 20px rgba(0,0,0,0.05), 0 10px 20px rgba(0,0,0,0.05); margin: 0 auto; overflow: hidden; backdrop-filter: blur(4px); }
@@ -230,7 +230,7 @@
         .thermometer-bulb { width: 36px; height: 36px; background: #ef4444; border: 1px solid rgba(0,0,0,0.1); border-radius: 50%; margin-top: -10px; z-index: 2; transition: background 0.5s; box-shadow: inset -5px -5px 10px rgba(0,0,0,0.2), 0 5px 10px rgba(239,68,68,0.2); }
         .thermometer-mercury { position: absolute; bottom: 0; left: 1px; right: 1px; height: 25%; background: #ef4444; border-radius: 8px; transition: height 0.3s ease-out, background 0.5s; box-shadow: inset -2px 0 3px rgba(0,0,0,0.2); }
         .temp-marks { position: absolute; right: -30px; top: 10px; bottom: 40px; display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; color: rgba(0,0,0,0.4); font-family: 'JetBrains Mono', monospace; font-weight: bold; }
-        .stopwatch { font-family: 'JetBrains Mono', monospace; font-size: 2.8rem; font-weight: 700; color: var(--neon-main); background: #1e293b; padding: 12px 24px; border-radius: 12px; border: 2px solid rgba(34,197,94,0.3); display: inline-block; text-shadow: 0 0 10px var(--neon-main); box-shadow: inset 0 0 15px rgba(0,0,0,0.5), 0 5px 15px rgba(0,0,0,0.1); }
+        .stopwatch { font-family: 'JetBrains Mono', monospace; font-size: 2.8rem; font-weight: 700; color: var(--neon-main); background: #1e293b; padding: 12px 24px; border-radius: 12px; border: 2px solid rgba(6,182,212,0.3); display: inline-block; text-shadow: 0 0 10px var(--neon-main); box-shadow: inset 0 0 15px rgba(0,0,0,0.5), 0 5px 15px rgba(0,0,0,0.1); }
         .ampoule { width: 100px; height: 160px; border-radius: 50px 50px 20px 20px; border: 2px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.5); position: relative; overflow: hidden; box-shadow: inset 0 0 20px rgba(0,0,0,0.05), 0 10px 20px rgba(0,0,0,0.05); margin: 0 auto; backdrop-filter: blur(2px); transition: all 0.5s; }
         .amp-gas { position: absolute; top:0; left:0; right:0; bottom:0; transition: background 1s ease; }
         .amp-liquid { position: absolute; bottom:0; left:0; right:0; height: 0%; transition: all 1s ease; border-radius: 0 0 18px 18px; }
@@ -239,24 +239,86 @@
         .syringe-body { width: 80px; height: 160px; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px; position: relative; background: rgba(255,255,255,0.7); overflow: hidden; }
         .syringe-piston { position: absolute; top: 0%; left: 0; right: 0; height: 10px; background: #64748b; border-bottom: 2px solid #334155; transition: top 0.3s; z-index: 2; }
         .syringe-rod { position: absolute; top: -40px; left: 36px; width: 8px; height: 200px; background: #cbd5e1; transition: transform 0.3s; z-index: 1;}
-        .syringe-gas { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(34,197,94,0.15); transition: height 0.3s; border-top: 2px dashed rgba(34,197,94,0.4); }
+        .syringe-gas { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(6,182,212,0.15); transition: height 0.3s; border-top: 2px dashed rgba(6,182,212,0.4); }
         .task-item { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); background: #fff; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
-        .task-item:hover { border-color: rgba(34,197,94,0.3); transform: translateY(-2px); box-shadow: 0 5px 15px rgba(34,197,94,0.1); }
-        .task-item.done { background: #f0fdf4; border-color: rgba(34,197,94,0.4); box-shadow: 0 4px 12px rgba(34,197,94,0.1); }
-        .task-item.done .task-icon { color: var(--neon-main); text-shadow: 0 0 10px rgba(34,197,94,0.4); }
-        .task-item.done .task-text { text-decoration: line-through; color: #16a34a; opacity: 0.6; }
+        .task-item:hover { border-color: rgba(6,182,212,0.3); transform: translateY(-2px); box-shadow: 0 5px 15px rgba(6,182,212,0.1); }
+        .task-item.done { background: #E3F8FB; border-color: rgba(6,182,212,0.4); box-shadow: 0 4px 12px rgba(6,182,212,0.1); }
+        .task-item.done .task-icon { color: var(--neon-main); text-shadow: 0 0 10px rgba(6,182,212,0.4); }
+        .task-item.done .task-text { text-decoration: line-through; color: #0891A8; opacity: 0.6; }
         .quiz-option { background: #fff; border: 2px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; font-weight: 500; }
         .quiz-option:hover { border-color: rgba(34, 197, 94, 0.4); background: #f8fafc; }
-        .quiz-option.selected { border-color: var(--neon-main); background: #f0fdf4; box-shadow: 0 0 15px rgba(34,197,94,0.15); color: #15803d; }
+        .quiz-option.selected { border-color: var(--neon-main); background: #E3F8FB; box-shadow: 0 0 15px rgba(6,182,212,0.15); color: #075E68; }
         .quiz-option .opt-letter { width: 32px; height: 32px; border-radius: 8px; background: rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: center; font-weight: 700; margin-right: 16px; transition: all 0.2s; }
         .quiz-option.selected .opt-letter { background: var(--neon-main); color: white; }
-        .quiz-option.correct { border-color: var(--neon-main); background: #f0fdf4; color: #15803d; }
+        .quiz-option.correct { border-color: var(--neon-main); background: #E3F8FB; color: #075E68; }
         .quiz-option.correct .opt-letter { background: var(--neon-main); color: white; }
         .quiz-option.incorrect { border-color: #ef4444; background: #fef2f2; color: #b91c1c; }
         .quiz-option.incorrect .opt-letter { background: #ef4444; color: white; }
         .progress-bar-wrap { width: 100%; height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; margin-top: 16px; }
-        .progress-bar-fill { height: 100%; background: var(--neon-main); transition: width 0.3s ease; box-shadow: 0 0 8px rgba(34,197,94,0.6); }
+        .progress-bar-fill { height: 100%; background: var(--neon-main); transition: width 0.3s ease; box-shadow: 0 0 8px rgba(6,182,212,0.6); }
         .mini-lab-container { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+
+        /* ============ ChemCraft Navbar Sync ============ */
+        :root{
+          --cyan:#06B6D4; --cyan-d:#0891A8; --ink:#101725; --white:#FFFFFF;
+          --text-m:#5B6477; --sky2:#EEF2F9; --border:#E4E9F1;
+          --red:#EF4444; --red-d:#C8312A; --red-l:#FDEDED; --r-pill:999px;
+        }
+        body{ }
+        #navbar{position:fixed;top:0;left:0;right:0;z-index:999;background:rgba(255,255,255,0.86);backdrop-filter:blur(14px) saturate(180%);-webkit-backdrop-filter:blur(14px) saturate(180%);border-bottom:1px solid var(--border);box-shadow:0 1px 0 rgba(16,23,37,0.02);height:64px;display:flex;align-items:center;padding:0 24px;gap:8px;}
+        .nav-logo{display:flex;align-items:center;gap:8px;font-family:'Be Vietnam Pro',sans-serif;font-weight:800;font-size:1.1rem;color:var(--ink);margin-right:14px;white-space:nowrap;letter-spacing:-0.01em;text-decoration:none;}
+        .nav-logo-img{height:32px;width:32px;object-fit:contain;filter:drop-shadow(0 0 6px rgba(6,182,212,0.55));transition:filter 0.3s,transform 0.3s;}
+        .nav-logo:hover .nav-logo-img{filter:drop-shadow(0 0 14px rgba(6,182,212,0.9));transform:rotate(-8deg) scale(1.08);}
+        .nav-links{display:flex;gap:3px;flex:1;overflow-x:auto;}
+        .nav-links::-webkit-scrollbar{display:none;}
+        .nav-btn{font-family:'Be Vietnam Pro',sans-serif;font-size:0.86rem;font-weight:600;padding:9px 15px;border:1.5px solid transparent;background:transparent;color:var(--text-m);cursor:pointer;border-radius:var(--r-pill);transition:all 0.18s cubic-bezier(.4,0,.2,1);white-space:nowrap;display:flex;align-items:center;gap:6px;}
+        .nav-btn:hover{color:var(--ink);background:var(--sky2);}
+        .nav-btn.active{background:var(--ink);color:var(--white);border-color:var(--ink);font-weight:700;}
+        .nav-auth-btn{font-family:'Be Vietnam Pro',sans-serif;font-weight:700;font-size:0.85rem;padding:9px 17px;border:none;background:linear-gradient(135deg,var(--cyan),#0EA5C4);color:#fff;cursor:pointer;border-radius:var(--r-pill);transition:all 0.18s;white-space:nowrap;display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0;box-shadow:0 8px 24px rgba(6,182,212,0.28);}
+        .nav-auth-btn:hover{transform:translateY(-2px);filter:brightness(1.05);}
+        .nav-user-area{display:flex;align-items:center;gap:10px;margin-left:auto;flex-shrink:0;}
+        .nav-avatar{width:34px;height:34px;border-radius:50%;background:var(--ink);border:2px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;color:var(--cyan);cursor:pointer;font-family:'Be Vietnam Pro',sans-serif;transition:transform 0.18s;}
+        .nav-avatar:hover{transform:scale(1.08);}
+        .nav-username{font-size:0.85rem;font-weight:700;color:var(--ink);}
+        .nav-logout{font-size:0.8rem;font-weight:600;padding:7px 14px;border:1px solid var(--border);background:var(--white);color:var(--text-m);cursor:pointer;border-radius:var(--r-pill);transition:all 0.15s;}
+        .nav-logout:hover{border-color:var(--red);color:var(--red-d);background:var(--red-l);}
+        @media (max-width:768px){
+          .nav-logo{font-size:0.92rem;margin-right:4px;}
+          .nav-logo-img{height:26px;width:26px;}
+          .nav-btn{font-size:0.74rem;padding:7px 10px;gap:3px;}
+          .nav-auth-btn{font-size:0.74rem;padding:7px 11px;gap:4px;margin-left:4px;}
+          .nav-username{display:none;}
+          .nav-avatar{width:30px;height:30px;font-size:0.75rem;}
+          .nav-logout{font-size:0.7rem;padding:5px 10px;}
+        }
+
+        /* ============ Custom cursor (flask) + glow effects, synced with main site ============ */
+        html, body {
+          cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34"><g transform="rotate(20 17 17)"><path d="M13 3 L13 14 L8 26 Q7 29 11 29 L23 29 Q27 29 26 26 L21 14 L21 3 Z" fill="rgba(20,28,46,0.85)" stroke="%2306B6D4" stroke-width="1.4"/><path d="M9.5 22 L24.5 22 L26 26 Q27 29 23 29 L11 29 Q7 29 8 26 Z" fill="%2306B6D4" fill-opacity="0.75"/><circle cx="14" cy="20" r="1.1" fill="%23FFFFFF" opacity="0.9"/><circle cx="18.5" cy="24" r="0.9" fill="%23FFFFFF" opacity="0.8"/><circle cx="16" cy="17" r="0.8" fill="%23FFFFFF" opacity="0.7"/><path d="M12 3 L22 3" stroke="%2306B6D4" stroke-width="1.6" stroke-linecap="round"/></g></svg>') 5 3, auto;
+        }
+        a, button, .nav-btn, .nav-avatar, .nav-logo, .step-item:not(.locked), .task-item, .quiz-option, .btn-hologram, .btn-outline, [onclick] {
+          cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34"><g transform="rotate(20 17 17)"><path d="M13 3 L13 14 L8 26 Q7 29 11 29 L23 29 Q27 29 26 26 L21 14 L21 3 Z" fill="rgba(20,28,46,0.9)" stroke="%2306B6D4" stroke-width="1.6"/><path d="M9.5 21 L24.5 21 L26 26 Q27 29 23 29 L11 29 Q7 29 8 26 Z" fill="%2306B6D4" fill-opacity="0.95"/><circle cx="14" cy="19" r="1.2" fill="%23FFFFFF" opacity="0.95"/><circle cx="18.5" cy="23" r="1" fill="%23FFFFFF" opacity="0.85"/><circle cx="16" cy="16" r="0.9" fill="%23FFFFFF" opacity="0.75"/><path d="M12 3 L22 3" stroke="%2306B6D4" stroke-width="1.8" stroke-linecap="round"/></g></svg>') 5 3, pointer !important;
+        }
+        #cursor-glow{
+          position:fixed; top:0; left:0; width:26px; height:26px; border-radius:50%;
+          background:radial-gradient(circle, rgba(6,182,212,0.55) 0%, rgba(79,107,255,0.25) 45%, transparent 75%);
+          pointer-events:none; z-index:99999; transform:translate(-50%,-50%); mix-blend-mode:screen;
+          transition:width 0.25s, height 0.25s, opacity 0.25s; opacity:0.9; filter:blur(2px);
+        }
+        #cursor-glow.big{width:46px;height:46px;opacity:1;}
+        .spark-particle{
+          position:fixed; pointer-events:none; z-index:99998; border-radius:50%;
+          background:radial-gradient(circle, #fff 0%, #06B6D4 60%, transparent 100%);
+          animation: sparkFly 0.7s ease-out forwards;
+        }
+        @keyframes sparkFly{
+          0%{opacity:1; transform:translate(0,0) scale(1);}
+          100%{opacity:0; transform:translate(var(--dx), var(--dy)) scale(0.2);}
+        }
+        .ambient-orb{
+          position:fixed; border-radius:50%; pointer-events:none; z-index:0;
+          filter:blur(40px); opacity:0.35; mix-blend-mode:screen;
+        }
     </style>
 </head>
 <body>
@@ -268,12 +330,12 @@
         <!-- SIDEBAR LỘ TRÌNH -->
         <aside class="w-full md:w-72 shrink-0">
             <div class="sci-fi-panel p-6 sticky top-8">
-                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center"><span class="w-2 h-2 rounded-full bg-green-500 mr-2 shadow-[0_0_5px_#22c55e]"></span>BÀI HỌC</h2>
-                <div id="auth-badge" class="hidden mb-5 text-xs font-bold text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2 tracking-wide">
-                    <span class="w-2 h-2 rounded-full bg-green-400"></span> Đang tải...
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center"><span class="w-2 h-2 rounded-full bg-cyan-500 mr-2 shadow-[0_0_5px_#06B6D4]"></span>BÀI HỌC</h2>
+                <div id="auth-badge" class="hidden mb-5 text-xs font-bold text-cyan-600 bg-cyan-50 border border-cyan-200 rounded-lg px-3 py-2 flex items-center gap-2 tracking-wide">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Đang tải...
                 </div>
                 <div id="progress-saved-msg" class="hidden mb-3 text-xs font-semibold text-slate-400 flex items-center gap-1.5">
-                    <span class="material-icons-round text-xs text-green-500">cloud_done</span> Tiến trình đã lưu
+                    <span class="material-icons-round text-xs text-cyan-500">cloud_done</span> Tiến trình đã lưu
                 </div>
                 <div class="relative" id="roadmap">
                     <div class="step-item relative flex gap-4 pb-6 active" id="step-1" onclick="loadLesson(1)">
@@ -324,16 +386,16 @@
             <!-- Navigation Tabs -->
             <div class="sci-fi-panel overflow-hidden p-1.5" id="nav-tabs">
                 <div class="flex gap-2 flex-wrap md:flex-nowrap">
-                    <button onclick="switchTab('theory')" id="tabBtn-theory" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-semibold text-green-600 bg-green-50 border border-green-500/30 rounded-xl transition-all shadow-[inset_0_0_10px_rgba(34,197,94,0.1)]"><span class="material-icons-round align-middle mr-1 text-base">menu_book</span> LÝ THUYẾT</button>
-                    <button onclick="switchTab('lab')" id="tabBtn-lab" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-green-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all"><span class="material-icons-round align-middle mr-1 text-base">biotech</span> THỰC HÀNH</button>
-                    <button onclick="switchTab('mission')" id="tabBtn-mission" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-green-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all relative"><span class="material-icons-round align-middle mr-1 text-base">assignment</span> NHIỆM VỤ</button>
+                    <button onclick="switchTab('theory')" id="tabBtn-theory" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-semibold text-cyan-600 bg-cyan-50 border border-cyan-500/30 rounded-xl transition-all shadow-[inset_0_0_10px_rgba(6,182,212,0.1)]"><span class="material-icons-round align-middle mr-1 text-base">menu_book</span> LÝ THUYẾT</button>
+                    <button onclick="switchTab('lab')" id="tabBtn-lab" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-cyan-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all"><span class="material-icons-round align-middle mr-1 text-base">biotech</span> THỰC HÀNH</button>
+                    <button onclick="switchTab('mission')" id="tabBtn-mission" class="flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-cyan-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all relative"><span class="material-icons-round align-middle mr-1 text-base">assignment</span> NHIỆM VỤ</button>
                 </div>
             </div>
 
             <!-- LÝ THUYẾT -->
             <div id="tab-theory" class="tab-content active sci-fi-panel p-8 md:p-10">
                 <div id="theory-1" class="lesson-content active">
-                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 01</div>
+                    <div class="inline-block border border-cyan-500/30 bg-cyan-50 text-cyan-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 01</div>
                     <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Năng lượng & Biến thiên Enthalpy</h1>
                     <p class="mb-8 text-slate-600 text-lg leading-relaxed">Biến thiên enthalpy chuẩn ($\Delta_rH^o_{298}$) là lượng nhiệt giải phóng hoặc hấp thụ của một hệ hóa học ở điều kiện tiêu chuẩn.</p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -350,11 +412,11 @@
                     </div>
                 </div>
                 <div id="theory-2" class="lesson-content">
-                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 02</div>
+                    <div class="inline-block border border-cyan-500/30 bg-cyan-50 text-cyan-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 02</div>
                     <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Động học Phản ứng</h1>
                     <p class="mb-6 text-slate-600 text-lg">Phân tích vận tốc biến đổi nồng độ chất phản ứng trong một đơn vị thời gian.</p>
                     <div class="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm">
-                        <h3 class="font-bold text-green-600 text-lg mb-5 flex items-center tracking-wide"><span class="material-icons-round mr-2 text-green-500">insights</span> CÁC THAM SỐ ẢNH HƯỞNG:</h3>
+                        <h3 class="font-bold text-cyan-600 text-lg mb-5 flex items-center tracking-wide"><span class="material-icons-round mr-2 text-cyan-500">insights</span> CÁC THAM SỐ ẢNH HƯỞNG:</h3>
                         <div class="space-y-4">
                             <div class="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="p-2 bg-yellow-100 text-yellow-600 rounded-lg mr-4"><span class="material-icons-round text-xl">grain</span></div><div><b class="text-slate-800">Nồng độ:</b> <span class="text-slate-600 text-sm block mt-1">Mật độ hạt tăng $\rightarrow$ Xác suất va chạm hiệu quả tăng $\rightarrow$ Tốc độ gia tăng mạnh.</span></div></div>
                             <div class="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100"><div class="p-2 bg-red-100 text-red-600 rounded-lg mr-4"><span class="material-icons-round text-xl">thermostat</span></div><div><b class="text-slate-800">Nhiệt độ (Van't Hoff):</b> <span class="text-slate-600 text-sm block mt-1">Tăng $10^\circ C$, tốc độ tăng $\gamma$ lần. Phương trình: $v_{t2} = v_{t1} \cdot \gamma^{\frac{t2-t1}{10}}$</span></div></div>
@@ -363,17 +425,17 @@
                     </div>
                 </div>
                 <div id="theory-3" class="lesson-content">
-                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 03</div>
+                    <div class="inline-block border border-cyan-500/30 bg-cyan-50 text-cyan-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 03</div>
                     <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Tương tác Phân tử Halogen</h1>
                     <p class="mb-6 text-slate-600 text-lg">Phân tích vi mô Nhóm VIIA - Những phi kim hoạt động mạnh nhất vũ trụ.</p>
-                    <div class="bg-green-50/50 p-6 rounded-2xl border border-green-200 mb-6">
-                        <h3 class="font-bold text-green-700 text-lg mb-4 flex items-center"><span class="material-icons-round mr-2 text-green-500">scatter_plot</span> Lực Van der Waals:</h3>
-                        <p class="text-slate-700 leading-relaxed text-sm">Đi từ $F_2$ đến $I_2$, khối lượng và bán kính nguyên tử tăng $\rightarrow$ Đám mây electron lỏng lẻo dễ biến dạng $\rightarrow$ <b class="text-green-700 bg-green-100 px-2 py-0.5 rounded">Lực hút tĩnh điện yếu (Van der Waals) mạnh dần lên</b>.</p>
-                        <div class="mt-4 bg-white p-4 rounded-xl text-slate-700 text-sm border border-green-200 shadow-sm font-mono">Khí ($F_2, Cl_2$) $\rightarrow$ Lỏng ($Br_2$) $\rightarrow$ Rắn ($I_2$)</div>
+                    <div class="bg-cyan-50/50 p-6 rounded-2xl border border-cyan-200 mb-6">
+                        <h3 class="font-bold text-cyan-700 text-lg mb-4 flex items-center"><span class="material-icons-round mr-2 text-cyan-500">scatter_plot</span> Lực Van der Waals:</h3>
+                        <p class="text-slate-700 leading-relaxed text-sm">Đi từ $F_2$ đến $I_2$, khối lượng và bán kính nguyên tử tăng $\rightarrow$ Đám mây electron lỏng lẻo dễ biến dạng $\rightarrow$ <b class="text-cyan-700 bg-cyan-100 px-2 py-0.5 rounded">Lực hút tĩnh điện yếu (Van der Waals) mạnh dần lên</b>.</p>
+                        <div class="mt-4 bg-white p-4 rounded-xl text-slate-700 text-sm border border-cyan-200 shadow-sm font-mono">Khí ($F_2, Cl_2$) $\rightarrow$ Lỏng ($Br_2$) $\rightarrow$ Rắn ($I_2$)</div>
                     </div>
                 </div>
                 <div id="theory-4" class="lesson-content">
-                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 04</div>
+                    <div class="inline-block border border-cyan-500/30 bg-cyan-50 text-cyan-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 04</div>
                     <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Định luật Avogadro</h1>
                     <p class="mb-6 text-slate-600 text-lg">Định luật cơ bản về mối quan hệ giữa thể tích khí và lượng chất.</p>
                     <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm mb-6">
@@ -383,19 +445,19 @@
                     </div>
                 </div>
                 <div id="theory-5" class="lesson-content">
-                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 05 (LỚP 10)</div>
+                    <div class="inline-block border border-cyan-500/30 bg-cyan-50 text-cyan-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 05 (LỚP 10)</div>
                     <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Phản ứng Oxi hóa - Khử</h1>
                     <p class="mb-6 text-slate-600 text-lg">Phản ứng hóa học có sự chuyển dịch electron giữa các chất phản ứng.</p>
                     <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><ul class="space-y-4 text-slate-700"><li><b class="text-red-500">Chất khử:</b> Là chất nhường electron (Số oxi hóa tăng sau phản ứng).</li><li><b class="text-blue-500">Chất oxi hóa:</b> Là chất nhận electron (Số oxi hóa giảm sau phản ứng).</li><li class="bg-slate-50 p-4 rounded-lg border border-slate-200"><b>Thí nghiệm tiêu biểu:</b> $KMnO_4$ + $FeSO_4$ + $H_2SO_4$. Thuốc tím $KMnO_4$ (chất oxi hóa mạnh) bị mất màu tím đặc trưng khi tác dụng với chất khử $Fe^{2+}$.</li></ul></div>
                 </div>
                 <div id="theory-6" class="lesson-content">
-                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 06 (LỚP 11)</div>
+                    <div class="inline-block border border-cyan-500/30 bg-cyan-50 text-cyan-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 06 (LỚP 11)</div>
                     <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Chuẩn độ Acid - Base</h1>
                     <p class="mb-6 text-slate-600 text-lg">Phương pháp phân tích thể tích để xác định nồng độ của một dung dịch chưa biết.</p>
                     <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><ul class="space-y-4 text-slate-700"><li><b class="text-slate-800">Nguyên tắc:</b> Dùng dung dịch chuẩn (đã biết chính xác nồng độ) từ Buret nhỏ từ từ xuống bình nón chứa dung dịch mẫu.</li><li><b class="text-slate-800">Điểm tương đương:</b> Thời điểm số mol ion $H^+$ vừa đủ phản ứng hết với số mol ion $OH^-$.</li><li class="bg-slate-50 p-4 rounded-lg border border-slate-200"><b>Thí nghiệm tiêu biểu:</b> Chuẩn độ dung dịch $HCl$ bằng $NaOH$ chuẩn, dùng chất chỉ thị Phenolphthalein. Điểm dừng là khi dung dịch chuyển sang màu hồng nhạt bền vững.</li></ul></div>
                 </div>
                 <div id="theory-7" class="lesson-content">
-                    <div class="inline-block border border-green-500/30 bg-green-50 text-green-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 07 (LỚP 12)</div>
+                    <div class="inline-block border border-cyan-500/30 bg-cyan-50 text-cyan-600 px-3 py-1 rounded text-xs font-bold tracking-widest mb-4">MODULE 07 (LỚP 12)</div>
                     <h1 class="text-3xl md:text-4xl font-bold mb-4 text-slate-800 drop-shadow-sm">Phản ứng Tráng bạc</h1>
                     <p class="mb-6 text-slate-600 text-lg">Phản ứng đặc trưng của nhóm chức Aldehyde (-CHO) và các loại đường khử (như Glucose).</p>
                     <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm"><ul class="space-y-4 text-slate-700"><li><b class="text-slate-800">Thuốc thử Tollens:</b> Phức bạc amoniac $[Ag(NH_3)_2]OH$.</li><li><b class="text-slate-800">Hiện tượng:</b> Ion $Ag^+$ bị khử thành kim loại $Ag$ bám dính vào thành ống nghiệm, tạo ra một lớp gương sáng bóng.</li><li class="bg-slate-50 p-4 rounded-lg border border-slate-200 font-mono text-sm overflow-x-auto">$R-CHO + 2[Ag(NH_3)_2]OH \xrightarrow{t^\circ} R-COONH_4 + 2Ag\downarrow + 3NH_3 + H_2O$</li></ul></div>
@@ -404,28 +466,28 @@
 
             <!-- THỰC HÀNH -->
             <div id="tab-lab" class="tab-content sci-fi-panel overflow-hidden">
-                <div class="p-5 bg-white/80 border-b border-slate-100 flex justify-between items-center backdrop-blur-md"><h2 class="font-bold text-slate-700 flex items-center tracking-wide"><span class="material-icons-round mr-2 text-green-500">biotech</span> MÔI TRƯỜNG GIẢ LẬP</h2></div>
+                <div class="p-5 bg-white/80 border-b border-slate-100 flex justify-between items-center backdrop-blur-md"><h2 class="font-bold text-slate-700 flex items-center tracking-wide"><span class="material-icons-round mr-2 text-cyan-500">biotech</span> MÔI TRƯỜNG GIẢ LẬP</h2></div>
                 <!-- Lab 1: Enthalpy -->
-                <div id="lab-1" class="lesson-content active lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row items-center justify-center gap-12 lg:gap-24"><div class="flex items-center gap-8"><div class="thermometer-wrapper"><div class="thermometer-glass"><div class="thermometer-mercury" id="l1-mercury"></div></div><div class="thermometer-bulb" id="l1-bulb"></div><div class="temp-marks"><span>100°</span><span>50°</span><span>0°</span></div></div><div class="text-center"><div class="text-6xl font-mono text-glow-main mb-2" id="l1-tempDisplay">25°</div><div class="text-xs font-bold text-green-600 bg-white border border-green-200 px-3 py-1.5 rounded tracking-widest uppercase shadow-sm" id="l1-tempStatus">Bình thường</div></div></div><div class="flex flex-col items-center"><div class="beaker" id="l1-beaker"><div class="liquid" id="l1-liquid" style="height:40%;"></div></div><div class="mt-6 text-sm font-mono text-slate-600 bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm" id="l1-liquidName">H₂O (Nước cất)</div></div><div class="w-full md:w-64 flex flex-col gap-4"><button onclick="l1_add('CaO')" class="btn-hologram" style="border-color: rgba(239,68,68,0.5); color: #dc2626; background: rgba(254,226,226,0.5);">+ Thêm Vôi Sống (CaO)</button><button onclick="l1_add('NH4NO3')" class="btn-hologram" style="border-color: rgba(59,130,246,0.5); color: #2563eb; background: rgba(219,234,254,0.5);">+ Thêm Nitrat (NH₄NO₃)</button><button onclick="l1_reset()" class="btn-outline mt-4">Xả hệ thống</button></div></div></div>
+                <div id="lab-1" class="lesson-content active lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row items-center justify-center gap-12 lg:gap-24"><div class="flex items-center gap-8"><div class="thermometer-wrapper"><div class="thermometer-glass"><div class="thermometer-mercury" id="l1-mercury"></div></div><div class="thermometer-bulb" id="l1-bulb"></div><div class="temp-marks"><span>100°</span><span>50°</span><span>0°</span></div></div><div class="text-center"><div class="text-6xl font-mono text-glow-main mb-2" id="l1-tempDisplay">25°</div><div class="text-xs font-bold text-cyan-600 bg-white border border-cyan-200 px-3 py-1.5 rounded tracking-widest uppercase shadow-sm" id="l1-tempStatus">Bình thường</div></div></div><div class="flex flex-col items-center"><div class="beaker" id="l1-beaker"><div class="liquid" id="l1-liquid" style="height:40%;"></div></div><div class="mt-6 text-sm font-mono text-slate-600 bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm" id="l1-liquidName">H₂O (Nước cất)</div></div><div class="w-full md:w-64 flex flex-col gap-4"><button onclick="l1_add('CaO')" class="btn-hologram" style="border-color: rgba(239,68,68,0.5); color: #dc2626; background: rgba(254,226,226,0.5);">+ Thêm Vôi Sống (CaO)</button><button onclick="l1_add('NH4NO3')" class="btn-hologram" style="border-color: rgba(59,130,246,0.5); color: #2563eb; background: rgba(219,234,254,0.5);">+ Thêm Nitrat (NH₄NO₃)</button><button onclick="l1_reset()" class="btn-outline mt-4">Xả hệ thống</button></div></div></div>
                 <!-- Lab 2: Tốc độ phản ứng -->
-                <div id="lab-2" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col lg:flex-row items-center justify-around gap-12"><div class="text-center"><div class="stopwatch" id="l2-stopwatch">00.0s</div><div class="mt-4 px-4 py-3 bg-white border border-green-200 rounded-lg text-sm text-green-600 font-bold font-mono shadow-sm" id="l2-rateDisplay">TỐC ĐỘ: 0.00 /s</div></div><div class="flex flex-col items-center"><div class="beaker" id="l2-beaker"><div class="liquid" id="l2-liquid" style="height:60%;"></div><div class="mg-block" id="l2-mg"></div></div></div><div class="w-full md:w-80 bg-white/80 backdrop-blur-md p-6 rounded-2xl border border-slate-200 flex flex-col gap-6 shadow-xl"><div><div class="flex justify-between text-sm mb-3"><span class="font-medium text-slate-600 text-xs">Nồng độ HCl</span><span class="text-green-600 font-mono bg-green-50 border border-green-200 px-2 py-0.5 rounded" id="l2-valConc">1.0 M</span></div><input type="range" id="l2-sliderConc" min="0.1" max="3.0" step="0.1" value="1.0" oninput="l2_updateUI()"></div><div><div class="flex justify-between text-sm mb-3"><span class="font-medium text-slate-600 text-xs">Nhiệt độ (T)</span><span class="text-red-500 font-mono bg-red-50 border border-red-200 px-2 py-0.5 rounded" id="l2-valTemp">20 °C</span></div><input type="range" id="l2-sliderTemp" min="20" max="80" step="10" value="20" oninput="l2_updateUI()"></div><button id="l2-btnStart" onclick="l2_start()" class="btn-hologram w-full text-base py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white border-transparent shadow-md">KÍCH HOẠT</button><button id="l2-btnReset" onclick="l2_reset()" class="btn-outline w-full hidden">TÁI THIẾT LẬP</button></div></div></div>
+                <div id="lab-2" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col lg:flex-row items-center justify-around gap-12"><div class="text-center"><div class="stopwatch" id="l2-stopwatch">00.0s</div><div class="mt-4 px-4 py-3 bg-white border border-cyan-200 rounded-lg text-sm text-cyan-600 font-bold font-mono shadow-sm" id="l2-rateDisplay">TỐC ĐỘ: 0.00 /s</div></div><div class="flex flex-col items-center"><div class="beaker" id="l2-beaker"><div class="liquid" id="l2-liquid" style="height:60%;"></div><div class="mg-block" id="l2-mg"></div></div></div><div class="w-full md:w-80 bg-white/80 backdrop-blur-md p-6 rounded-2xl border border-slate-200 flex flex-col gap-6 shadow-xl"><div><div class="flex justify-between text-sm mb-3"><span class="font-medium text-slate-600 text-xs">Nồng độ HCl</span><span class="text-cyan-600 font-mono bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded" id="l2-valConc">1.0 M</span></div><input type="range" id="l2-sliderConc" min="0.1" max="3.0" step="0.1" value="1.0" oninput="l2_updateUI()"></div><div><div class="flex justify-between text-sm mb-3"><span class="font-medium text-slate-600 text-xs">Nhiệt độ (T)</span><span class="text-red-500 font-mono bg-red-50 border border-red-200 px-2 py-0.5 rounded" id="l2-valTemp">20 °C</span></div><input type="range" id="l2-sliderTemp" min="20" max="80" step="10" value="20" oninput="l2_updateUI()"></div><button id="l2-btnStart" onclick="l2_start()" class="btn-hologram w-full text-base py-4 bg-gradient-to-r from-cyan-500 to-cyan-500 text-white border-transparent shadow-md">KÍCH HOẠT</button><button id="l2-btnReset" onclick="l2_reset()" class="btn-outline w-full hidden">TÁI THIẾT LẬP</button></div></div></div>
                 <!-- Lab 3: Halogen -->
-                <div id="lab-3" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row items-center justify-center gap-12"><div class="flex flex-col items-center"><div class="ampoule" id="l3-ampoule"><div class="amp-gas" id="l3-gas"></div><div class="amp-liquid" id="l3-liquid"></div><div class="amp-solid" id="l3-solid"></div></div><div class="mt-6 text-center"><h3 class="font-bold text-slate-800 text-xl" id="l3-name">Chọn Halogen</h3><div class="text-sm font-mono text-slate-500 mt-1" id="l3-state">Trạng thái: ---</div></div></div><div class="w-full md:w-80 flex flex-col gap-4"><div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs font-bold text-slate-400 mb-2">LỰC VAN DER WAALS</div><div class="w-full bg-slate-100 rounded-full h-3 mb-1 overflow-hidden"><div class="bg-green-500 h-3 rounded-full transition-all duration-500" id="l3-vdw" style="width: 0%"></div></div><div class="text-right text-xs text-slate-500 font-mono" id="l3-vdw-text">Thấp</div></div><div class="grid grid-cols-2 gap-3"><button onclick="l3_select('F2')" class="btn-outline hover:bg-yellow-50 hover:text-yellow-600 hover:border-yellow-300">Fluorine (F₂)</button><button onclick="l3_select('Cl2')" class="btn-outline hover:bg-lime-50 hover:text-lime-600 hover:border-lime-300">Chlorine (Cl₂)</button><button onclick="l3_select('Br2')" class="btn-outline hover:bg-red-50 hover:text-red-600 hover:border-red-300">Bromine (Br₂)</button><button onclick="l3_select('I2')" class="btn-outline hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300">Iodine (I₂)</button></div></div></div></div>
+                <div id="lab-3" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row items-center justify-center gap-12"><div class="flex flex-col items-center"><div class="ampoule" id="l3-ampoule"><div class="amp-gas" id="l3-gas"></div><div class="amp-liquid" id="l3-liquid"></div><div class="amp-solid" id="l3-solid"></div></div><div class="mt-6 text-center"><h3 class="font-bold text-slate-800 text-xl" id="l3-name">Chọn Halogen</h3><div class="text-sm font-mono text-slate-500 mt-1" id="l3-state">Trạng thái: ---</div></div></div><div class="w-full md:w-80 flex flex-col gap-4"><div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm"><div class="text-xs font-bold text-slate-400 mb-2">LỰC VAN DER WAALS</div><div class="w-full bg-slate-100 rounded-full h-3 mb-1 overflow-hidden"><div class="bg-cyan-500 h-3 rounded-full transition-all duration-500" id="l3-vdw" style="width: 0%"></div></div><div class="text-right text-xs text-slate-500 font-mono" id="l3-vdw-text">Thấp</div></div><div class="grid grid-cols-2 gap-3"><button onclick="l3_select('F2')" class="btn-outline hover:bg-yellow-50 hover:text-yellow-600 hover:border-yellow-300">Fluorine (F₂)</button><button onclick="l3_select('Cl2')" class="btn-outline hover:bg-lime-50 hover:text-lime-600 hover:border-lime-300">Chlorine (Cl₂)</button><button onclick="l3_select('Br2')" class="btn-outline hover:bg-red-50 hover:text-red-600 hover:border-red-300">Bromine (Br₂)</button><button onclick="l3_select('I2')" class="btn-outline hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300">Iodine (I₂)</button></div></div></div></div>
                 <!-- Lab 4: Avogadro -->
-                <div id="lab-4" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row justify-center gap-12 lg:gap-20"><div class="flex flex-col items-center w-full md:w-64"><div class="text-sm font-bold text-slate-500 mb-4 bg-white px-4 py-1.5 rounded-full border border-slate-200">XILANH A (Khí $H_2$)</div><div class="syringe-wrap mb-6"><div class="syringe-rod" id="l4-rodA" style="transform: translateY(0px)"></div><div class="syringe-body"><div class="syringe-piston" id="l4-pistonA" style="top: 0%"></div><div class="syringe-gas bg-blue-100 border-blue-300" id="l4-gasA" style="height: 0%"></div></div></div><div class="w-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center"><div class="text-xs font-bold text-slate-400 mb-1">SỐ MOL KHÍ ($n$)</div><div class="text-2xl font-mono font-bold text-blue-600" id="l4-molA">0.00 mol</div><input type="range" id="l4-volA" class="mt-4" min="0" max="50" step="0.1" value="0" oninput="l4_update()"><div class="text-xs text-slate-500 mt-2 font-mono" id="l4-volA-text">V = 0.0 L</div></div></div><div class="flex flex-col items-center w-full md:w-64"><div class="text-sm font-bold text-slate-500 mb-4 bg-white px-4 py-1.5 rounded-full border border-slate-200">XILANH B (Khí $O_2$)</div><div class="syringe-wrap mb-6"><div class="syringe-rod" id="l4-rodB" style="transform: translateY(0px)"></div><div class="syringe-body"><div class="syringe-piston" id="l4-pistonB" style="top: 0%"></div><div class="syringe-gas bg-red-100 border-red-300" id="l4-gasB" style="height: 0%"></div></div></div><div class="w-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center"><div class="text-xs font-bold text-slate-400 mb-1">SỐ MOL KHÍ ($n$)</div><div class="text-2xl font-mono font-bold text-red-600" id="l4-molB">0.00 mol</div><input type="range" id="l4-volB" class="mt-4" min="0" max="50" step="0.1" value="0" oninput="l4_update()"><div class="text-xs text-slate-500 mt-2 font-mono" id="l4-volB-text">V = 0.0 L</div></div></div></div><div class="mt-10 flex justify-center"><button onclick="l4_check()" class="btn-hologram bg-gradient-to-r from-blue-500 to-green-500 text-white border-transparent px-8 py-3 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all"><span class="material-icons-round align-middle mr-2">verified</span> XÁC NHẬN SỐ LIỆU BƠM</button></div></div>
+                <div id="lab-4" class="lesson-content lab-container p-8 lg:p-12"><div class="flex flex-col md:flex-row justify-center gap-12 lg:gap-20"><div class="flex flex-col items-center w-full md:w-64"><div class="text-sm font-bold text-slate-500 mb-4 bg-white px-4 py-1.5 rounded-full border border-slate-200">XILANH A (Khí $H_2$)</div><div class="syringe-wrap mb-6"><div class="syringe-rod" id="l4-rodA" style="transform: translateY(0px)"></div><div class="syringe-body"><div class="syringe-piston" id="l4-pistonA" style="top: 0%"></div><div class="syringe-gas bg-blue-100 border-blue-300" id="l4-gasA" style="height: 0%"></div></div></div><div class="w-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center"><div class="text-xs font-bold text-slate-400 mb-1">SỐ MOL KHÍ ($n$)</div><div class="text-2xl font-mono font-bold text-blue-600" id="l4-molA">0.00 mol</div><input type="range" id="l4-volA" class="mt-4" min="0" max="50" step="0.1" value="0" oninput="l4_update()"><div class="text-xs text-slate-500 mt-2 font-mono" id="l4-volA-text">V = 0.0 L</div></div></div><div class="flex flex-col items-center w-full md:w-64"><div class="text-sm font-bold text-slate-500 mb-4 bg-white px-4 py-1.5 rounded-full border border-slate-200">XILANH B (Khí $O_2$)</div><div class="syringe-wrap mb-6"><div class="syringe-rod" id="l4-rodB" style="transform: translateY(0px)"></div><div class="syringe-body"><div class="syringe-piston" id="l4-pistonB" style="top: 0%"></div><div class="syringe-gas bg-red-100 border-red-300" id="l4-gasB" style="height: 0%"></div></div></div><div class="w-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center"><div class="text-xs font-bold text-slate-400 mb-1">SỐ MOL KHÍ ($n$)</div><div class="text-2xl font-mono font-bold text-red-600" id="l4-molB">0.00 mol</div><input type="range" id="l4-volB" class="mt-4" min="0" max="50" step="0.1" value="0" oninput="l4_update()"><div class="text-xs text-slate-500 mt-2 font-mono" id="l4-volB-text">V = 0.0 L</div></div></div></div><div class="mt-10 flex justify-center"><button onclick="l4_check()" class="btn-hologram bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-transparent px-8 py-3 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all"><span class="material-icons-round align-middle mr-2">verified</span> XÁC NHẬN SỐ LIỆU BƠM</button></div></div>
                 <!-- Lab 5 -->
-                <div id="lab-5" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-blue-500 mb-6 drop-shadow-md" id="l5-lab-icon">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 10 — Oxi hóa - Khử</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Nhiệm vụ: <b class="text-purple-600">Làm mất màu thuốc tím KMnO₄</b> bằng chất khử (FeSO₄ + H₂SO₄). Hoàn thành thí nghiệm rồi nhấn "Trở về bài học" để hệ thống ghi nhận.</p><div id="l5-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-green-50 border border-green-300 text-green-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=kmno4&lesson=5" onclick="startLabMission('kmno4')" class="btn-hologram bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — LÀM MẤT MÀU KMnO₄</a></div>
+                <div id="lab-5" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-blue-500 mb-6 drop-shadow-md" id="l5-lab-icon">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 10 — Oxi hóa - Khử</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Nhiệm vụ: <b class="text-purple-600">Làm mất màu thuốc tím KMnO₄</b> bằng chất khử (FeSO₄ + H₂SO₄). Hoàn thành thí nghiệm rồi nhấn "Trở về bài học" để hệ thống ghi nhận.</p><div id="l5-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-cyan-50 border border-cyan-300 text-cyan-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=kmno4&lesson=5" onclick="startLabMission('kmno4')" class="btn-hologram bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — LÀM MẤT MÀU KMnO₄</a></div>
                 <!-- Lab 6 -->
-                <div id="lab-6" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-purple-500 mb-6 drop-shadow-md">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 11 — Chuẩn độ Acid-Base</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Thao tác chuẩn độ HCl bằng NaOH chuẩn, dùng chỉ thị Phenolphthalein. Dừng đúng điểm tương đương (màu hồng nhạt bền).</p><div id="l6-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-green-50 border border-green-300 text-green-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=titration&lesson=6" onclick="startLabMission('titration')" class="btn-hologram bg-gradient-to-r from-purple-500 to-pink-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — CHUẨN ĐỘ ACID-BASE</a></div>
+                <div id="lab-6" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-purple-500 mb-6 drop-shadow-md">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 11 — Chuẩn độ Acid-Base</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Thao tác chuẩn độ HCl bằng NaOH chuẩn, dùng chỉ thị Phenolphthalein. Dừng đúng điểm tương đương (màu hồng nhạt bền).</p><div id="l6-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-cyan-50 border border-cyan-300 text-cyan-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=titration&lesson=6" onclick="startLabMission('titration')" class="btn-hologram bg-gradient-to-r from-purple-500 to-pink-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — CHUẨN ĐỘ ACID-BASE</a></div>
                 <!-- Lab 7 -->
-                <div id="lab-7" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-amber-500 mb-6 drop-shadow-md">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 12 — Phản ứng Tráng bạc</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Nhiệm vụ: <b class="text-amber-600">Phản ứng tráng bạc</b> — pha thuốc thử Tollens, thêm Glucose và đun nóng để tạo lớp bạc sáng bóng.</p><div id="l7-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-green-50 border border-green-300 text-green-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=silver&lesson=7" onclick="startLabMission('silver')" class="btn-hologram bg-gradient-to-r from-amber-500 to-orange-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — TRÁNG BẠC</a></div>
+                <div id="lab-7" class="lesson-content lab-container p-16 text-center"><span class="material-icons-round text-7xl text-amber-500 mb-6 drop-shadow-md">science</span><h2 class="text-3xl font-bold text-slate-800 tracking-wide mb-4">THỰC HÀNH: LỚP 12 — Phản ứng Tráng bạc</h2><p class="text-slate-600 mb-8 max-w-xl mx-auto text-lg">Nhiệm vụ: <b class="text-amber-600">Phản ứng tráng bạc</b> — pha thuốc thử Tollens, thêm Glucose và đun nóng để tạo lớp bạc sáng bóng.</p><div id="l7-already-done" class="hidden mb-6 inline-flex items-center gap-2 bg-cyan-50 border border-cyan-300 text-cyan-700 font-bold px-5 py-3 rounded-xl"><span class="material-icons-round">check_circle</span> Bạn đã hoàn thành thí nghiệm này!</div><br><a href="lab.html?mission=silver&lesson=7" onclick="startLabMission('silver')" class="btn-hologram bg-gradient-to-r from-amber-500 to-orange-500 text-white border-transparent px-8 py-4 text-lg shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all inline-flex items-center"><span class="material-icons-round mr-2">rocket_launch</span> VÀO LAB — TRÁNG BẠC</a></div>
             </div>
 
             <!-- NHIỆM VỤ -->
             <div id="tab-mission" class="tab-content sci-fi-panel p-8 md:p-10">
                 <div class="mb-8 border-b border-slate-100 pb-4"><h1 class="text-2xl font-bold text-slate-800 tracking-wide">MỤC TIÊU CHIẾN LƯỢC</h1><p class="text-slate-500 mt-1 text-sm">Hoàn thành để mở khóa bài học tiếp theo.</p></div>
                 <div id="mission-1" class="lesson-content active flex flex-col gap-4"><div id="t1-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Giao thức Rã đông</h3><p class="text-slate-500 text-sm mt-1">Đẩy nhiệt độ <b class="text-red-500">vượt mốc 80°C</b>.</p></div></div><div id="t1-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Giao thức Làm mát</h3><p class="text-slate-500 text-sm mt-1">Hạ nhiệt độ <b class="text-blue-500">xuống dưới 10°C</b>.</p></div></div></div>
-                <div id="mission-2" class="lesson-content flex flex-col gap-4"><div id="t2-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Phân rã Siêu tốc</h3><p class="text-slate-500 text-sm mt-1">Nung chảy Mg <b class="text-red-500">dưới 2.0 giây</b>.</p></div></div><div id="t2-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Kiểm soát Kìm hãm</h3><p class="text-slate-500 text-sm mt-1">Phân rã chậm <b class="text-green-600">hơn 8.0 giây</b>.</p></div></div></div>
+                <div id="mission-2" class="lesson-content flex flex-col gap-4"><div id="t2-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Phân rã Siêu tốc</h3><p class="text-slate-500 text-sm mt-1">Nung chảy Mg <b class="text-red-500">dưới 2.0 giây</b>.</p></div></div><div id="t2-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Kiểm soát Kìm hãm</h3><p class="text-slate-500 text-sm mt-1">Phân rã chậm <b class="text-cyan-600">hơn 8.0 giây</b>.</p></div></div></div>
                 <div id="mission-3" class="lesson-content flex flex-col gap-4"><div id="t3-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Truy tìm Tinh thể</h3><p class="text-slate-500 text-sm mt-1">Tìm Halogen <b class="text-purple-600">Rắn</b>.</p></div></div><div id="t3-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Liên kết Yếu nhất</h3><p class="text-slate-500 text-sm mt-1">Lực VdW <b class="text-yellow-500">thấp nhất</b>.</p></div></div></div>
                 <div id="mission-4" class="lesson-content flex flex-col gap-4"><div id="t4-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Định mức Khối lượng</h3><p class="text-slate-500 text-sm mt-1">Bơm vào Xilanh A chính xác <b class="text-blue-600">1.0 gam</b> khí $H_2$ (Cho $M_H=1$).</p></div></div><div id="t4-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div><h3 class="task-text font-bold text-slate-800">Phản ứng Hoàn toàn</h3><p class="text-slate-500 text-sm mt-1">Bơm vào Xilanh B lượng khí $O_2$ <b class="text-red-500">vừa đủ để phản ứng cháy hoàn toàn</b> với lượng $H_2$ trên.</p></div></div></div>
                 <div id="mission-5" class="lesson-content flex flex-col gap-4"><div id="t5-1" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div class="flex-grow"><h3 class="task-text font-bold text-slate-800">Mất màu thuốc tím</h3><p class="text-slate-500 text-sm mt-1">Hoàn thành thí nghiệm Oxi hóa - Khử thành công tại file lab.html.</p></div><button onclick="simulateSync('t5-1', 't5-2')" class="btn-outline text-xs px-4 py-2 whitespace-nowrap"><span class="material-icons-round align-middle text-sm mr-1">sync</span> Đồng bộ KQ</button></div><div id="t5-2" class="task-item rounded-xl p-5 flex items-center gap-5"><div class="task-icon text-slate-300"><span class="material-icons-round text-3xl">lens</span></div><div class="flex-grow"><h3 class="task-text font-bold text-slate-800">Hoàn thành lý thuyết</h3><p class="text-slate-500 text-sm mt-1">Hệ thống ghi nhận bạn đã hiểu rõ cơ chế nhường và nhận electron.</p></div></div></div>
@@ -436,8 +498,8 @@
             <!-- BÀI KIỂM TRA -->
             <div id="tab-quiz" class="tab-content sci-fi-panel p-8 md:p-10 relative overflow-hidden">
                 <div id="quiz-start" class="text-center py-10"><span class="material-icons-round text-7xl text-slate-800 mb-6 drop-shadow-md">assignment_turned_in</span><h2 class="text-3xl font-bold text-slate-800 mb-4">Đánh Giá Năng Lực Toàn Diện</h2><p class="text-slate-500 mb-8 max-w-2xl mx-auto">Bài thi gồm 40 câu hỏi. Bao gồm 38 câu trắc nghiệm lý thuyết/tính toán và 2 câu hỏi thực hành tương tác ảo. Yêu cầu vận dụng tư duy và kỹ năng phòng thí nghiệm.</p><button onclick="startQuiz()" class="btn-hologram bg-slate-800 text-white border-transparent text-lg px-8 py-3 shadow-[0_5px_15px_rgba(0,0,0,0.2)] hover:bg-slate-700 hover:text-white hover:border-transparent">BẮT ĐẦU THI</button></div>
-                <div id="quiz-area" class="hidden"><div class="flex justify-between items-center mb-6 border-b border-slate-200 pb-4"><div class="text-sm font-bold text-slate-500 tracking-wider">CÂU <span id="q-current" class="text-green-600 text-xl">1</span> / 40</div><div class="text-sm font-mono text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-200">CHEMCRAFT ĐÁNH GIÁ</div></div><div id="q-text" class="text-xl font-medium text-slate-800 mb-8 leading-relaxed">Nội dung câu hỏi...</div><div id="q-options" class="flex flex-col gap-4 mb-8"></div><div id="q-practical" class="hidden mb-8 w-full"><div class="mini-lab-container w-full" id="mini-lab-zone"></div><div id="q-practical-status" class="mt-4 text-center font-bold text-red-500">Chưa đạt mục tiêu</div></div><div class="flex justify-between items-center mt-10"><button onclick="prevQuestion()" class="btn-outline"><span class="material-icons-round align-middle mr-1">arrow_back</span> Câu trước</button><button id="btn-next-q" onclick="nextQuestion()" class="btn-hologram bg-gradient-to-r from-green-500 to-emerald-500 text-white border-transparent">Câu tiếp <span class="material-icons-round align-middle ml-1">arrow_forward</span></button></div><div class="progress-bar-wrap"><div id="quiz-progress" class="progress-bar-fill" style="width: 2.5%"></div></div></div>
-                <div id="quiz-result" class="hidden text-center py-10"><div class="inline-flex justify-center items-center w-40 h-40 rounded-full border-8 border-green-500 text-5xl font-bold text-slate-800 mb-6 shadow-[0_0_20px_rgba(34,197,94,0.3)]"><span id="res-score">0</span><span class="text-2xl text-slate-400">/40</span></div><h2 class="text-3xl font-bold text-slate-800 mb-2" id="res-title">Hoàn Thành!</h2><p class="text-slate-500 mb-8" id="res-message">Bạn đã nỗ lực rất tuyệt vời.</p><button onclick="reviewQuiz()" class="btn-outline mr-4">Xem đáp án</button><button onclick="resetQuizUI()" class="btn-hologram bg-slate-800 text-white border-transparent">Về trang chủ</button></div>
+                <div id="quiz-area" class="hidden"><div class="flex justify-between items-center mb-6 border-b border-slate-200 pb-4"><div class="text-sm font-bold text-slate-500 tracking-wider">CÂU <span id="q-current" class="text-cyan-600 text-xl">1</span> / 40</div><div class="text-sm font-mono text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-200">CHEMCRAFT ĐÁNH GIÁ</div></div><div id="q-text" class="text-xl font-medium text-slate-800 mb-8 leading-relaxed">Nội dung câu hỏi...</div><div id="q-options" class="flex flex-col gap-4 mb-8"></div><div id="q-practical" class="hidden mb-8 w-full"><div class="mini-lab-container w-full" id="mini-lab-zone"></div><div id="q-practical-status" class="mt-4 text-center font-bold text-red-500">Chưa đạt mục tiêu</div></div><div class="flex justify-between items-center mt-10"><button onclick="prevQuestion()" class="btn-outline"><span class="material-icons-round align-middle mr-1">arrow_back</span> Câu trước</button><button id="btn-next-q" onclick="nextQuestion()" class="btn-hologram bg-gradient-to-r from-cyan-500 to-cyan-500 text-white border-transparent">Câu tiếp <span class="material-icons-round align-middle ml-1">arrow_forward</span></button></div><div class="progress-bar-wrap"><div id="quiz-progress" class="progress-bar-fill" style="width: 2.5%"></div></div></div>
+                <div id="quiz-result" class="hidden text-center py-10"><div class="inline-flex justify-center items-center w-40 h-40 rounded-full border-8 border-cyan-500 text-5xl font-bold text-slate-800 mb-6 shadow-[0_0_20px_rgba(6,182,212,0.3)]"><span id="res-score">0</span><span class="text-2xl text-slate-400">/40</span></div><h2 class="text-3xl font-bold text-slate-800 mb-2" id="res-title">Hoàn Thành!</h2><p class="text-slate-500 mb-8" id="res-message">Bạn đã nỗ lực rất tuyệt vời.</p><button onclick="reviewQuiz()" class="btn-outline mr-4">Xem đáp án</button><button onclick="resetQuizUI()" class="btn-hologram bg-slate-800 text-white border-transparent">Về trang chủ</button></div>
             </div>
         </main>
     </div>
@@ -490,7 +552,7 @@
         function showToast(msg) {
             const toast = document.createElement('div');
             toast.className = 'fixed bottom-5 right-5 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-lg border border-slate-700 z-[100] transform transition-all translate-y-10 opacity-0 font-medium tracking-wide flex items-center gap-3';
-            toast.innerHTML = `<span class="material-icons-round text-green-400">lock_open</span> ${msg}`;
+            toast.innerHTML = `<span class="material-icons-round text-cyan-400">lock_open</span> ${msg}`;
             document.body.appendChild(toast);
             setTimeout(() => toast.classList.remove('translate-y-10', 'opacity-0'), 100);
             setTimeout(() => {
@@ -642,10 +704,10 @@
                 const btn = document.getElementById('tabBtn-' + id);
                 const content = document.getElementById('tab-' + id);
                 if(id === tabId) {
-                    btn.className = 'flex-1 py-3 px-2 text-center text-xs md:text-sm font-semibold text-green-600 bg-green-50 border border-green-500/30 rounded-xl transition-all shadow-[inset_0_0_10px_rgba(34,197,94,0.1)]';
+                    btn.className = 'flex-1 py-3 px-2 text-center text-xs md:text-sm font-semibold text-cyan-600 bg-cyan-50 border border-cyan-500/30 rounded-xl transition-all shadow-[inset_0_0_10px_rgba(6,182,212,0.1)]';
                     content.classList.add('active');
                 } else {
-                    btn.className = 'flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-green-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all';
+                    btn.className = 'flex-1 py-3 px-2 text-center text-xs md:text-sm font-medium text-slate-500 hover:text-cyan-600 hover:bg-slate-50 rounded-xl border border-transparent transition-all';
                     content.classList.remove('active');
                 }
             });
@@ -735,7 +797,7 @@
             if(document.getElementById('l1-tempDisplay')) {
                 document.getElementById('l1-tempDisplay').innerText = t + "°";
                 document.getElementById('l1-mercury').style.height = Math.max(5, Math.min(100, t)) + '%';
-                let col = '#22c55e', stat = 'BÌNH THƯỜNG';
+                let col = '#06B6D4', stat = 'BÌNH THƯỜNG';
                 if(t >= 80) { col = '#ef4444'; stat = 'QUÁ NHIỆT'; markTaskDone('t1-1'); }
                 else if(t >= 50) { col = '#f59e0b'; stat = 'ĐANG NÓNG'; }
                 else if(t <= 10) { col = '#3b82f6'; stat = 'ĐÓNG BĂNG'; markTaskDone('t1-2'); }
@@ -879,14 +941,14 @@
                     window.qz_p1_add = function(type) { qz_p1_temp += (type==='H'?15:-15); };
                     if(!isReviewMode) {
                         document.getElementById('q-practical-status').innerText = userAnswers[currentQIndex] ? "Tuyệt vời! Đã đạt mục tiêu." : "Đang chờ thao tác...";
-                        document.getElementById('q-practical-status').className = userAnswers[currentQIndex] ? "mt-4 text-center font-bold text-green-500" : "mt-4 text-center font-bold text-slate-500";
+                        document.getElementById('q-practical-status').className = userAnswers[currentQIndex] ? "mt-4 text-center font-bold text-cyan-500" : "mt-4 text-center font-bold text-slate-500";
                         practicalInterval = setInterval(() => {
                             if(qz_p1_temp > 25) qz_p1_temp -= 0.5; if(qz_p1_temp < 25) qz_p1_temp += 0.5;
                             if(document.getElementById('qz-t-display')) document.getElementById('qz-t-display').innerText = Math.round(qz_p1_temp) + "°";
                             if (qz_p1_temp <= 10 && !userAnswers[currentQIndex]) {
                                 userAnswers[currentQIndex] = true; 
                                 document.getElementById('q-practical-status').innerText = "Tuyệt vời! Đã đạt mục tiêu. Nhấn Câu Tiếp.";
-                                document.getElementById('q-practical-status').className = "mt-4 text-center font-bold text-green-500";
+                                document.getElementById('q-practical-status').className = "mt-4 text-center font-bold text-cyan-500";
                                 document.getElementById('btn-next-q').disabled = false;
                                 document.getElementById('btn-next-q').style.opacity = "1";
                                 playSuccess();
@@ -900,7 +962,7 @@
                     miniLabZone.innerHTML = `<div class="w-full max-w-sm text-center"><div class="text-2xl font-mono text-blue-600 font-bold mb-4" id="qz-mol-display">0.00 mol</div><input type="range" id="qz-vol" min="0" max="50" step="0.1" value="0" class="w-full"><div class="text-slate-500 mt-2 text-sm mb-4">Điều chỉnh thanh trượt để bơm lượng khí đã tính</div><button id="qz-btn-check" class="btn-hologram bg-blue-500 text-white w-full border-transparent shadow-md hover:text-white hover:bg-blue-600 transition-all">XÁC NHẬN KẾT QUẢ</button></div>`;
                     if(!isReviewMode) {
                         document.getElementById('q-practical-status').innerText = userAnswers[currentQIndex] ? "Tuyệt vời! Đã bơm chính xác." : "Hãy tính toán cẩn thận và nhấn nút Xác Nhận.";
-                        document.getElementById('q-practical-status').className = userAnswers[currentQIndex] ? "mt-4 text-center font-bold text-green-500" : "mt-4 text-center font-bold text-slate-500";
+                        document.getElementById('q-practical-status').className = userAnswers[currentQIndex] ? "mt-4 text-center font-bold text-cyan-500" : "mt-4 text-center font-bold text-slate-500";
                         document.getElementById('qz-vol').addEventListener('input', function() {
                             let mol = (this.value / 24.79);
                             document.getElementById('qz-mol-display').innerText = mol.toFixed(2) + " mol";
@@ -911,7 +973,7 @@
                                 if(!userAnswers[currentQIndex]) {
                                     userAnswers[currentQIndex] = true;
                                     document.getElementById('q-practical-status').innerText = "Chính xác! Đã bơm đúng 0.5 mol O₂.";
-                                    document.getElementById('q-practical-status').className = "mt-4 text-center font-bold text-green-500";
+                                    document.getElementById('q-practical-status').className = "mt-4 text-center font-bold text-cyan-500";
                                     document.getElementById('btn-next-q').disabled = false;
                                     document.getElementById('btn-next-q').style.opacity = "1";
                                     playSuccess();
@@ -1123,5 +1185,67 @@
             window._savedTimer = setTimeout(() => msg.classList.add('hidden'), 3000);
         }
     </script>
+<div id="cursor-glow"></div>
+<script>
+(function(){
+  var glow = document.getElementById('cursor-glow');
+  var mx=0,my=0,gx=0,gy=0;
+  document.addEventListener('mousemove', function(e){
+    mx = e.clientX; my = e.clientY;
+    var el = e.target;
+    if(el.closest && el.closest('a,button,.nav-btn,.nav-avatar,.step-item,.task-item,.quiz-option,.btn-hologram,.btn-outline,[onclick]')){
+      glow.classList.add('big');
+    } else {
+      glow.classList.remove('big');
+    }
+  });
+  function raf(){
+    gx += (mx-gx)*0.18; gy += (my-gy)*0.18;
+    glow.style.left = gx+'px'; glow.style.top = gy+'px';
+    requestAnimationFrame(raf);
+  }
+  raf();
+
+  document.addEventListener('click', function(e){
+    var n = 6 + Math.floor(Math.random()*4);
+    for(var i=0;i<n;i++){
+      var p = document.createElement('div');
+      p.className = 'spark-particle';
+      var size = 3 + Math.random()*5;
+      p.style.width = size+'px'; p.style.height = size+'px';
+      p.style.left = e.clientX+'px'; p.style.top = e.clientY+'px';
+      var angle = Math.random()*Math.PI*2;
+      var dist = 24 + Math.random()*40;
+      p.style.setProperty('--dx', (Math.cos(angle)*dist)+'px');
+      p.style.setProperty('--dy', (Math.sin(angle)*dist)+'px');
+      document.body.appendChild(p);
+      setTimeout(function(el){ return function(){ el.remove(); }; }(p), 750);
+    }
+  });
+
+  var orbColors = ['rgba(6,182,212,0.5)','rgba(79,107,255,0.45)','rgba(139,92,246,0.4)'];
+  for(var o=0;o<3;o++){
+    var orb = document.createElement('div');
+    orb.className = 'ambient-orb';
+    var sz = 180 + Math.random()*220;
+    orb.style.width = sz+'px'; orb.style.height = sz+'px';
+    orb.style.background = orbColors[o % orbColors.length];
+    orb.style.left = (Math.random()*90)+'vw';
+    orb.style.top = (Math.random()*90)+'vh';
+    document.body.appendChild(orb);
+    (function(el,duration,delay){
+      var t0 = performance.now();
+      function animateOrb(now){
+        var t = ((now - t0 + delay) % duration) / duration;
+        var x = 50 + 40*Math.sin(t*Math.PI*2);
+        var y = 50 + 35*Math.cos(t*Math.PI*1.6);
+        el.style.transform = 'translate('+(x-50)+'px,'+(y-50)+'px)';
+        requestAnimationFrame(animateOrb);
+      }
+      requestAnimationFrame(animateOrb);
+    })(orb, 14000+Math.random()*8000, Math.random()*4000);
+  }
+})();
+</script>
 </body>
 </html>
