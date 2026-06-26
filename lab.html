@@ -1646,9 +1646,13 @@
             const container = document.getElementById('canvas-container');
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(getW(), getH());
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            // Phòng gần như tĩnh -> không cần tính lại bóng mỗi frame.
+            // Chỉ cập nhật bóng ở vài frame đầu rồi "đóng băng" -> giảm lag mạnh khi quay/di chuyển.
+            renderer.shadowMap.autoUpdate = false;
+            renderer.shadowMap.needsUpdate = true;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.toneMappingExposure = 1.1;
             container.appendChild(renderer.domElement);
@@ -1671,6 +1675,33 @@
 
             // --- 1. SETUP ROOM SCENE (Modern Clean Lab) ---
             sceneRoom = new THREE.Scene();
+            // === ENV MAP NHẸ (procedural) — tăng phản chiếu thực tế cho thủy tinh/kim loại ===
+            (function(){
+                function makeEnvFace(top, bot){
+                    const c=document.createElement('canvas'); c.width=c.height=128;
+                    const g=c.getContext('2d');
+                    const grd=g.createLinearGradient(0,0,0,128);
+                    grd.addColorStop(0,top); grd.addColorStop(1,bot);
+                    g.fillStyle=grd; g.fillRect(0,0,128,128);
+                    // vài highlight mờ giả cửa sổ/đèn
+                    g.fillStyle='rgba(255,255,255,0.35)';
+                    g.fillRect(20,30,30,8); g.fillRect(70,50,40,6);
+                    return c;
+                }
+                const faces=[
+                    makeEnvFace('#e8f1ff','#7e95a8'), // +x
+                    makeEnvFace('#e8f1ff','#7e95a8'), // -x
+                    makeEnvFace('#ffffff','#b8c7d4'), // +y (trần)
+                    makeEnvFace('#2a3640','#0a0f12'), // -y (sàn)
+                    makeEnvFace('#e8f1ff','#7e95a8'), // +z
+                    makeEnvFace('#e8f1ff','#7e95a8'), // -z
+                ];
+                const tex = new THREE.CubeTexture(faces);
+                tex.needsUpdate = true;
+                if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+                sceneRoom.environment = tex;
+                window._envTex = tex;
+            })();
             sceneRoom.background = new THREE.Color('#0c1612');
             sceneRoom.fog = new THREE.Fog('#c9d3dc', 28, 70);
             cameraRoom = new THREE.PerspectiveCamera(70, getW() / getH(), 0.1, 1000);
@@ -1716,9 +1747,8 @@
             // Đèn pha trung tâm — sáng mạnh tập trung lên bàn thí nghiệm
             const focusSpot = new THREE.SpotLight(0xffffff, 4.5, 25, Math.PI/4.5, 0.45, 1.2);
             focusSpot.position.set(0, 12, 1.5);
-            focusSpot.castShadow = true;
-            focusSpot.shadow.mapSize.width = 1024;
-            focusSpot.shadow.mapSize.height = 1024;
+            // Tối ưu hiệu năng: chỉ giữ 1 nguồn sáng đổ bóng (sunLight). Spotlight này không đổ bóng nữa.
+            focusSpot.castShadow = false;
             const focusTgt = new THREE.Object3D(); focusTgt.position.set(0, 3, 1.5);
             sceneRoom.add(focusTgt); focusSpot.target = focusTgt;
             sceneRoom.add(focusSpot);
@@ -1741,7 +1771,7 @@
             sceneReact = new THREE.Scene();
             sceneReact.background = new THREE.Color(0x050810); 
             cameraReact = new THREE.PerspectiveCamera(45, getW() / getH(), 0.1, 100);
-            cameraReact.position.set(0, 2, 6);
+            cameraReact.position.set(0, 0.5, 9);
             cameraReact.lookAt(0, 0, 0);
 
             sceneReact.add(new THREE.AmbientLight(0x8090b0, 0.35));
@@ -1818,6 +1848,68 @@
         // 3. XÂY DỰNG PHÒNG 3D VÀ DỤNG CỤ
         // ==========================================
         
+
+        // === Helpers hình học thực tế hơn (LatheGeometry) — nhẹ ===
+        function makeBottleGeom(){
+            // Lọ hóa chất: đáy bo, vai cong, cổ thắt
+            const pts=[];
+            pts.push(new THREE.Vector2(0.00,0.00));
+            pts.push(new THREE.Vector2(0.38,0.00));
+            pts.push(new THREE.Vector2(0.40,0.05));
+            pts.push(new THREE.Vector2(0.40,0.95));
+            pts.push(new THREE.Vector2(0.36,1.05));
+            pts.push(new THREE.Vector2(0.22,1.18));
+            pts.push(new THREE.Vector2(0.16,1.25));
+            pts.push(new THREE.Vector2(0.16,1.30));
+            return new THREE.LatheGeometry(pts, 32);
+        }
+        function makeCapGeom(){
+            const pts=[
+                new THREE.Vector2(0.00,0.00),
+                new THREE.Vector2(0.18,0.00),
+                new THREE.Vector2(0.19,0.04),
+                new THREE.Vector2(0.18,0.18),
+                new THREE.Vector2(0.16,0.20),
+                new THREE.Vector2(0.00,0.20),
+            ];
+            return new THREE.LatheGeometry(pts, 24);
+        }
+        function makeBeakerGeom(){
+            // Cốc thủy tinh có miệng loe & gờ rót
+            const pts=[
+                new THREE.Vector2(0.00,0.00),
+                new THREE.Vector2(0.38,0.00),
+                new THREE.Vector2(0.40,0.04),
+                new THREE.Vector2(0.40,1.00),
+                new THREE.Vector2(0.43,1.08),
+                new THREE.Vector2(0.42,1.12),
+            ];
+            return new THREE.LatheGeometry(pts, 40, 0, Math.PI*2);
+        }
+        function makeBeakerLiquidGeom(){
+            const pts=[
+                new THREE.Vector2(0.00,0.00),
+                new THREE.Vector2(0.37,0.00),
+                new THREE.Vector2(0.39,0.04),
+                new THREE.Vector2(0.39,0.82),
+                new THREE.Vector2(0.00,0.84),
+            ];
+            return new THREE.LatheGeometry(pts, 32);
+        }
+        function makeGasBottleGeom(){
+            // Bình khí: đáy phẳng, vai cong vào cổ ngắn
+            const pts=[
+                new THREE.Vector2(0.00,0.00),
+                new THREE.Vector2(0.36,0.00),
+                new THREE.Vector2(0.36,1.50),
+                new THREE.Vector2(0.30,1.62),
+                new THREE.Vector2(0.16,1.74),
+                new THREE.Vector2(0.12,1.80),
+                new THREE.Vector2(0.12,1.85),
+            ];
+            return new THREE.LatheGeometry(pts, 28);
+        }
+
         function createFloorTexture() {
             // Sàn gạch một màu xám slate đồng nhất, chỉ có đường kẻ chia ô gạch
             const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
@@ -2066,14 +2158,13 @@
                      if (chem.id === 'Phenol') {
                          // Phenolphthalein: CỐC thủy tinh (beaker) chứa dung dịch hồng nhạt — không dùng dạng que/dropper nữa
                          const beakerMat = new THREE.MeshPhysicalMaterial({color: '#e6f7ff', transmission: 0.9, transparent: true, opacity: 0.45, roughness: 0.05, thickness: 0.5});
-                         const beakerWall = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.36, 1.1, 32, 1, true), beakerMat);
-                         beakerWall.position.y = 0.55;
-                         const beakerBase = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.04, 32), beakerMat); beakerBase.position.y = 0.02;
-                         const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.39, 0.34, 0.85, 32), new THREE.MeshPhysicalMaterial({color: '#ffd6e6', transmission: 0.55, transparent: true, opacity: 0.9, roughness: 0.1}));
-                         liquid.position.y = 0.45;
+                         const bkMat2 = new THREE.MeshPhysicalMaterial({color:'#eaf6ff', transmission:0.95, transparent:true, opacity:0.55, roughness:0.03, metalness:0.0, ior:1.5, thickness:0.6, clearcoat:1.0, clearcoatRoughness:0.02, envMapIntensity:1.4, side:THREE.DoubleSide});
+                         const beakerWall = new THREE.Mesh(makeBeakerGeom(), bkMat2); beakerWall.position.y = 0.0;
+                         const beakerBase = null;
+                         const liquid = new THREE.Mesh(makeBeakerLiquidGeom(), new THREE.MeshPhysicalMaterial({color:'#ffd6e6', transmission:0.5, transparent:true, opacity:0.92, roughness:0.06, ior:1.33, envMapIntensity:1.2})); liquid.position.y = 0.02;
                          const lbl = createLabel('C₂₀H₁₄O₄'); lbl.position.set(0, 0.55, 0.45);
                          const lbl2 = createLabel('Phenolphtalein'); lbl2.position.set(0, 0.06, 0.45);
-                         itemGroup.add(beakerBase, beakerWall, liquid, lbl, lbl2);
+                         itemGroup.add(beakerWall, liquid, lbl, lbl2);
                          hitboxGeometry = new THREE.BoxGeometry(1.0, 1.4, 1.0); hitboxGeometry.translate(0, 0.6, 0);
                      } else if (chem.isPaper && chem.id !== 'Phenol') {
                          const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.2, 0.4), new THREE.MeshStandardMaterial({color: '#e2e8f0'})); base.position.y = 0.1;
@@ -2083,16 +2174,17 @@
                          itemGroup.add(base, lbl);
                          hitboxGeometry = new THREE.BoxGeometry(1.0, 1.2, 1.0);
                     } else if (chem.isGas) {
-                        const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.8, 32), gasBottleMat); bottle.position.y = 0.9;
-                        const valve = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.3, 16), new THREE.MeshStandardMaterial({color: '#ff9800', metalness: 0.9})); valve.position.y = 1.95;
+                        const bottle = new THREE.Mesh(makeGasBottleGeom(), gasBottleMat); bottle.position.y = 0.0;
+                        const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.12, 20), new THREE.MeshStandardMaterial({color:'#2a323a', metalness:0.9, roughness:0.3, envMapIntensity:1.2})); neck.position.y = 1.92;
+                        const valve = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.035, 12, 24), new THREE.MeshStandardMaterial({color:'#ff9800', metalness:0.85, roughness:0.25, envMapIntensity:1.3})); valve.position.y = 2.05; valve.rotation.x = Math.PI/2;
                         const lbl = createLabel(chem.id, true); lbl.position.set(0, 1.0, 0.36);
-                        itemGroup.add(bottle, valve, lbl);
+                        itemGroup.add(bottle, neck, valve, lbl);
                         hitboxGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2.2); hitboxGeometry.translate(0, 1.0, 0);
                     } else {
-                        const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.3, 32), glassMat); bottle.position.y = 0.65;
-                        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.15, 16), new THREE.MeshStandardMaterial({color: '#1e293b', metalness: 0.5})); cap.position.y = 1.35;
-                        const contentMat = chem.solid ? new THREE.MeshStandardMaterial({ color: chem.color, roughness: 0.8 }) : new THREE.MeshPhysicalMaterial({ color: chem.color, transmission: 0.4, transparent: true, opacity: chem.op });
-                        const content = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.8, 32), contentMat); content.position.y = 0.4;
+                        const bottle = new THREE.Mesh(makeBottleGeom(), glassMat); bottle.position.y = 0.0;
+                        const cap = new THREE.Mesh(makeCapGeom(), new THREE.MeshStandardMaterial({color: '#1e293b', metalness: 0.6, roughness: 0.35, envMapIntensity: 1.2})); cap.position.y = 1.30;
+                        const contentMat = chem.solid ? new THREE.MeshStandardMaterial({ color: chem.color, roughness: 0.75, envMapIntensity: 0.8 }) : new THREE.MeshPhysicalMaterial({ color: chem.color, transmission: 0.55, transparent: true, opacity: chem.op, roughness: 0.08, envMapIntensity: 1.3 });
+                        const content = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.85, 32), contentMat); content.position.y = 0.45;
                         const lbl = createLabel(chem.id); lbl.position.set(0, 0.65, 0.41);
                         itemGroup.add(bottle, cap, content, lbl);
                         hitboxGeometry = new THREE.CylinderGeometry(0.6, 0.6, 1.5); hitboxGeometry.translate(0, 0.65, 0);
@@ -2127,8 +2219,11 @@
             buildShelfSection(huuCo, {x: 29, z: 0}, -Math.PI/2, 'KỆ HỢP CHẤT HỮU CƠ', '#a5f3a0');
 
             const tableGroup = new THREE.Group();
-            const top = new THREE.Mesh(new THREE.BoxGeometry(14, 0.4, 8), new THREE.MeshStandardMaterial({color: '#e2e8f0', roughness: 0.2, metalness: 0.1})); top.position.y = 3.0; top.castShadow = true; top.receiveShadow = true;
-            const topGlow = new THREE.Mesh(new THREE.BoxGeometry(14.2, 0.1, 8.2), new THREE.MeshBasicMaterial({color: 0x00e5ff})); topGlow.position.y = 2.9; tableGroup.add(top, topGlow);
+            const tableTopMat = new THREE.MeshPhysicalMaterial({color:'#eef2f6', roughness:0.18, metalness:0.05, clearcoat:0.6, clearcoatRoughness:0.15, envMapIntensity:1.2});
+            const top = new THREE.Mesh(new THREE.BoxGeometry(14, 0.3, 8), tableTopMat); top.position.y = 3.05; top.castShadow = true; top.receiveShadow = true;
+            const topEdge = new THREE.Mesh(new THREE.BoxGeometry(14.05, 0.08, 8.05), new THREE.MeshStandardMaterial({color:'#cfd6de', roughness:0.35, metalness:0.4, envMapIntensity:1.0})); topEdge.position.y = 2.92;
+            const topSkirt = new THREE.Mesh(new THREE.BoxGeometry(13.6, 0.25, 7.6), new THREE.MeshStandardMaterial({color:'#2b3340', roughness:0.6, metalness:0.3})); topSkirt.position.y = 2.78;
+            const topGlow = new THREE.Mesh(new THREE.BoxGeometry(14.2, 0.04, 8.2), new THREE.MeshBasicMaterial({color: 0x00e5ff, transparent:true, opacity:0.85})); topGlow.position.y = 2.86; tableGroup.add(top, topEdge, topSkirt, topGlow);
             const legGeo = new THREE.CylinderGeometry(0.5, 0.5, 3.0, 32); const legMat = new THREE.MeshStandardMaterial({color: '#1e293b', metalness: 0.8});
             [[-6, 2], [6, 2], [-6, -2], [6, -2]].forEach(pos => { const leg = new THREE.Mesh(legGeo, legMat); leg.position.set(pos[0], 1.5, pos[1]); tableGroup.add(leg); });
             // Hitbox lớn: click vào bàn (mặt bàn hoặc bất kỳ vật trên bàn) cũng vào lab 2D
@@ -2276,8 +2371,10 @@
                 // Monitor 24"
                 const monStand = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.25), blackPlastic); monStand.position.set(-1.2, 3.55, -0.4); g.add(monStand);
                 const monBase = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.06, 16), blackPlastic); monBase.position.set(-1.2, 3.16, -0.4); g.add(monBase);
-                const monBack = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 0.1), blackPlastic); monBack.position.set(-1.2, 4.1, -0.45); g.add(monBack);
-                const monScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.25), screenOn); monScreen.position.set(-1.2, 4.1, -0.39); g.add(monScreen);
+                const monBack = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 0.08), new THREE.MeshStandardMaterial({color:'#15181c', roughness:0.45, metalness:0.35, envMapIntensity:1.1})); monBack.position.set(-1.2, 4.1, -0.46); g.add(monBack);
+                const monBezel = new THREE.Mesh(new THREE.BoxGeometry(2.18, 1.38, 0.04), new THREE.MeshStandardMaterial({color:'#0b0d10', roughness:0.5, metalness:0.4})); monBezel.position.set(-1.2, 4.1, -0.42); g.add(monBezel);
+                const monScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.22), new THREE.MeshBasicMaterial({color:'#2f6fbd'})); monScreen.position.set(-1.2, 4.1, -0.395); g.add(monScreen);
+                const monGlass = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.22), new THREE.MeshPhysicalMaterial({color:'#ffffff', transmission:0.0, transparent:true, opacity:0.08, roughness:0.05, metalness:0.0, clearcoat:1.0, envMapIntensity:1.5})); monGlass.position.set(-1.2, 4.1, -0.388); g.add(monGlass);
                 // Bàn phím + chuột
                 const kb = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 0.4), blackPlastic); kb.position.set(-1.2, 3.16, 0.5); g.add(kb);
                 const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.3), blackPlastic); mouse.position.set(-0.2, 3.17, 0.55); g.add(mouse);
@@ -2336,14 +2433,68 @@
         }
 
         function buildReactionBeaker() {
-            const glassMat = new THREE.MeshPhysicalMaterial({ 
-                color: 0xcceeff, transmission: 0.85, opacity: 0.9, transparent: true, roughness: 0.1, ior: 1.5, clearcoat: 1.0, side: THREE.DoubleSide
-            });
-            const beaker = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 4, 64, 1, true), glassMat);
-            const bottom = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.1, 64), glassMat); bottom.position.y = -2;
-            sceneReact.add(beaker, bottom);
+            // === CỐC THỦY TINH (beaker) — kích thước cũ, chất lượng đồ họa nâng cao ===
+            const BK_R = 1.5;          // bán kính cốc (giữ nguyên gốc)
+            const BK_H = 4.0;          // chiều cao cốc (giữ nguyên gốc)
+            const BK_TOP = BK_H/2;     // = 2.0
+            const BK_BOT = -BK_H/2;    // = -2.0
+            const WALL = 0.05;         // độ dày thành kính (chỉ thị quang học)
 
-            // === LỚP BẠC TRÁNG GƯƠNG (Ag) — bám vào thành trong ống nghiệm ===
+            // Thủy tinh chất lượng cao: transmission + clearcoat + IOR thực
+            const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0xeaf6ff,
+                transmission: 0.98, opacity: 1.0, transparent: true,
+                roughness: 0.02, metalness: 0.0,
+                ior: 1.52, thickness: 0.6, attenuationDistance: 4.0,
+                attenuationColor: 0xdcefff,
+                clearcoat: 1.0, clearcoatRoughness: 0.02,
+                envMapIntensity: 1.6, side: THREE.DoubleSide,
+                reflectivity: 0.5
+            });
+
+            // Dùng LatheGeometry để dựng profile cốc có vành loe + đáy bo
+            const profile = [];
+            // đáy bo nhẹ
+            profile.push(new THREE.Vector2(0.0,      BK_BOT));
+            profile.push(new THREE.Vector2(BK_R*0.6, BK_BOT));
+            profile.push(new THREE.Vector2(BK_R*0.92,BK_BOT + 0.08));
+            profile.push(new THREE.Vector2(BK_R,     BK_BOT + 0.20));
+            // thân thẳng
+            profile.push(new THREE.Vector2(BK_R,     BK_TOP - 0.10));
+            // vành loe nhẹ (lip)
+            profile.push(new THREE.Vector2(BK_R + 0.06, BK_TOP));
+            const outerGeo = new THREE.LatheGeometry(profile, 96);
+            const beakerOuter = new THREE.Mesh(outerGeo, glassMat);
+            beakerOuter.castShadow = false; beakerOuter.receiveShadow = false;
+            sceneReact.add(beakerOuter);
+
+            // Mỏ rót nhỏ (pour spout) bằng torus phần — cho ra dáng cốc hoá học
+            const spoutGeo = new THREE.TorusGeometry(0.18, 0.04, 12, 24, Math.PI);
+            const spout = new THREE.Mesh(spoutGeo, glassMat);
+            spout.position.set(BK_R + 0.02, BK_TOP - 0.02, 0);
+            spout.rotation.z = -Math.PI/2; spout.rotation.y = Math.PI/2;
+            sceneReact.add(spout);
+
+            // Vạch chia (graduation) bằng canvas texture mảnh, không nặng
+            const gradCan = document.createElement('canvas'); gradCan.width = 512; gradCan.height = 512;
+            const gx = gradCan.getContext('2d');
+            gx.clearRect(0,0,512,512);
+            gx.strokeStyle = 'rgba(255,255,255,0.55)'; gx.fillStyle = 'rgba(255,255,255,0.7)';
+            gx.font = 'bold 22px sans-serif'; gx.textAlign = 'right';
+            for (let i=1;i<=5;i++) {
+                const y = 512 - i*70;
+                gx.lineWidth = (i%2===0)?2:1;
+                gx.beginPath(); gx.moveTo(80, y); gx.lineTo((i%2===0)?160:130, y); gx.stroke();
+                if (i%2===0) gx.fillText((i*20)+'', 78, y+7);
+            }
+            const gradTex = new THREE.CanvasTexture(gradCan);
+            gradTex.wrapS = THREE.RepeatWrapping; gradTex.repeat.x = 1;
+            const gradMat = new THREE.MeshBasicMaterial({ map: gradTex, transparent: true, opacity: 0.85, depthWrite: false });
+            const gradMesh = new THREE.Mesh(new THREE.CylinderGeometry(BK_R + 0.005, BK_R + 0.005, BK_H - 0.2, 64, 1, true), gradMat);
+            gradMesh.position.y = 0; gradMesh.rotation.y = Math.PI*0.15;
+            sceneReact.add(gradMesh);
+
+            // === LỚP BẠC TRÁNG GƯƠNG (Ag) — bám thành trong cốc ===
             const silverMat = new THREE.MeshPhysicalMaterial({
                 color: 0xfafafa, metalness: 1.0, roughness: 0.05,
                 clearcoat: 1.0, clearcoatRoughness: 0.02,
@@ -2351,35 +2502,47 @@
                 transparent: true, opacity: 0
             });
             silverMirrorCoat = new THREE.Mesh(
-                new THREE.CylinderGeometry(1.46, 1.46, 3.95, 64, 1, true),
+                new THREE.CylinderGeometry(BK_R - WALL, BK_R - WALL, BK_H - 0.1, 64, 1, true),
                 silverMat
             );
             silverMirrorCoat.position.y = 0; silverMirrorCoat.visible = false;
             sceneReact.add(silverMirrorCoat);
             const silverBottom = new THREE.Mesh(
-                new THREE.CylinderGeometry(1.46, 1.46, 0.06, 64),
+                new THREE.CircleGeometry(BK_R - WALL, 64),
                 silverMat.clone()
             );
             silverBottom.material.side = THREE.DoubleSide;
-            silverBottom.position.y = -1.96; silverBottom.visible = false;
+            silverBottom.rotation.x = -Math.PI/2;
+            silverBottom.position.y = BK_BOT + 0.04; silverBottom.visible = false;
             silverMirrorCoat.userData.bottom = silverBottom;
             sceneReact.add(silverBottom);
 
-            const liqGeo = new THREE.CylinderGeometry(1.45, 1.45, 3.5, 64); liqGeo.translate(0, 1.75, 0);
-            const liqMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 0.3, opacity: 0.9, transparent: true, roughness: 0.0 });
-            reactionBeakerLiquid = new THREE.Mesh(liqGeo, liqMat); reactionBeakerLiquid.position.y = -1.95; reactionBeakerLiquid.scale.y = 0.001; 
+            // Chất lỏng bên trong cốc — meniscus nhẹ bằng lớp đỉnh phẳng
+            const LIQ_H = BK_H - 0.2;
+            const liqGeo = new THREE.CylinderGeometry(BK_R - WALL - 0.01, BK_R - WALL - 0.01, LIQ_H, 64);
+            liqGeo.translate(0, LIQ_H/2, 0);
+            const liqMat = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff, transmission: 0.55, opacity: 0.92, transparent: true,
+                roughness: 0.0, ior: 1.33, thickness: 0.8,
+                clearcoat: 0.6, clearcoatRoughness: 0.05,
+                envMapIntensity: 1.2
+            });
+            reactionBeakerLiquid = new THREE.Mesh(liqGeo, liqMat);
+            reactionBeakerLiquid.position.y = BK_BOT + 0.04; reactionBeakerLiquid.scale.y = 0.001;
             sceneReact.add(reactionBeakerLiquid);
 
-            const stripGeo = new THREE.BoxGeometry(0.3, 3.0, 0.02); stripGeo.translate(0, -1.5, 0); 
+            // Giấy quỳ — kích thước phù hợp cốc rộng
+            const stripGeo = new THREE.BoxGeometry(0.4, 2.5, 0.02); stripGeo.translate(0, -1.25, 0);
             litmusStrip3D = new THREE.Mesh(stripGeo, new THREE.MeshStandardMaterial({color: 0x9d00ff, roughness: 1.0})); litmusStrip3D.visible = false; sceneReact.add(litmusStrip3D);
 
-            const burnerMat = new THREE.MeshStandardMaterial({color: 0x555555, metalness: 0.8});
-            const burnerBase = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, 0.8, 32), new THREE.MeshPhysicalMaterial({transmission: 0.8, transparent: true})); burnerBase.position.y = -3.5;
-            const burnerWick = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.5), burnerMat); burnerWick.position.y = -3.0;
+            // Đèn cồn — đặt dưới đáy cốc
+            const burnerMat = new THREE.MeshStandardMaterial({color: 0x555555, metalness: 0.8, roughness: 0.3});
+            const burnerBase = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, 0.8, 32), new THREE.MeshPhysicalMaterial({color: 0x88ccee, transmission: 0.85, transparent: true, roughness: 0.05, envMapIntensity: 1.3})); burnerBase.position.y = BK_BOT - 1.2;
+            const burnerWick = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.5), burnerMat); burnerWick.position.y = BK_BOT - 0.55;
             sceneReact.add(burnerBase, burnerWick);
 
-            burnerFlameCore = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.2, 16), new THREE.MeshBasicMaterial({color: 0xffeb3b, transparent: true, opacity: 0.8})); burnerFlameCore.position.y = -2.3; burnerFlameCore.visible = false;
-            burnerFlameGlow = new THREE.PointLight(0xff5722, 0, 5); burnerFlameGlow.position.y = -2.0; burnerFlameGlow.visible = false;
+            burnerFlameCore = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.2, 16), new THREE.MeshBasicMaterial({color: 0xffeb3b, transparent: true, opacity: 0.8})); burnerFlameCore.position.y = BK_BOT + 0.1; burnerFlameCore.visible = false;
+            burnerFlameGlow = new THREE.PointLight(0xff5722, 0, 5); burnerFlameGlow.position.y = BK_BOT + 0.4; burnerFlameGlow.visible = false;
             sceneReact.add(burnerFlameCore, burnerFlameGlow);
         }
 
@@ -3641,8 +3804,8 @@
             }
 
             // Reset camera cinematic về vị trí ban đầu an toàn
-            cameraReact.position.set(0, 2, 7);
-            cameraReact.lookAt(0, 1, 0);
+            cameraReact.position.set(0, 0.5, 9);
+            cameraReact.lookAt(0, 0, 0);
 
             playTransition(() => {
                 document.getElementById('ui-2d-lab').style.display = 'none';
@@ -4511,6 +4674,10 @@
             // Bỏ qua frame nếu WebGL context bị mất
             if (_rendererContextLost) return;
 
+            // Cập nhật bóng trong vài frame đầu (sau khi scene dựng xong) rồi đóng băng
+            if (window._shadowWarm === undefined) window._shadowWarm = 0;
+            if (window._shadowWarm < 10) { renderer.shadowMap.needsUpdate = true; window._shadowWarm++; }
+
             // Clamp delta để tránh NaN hoặc spike lớn gây camera bay ra ngoài
             const rawDelta = clock.getDelta();
             const delta = Math.min(Math.max(rawDelta, 0), 0.1);
@@ -4559,6 +4726,9 @@
                 }
 
 
+                // Raycast tra cứu vật thể khá nặng -> chỉ chạy mỗi 3 frame (đủ mượt cho mắt người)
+                window._roomRayTick = (window._roomRayTick || 0) + 1;
+                if (window._roomRayTick % 3 === 0) {
                 raycaster.setFromCamera(centerPos, cameraRoom);
                 const intersects = raycaster.intersectObjects(roomInteractables);
                 const hint = document.getElementById('interaction-hint'); const desc = document.getElementById('interaction-desc'); const ch = document.getElementById('crosshair');
@@ -4577,6 +4747,7 @@
                     else if(currentLookTarget.userData.isMainBeaker) { hint.style.display = 'block'; desc.innerText = "Chuẩn bị Thí nghiệm"; ch.classList.add('active'); } 
                     else if (currentLookTarget.userData.isChemical) { hint.style.display = 'block'; desc.innerText = `Thu thập: ${currentLookTarget.userData.chemName}`; ch.classList.add('active'); }
                 } else { currentLookTarget = null; hint.style.display = 'none'; ch.classList.remove('active'); }
+                }
                 renderer.render(sceneRoom, cameraRoom);
             } 
             else if (currentMode === 'LAB_2D') {
@@ -4597,9 +4768,10 @@
                 }
                 Canvas2D.draw();
 
-                // Khi LAB_2D, vẫn render sceneRoom ở background để WebGL context không bị idle
-                // (giữ context alive, ngăn trình duyệt reclaim GPU resources)
-                renderer.render(sceneRoom, cameraRoom);
+                // Khi LAB_2D, chỉ render sceneRoom thưa (mỗi 12 frame) để giữ WebGL context alive
+                // mà không tốn GPU vẽ lại toàn bộ phòng 3D mỗi frame -> giảm lag rõ rệt khi pha chế 2D.
+                window._lab2dKeepAlive = (window._lab2dKeepAlive || 0) + 1;
+                if (window._lab2dKeepAlive % 12 === 0) renderer.render(sceneRoom, cameraRoom);
             }
             else if (currentMode === 'REACTION_3D') {
                 reactionMixer += delta;
@@ -7313,43 +7485,109 @@ JSON: {"equation":"...","products":["..."],"coefficients":[...],"conditions":{"c
     });
   }
 
-  function describePhase1(snap){
+  // ============================================================
+  // GEMINI AI — gọi /api/gemini (server.py đã có key)
+  // ============================================================
+  async function callGemini(prompt) {
+    try {
+      const resp = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      // Hỗ trợ nhiều dạng response từ server.py
+      return data.text || data.response || data.result || data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } catch(e) {
+      console.warn('[Gemini] Lỗi API:', e);
+      return null;
+    }
+  }
+
+  function buildChemContext(snapshot, res) {
+    const chems = snapshot && snapshot.length
+      ? snapshot.map(it => {
+          const d = it.data || {};
+          const state = d.isGas ? 'khí' : (d.solid ? 'rắn' : 'dung dịch');
+          return `${d.name || it.id} (${state}, ${it.amount}mL)`;
+        }).join(', ')
+      : 'cốc trống';
+    const rxn = res && res.hasReaction ? `Phản ứng: ${res.eq || ''} — ${res.desc || ''}` : 'Không có phản ứng hoá học rõ rệt';
+    return { chems, rxn };
+  }
+
+  // Fallback tĩnh khi Gemini không trả lời
+  function fallbackPhase1(snap) {
     if (!snap || snap.length === 0) return 'Cốc trống. Phòng thí nghiệm sẵn sàng — đèn cồn, giá đỡ, cốc borosilicate đã được chuẩn bị.';
     return '🧪 Dụng cụ: cốc thuỷ tinh borosilicate trên giá đỡ, đèn cồn bên cạnh.<br><br>📦 Trong cốc:<br>' +
       snap.map(it => '• ' + chemDisplay(it)).join('<br>') +
       '<br><br><i>Chưa quan sát thấy hiện tượng hoá học nào — các chất đang ở trạng thái nghỉ ban đầu.</i>';
   }
-  function describePhase2(res){
-    if (!res || !res.hasReaction) return 'Sau khi trộn các chất, <b>không quan sát thấy phản ứng hoá học rõ rệt</b>. Có thể chỉ là hoà tan vật lý hoặc cần thêm điều kiện (nhiệt độ, xúc tác).';
+  function fallbackPhase2(res) {
+    if (!res || !res.hasReaction) return 'Sau khi trộn các chất, <b>không quan sát thấy phản ứng hoá học rõ rệt</b>. Có thể chỉ là hoà tan vật lý hoặc cần thêm điều kiện.';
     const map = {
       color_change: '🎨 Dung dịch <b>chuyển màu từ từ</b> — biểu hiện thay đổi trạng thái oxi hoá hoặc hình thành phức chất',
-      precipitate: '⬇ <b>Kết tủa xuất hiện và lắng dần</b> xuống đáy cốc, khối lượng tăng theo thời gian',
-      bubble: '💨 <b>Sủi bọt khí</b> thoát ra liên tục từ dung dịch — phản ứng giải phóng khí',
-      combustion: '🔥 Phản ứng <b>cháy mãnh liệt</b>, phát sáng và toả nhiệt — ngọn lửa nhiều lớp với tia lửa bắn ra',
-      glow_sparks: '✨ <b>Tia lửa loé sáng</b>, phát quang đặc trưng',
-      silver_mirror: '🪞 Lớp <b>bạc kim loại sáng bóng</b> bám và lan dần khắp thành ống — hiệu ứng "tráng gương"',
-      titration: '💧 Giọt chất chuẩn rơi đều xuống, màu chỉ thị <b>lan toả từng cuộn xoáy</b> đến điểm tương đương'
+      precipitate: '⬇ <b>Kết tủa xuất hiện và lắng dần</b> xuống đáy cốc',
+      bubble: '💨 <b>Sủi bọt khí</b> thoát ra liên tục từ dung dịch',
+      combustion: '🔥 Phản ứng <b>cháy mãnh liệt</b>, phát sáng và toả nhiệt',
+      silver_mirror: '🪞 Lớp <b>bạc kim loại sáng bóng</b> bám lên thành ống',
+      titration: '💧 Màu chỉ thị <b>lan toả từng cuộn xoáy</b> đến điểm tương đương'
     };
-    let s = (map[res.type] || '⚗ Đang quan sát biến đổi trên hệ');
-    if (res.hasSmoke) s += ', kèm <b>khói mù</b> bay lên';
-    s += '.<br><br>' + (res.desc || '');
-    return s;
+    return (map[res.type] || '⚗ Đang quan sát biến đổi trên hệ') + '.<br><br>' + (res.desc || '');
   }
-  function describePhase3(res){
-    if (!res || !res.hasReaction) return '⚖ Hệ đạt cân bằng vật lý — không có sản phẩm hoá học mới. Quan sát kết thúc.';
+  function fallbackPhase3(res) {
+    if (!res || !res.hasReaction) return '⚖ Hệ đạt cân bằng vật lý — không có sản phẩm hoá học mới.';
     return '✅ Kết quả: ' + (res.desc || '') + '<br><br>📐 <b style="color:#00e5ff">' + (res.eq || '') + '</b>';
   }
-  function aiExplain(res){
-    if (!res || !res.hasReaction) return '🤖 Cấp độ phân tử: các phân tử/ion va chạm không đủ năng lượng hoạt hoá. Hãy thử bật đèn cồn hoặc đổi tỉ lệ.';
-    const note = {
-      color_change: 'Electron chuyển dời giữa các orbital d (kim loại chuyển tiếp) hoặc trạng thái oxi hoá thay đổi → bước sóng hấp thụ thay đổi → mắt thấy màu khác.',
-      precipitate: 'Tích số ion vượt Ksp → ion gặp nhau kết tinh thành mạng tinh thể không tan, lắng xuống do trọng lực.',
-      bubble: 'Sản phẩm khí có độ tan thấp → thoát khỏi pha lỏng dạng bong bóng. Áp suất riêng phần > áp suất khí quyển cục bộ.',
-      combustion: 'Liên kết cũ bị bẻ gãy, năng lượng giải phóng vượt năng lượng tạo liên kết mới → ΔH << 0 → toả nhiệt và phát quang.',
-      silver_mirror: 'Nhóm –CHO khử Ag⁺ thành Ag⁰; Ag⁰ kết tinh đồng đều lên thuỷ tinh sạch tạo lớp gương phản chiếu.',
-      titration: 'Tại điểm tương đương: n(H⁺) = n(OH⁻). pH nhảy đột ngột → phenolphtalein ion hoá → đổi màu hồng.'
-    }[res.type] || 'Phản ứng tuân theo định luật bảo toàn khối lượng và bảo toàn electron.';
-    return '🤖 ' + note + '<br><br>⚗ Phương trình: <b>' + (res.eq || '—') + '</b>';
+  function fallbackAI(res) {
+    if (!res || !res.hasReaction) return '🤖 Các phân tử va chạm không đủ năng lượng hoạt hoá. Hãy thử bật đèn cồn hoặc đổi tỉ lệ.';
+    return '🤖 Phản ứng tuân theo định luật bảo toàn khối lượng và bảo toàn electron.<br><br>⚗ Phương trình: <b>' + (res.eq || '—') + '</b>';
+  }
+
+  // Chuyển text thuần Gemini → HTML an toàn (in đậm **text**, xuống dòng)
+  function geminiToHtml(text) {
+    if (!text) return '';
+    return text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .replace(/\*(.+?)\*/g, '<i>$1</i>')
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, '<br>');
+  }
+
+  // Fetch cả 4 phần từ Gemini trong 1 lần gọi (tiết kiệm round-trip)
+  async function fetchAllPhasesFromGemini(snapshot, res) {
+    const { chems, rxn } = buildChemContext(snapshot, res);
+    const prompt = `Bạn là trợ lý AI trong phòng thí nghiệm hoá học ảo. Hãy mô tả thí nghiệm sau theo đúng 4 phần, mỗi phần cách nhau bằng dòng "---".
+
+Thành phần trong cốc: ${chems}
+${rxn}
+
+Viết bằng tiếng Việt, súc tích, sinh động, có icon emoji phù hợp. Không dùng Markdown heading (#). Mỗi phần tối đa 4 câu.
+
+PHẦN 1 (Trước phản ứng - mô tả dụng cụ, các chất trong cốc, trạng thái ban đầu):
+---
+PHẦN 2 (Diễn biến phản ứng - hiện tượng quan sát được: màu sắc, bọt khí, kết tủa, mùi, nhiệt...):
+---
+PHẦN 3 (Kết thúc - sản phẩm tạo thành, trạng thái hệ sau phản ứng):
+---
+PHẦN 4 (Giải thích phân tử - cơ chế ion/electron, tại sao xảy ra hiện tượng đó, phương trình hoá học):`;
+
+    const raw = await callGemini(prompt);
+    if (!raw) return null;
+
+    // Tách theo "---"
+    const parts = raw.split(/\n?---\n?/);
+    // Xóa tiêu đề "PHẦN X" nếu Gemini tự thêm
+    const clean = parts.map(p => p.replace(/^(PHẦN\s*\d[^\n]*\n?)/i, '').trim());
+
+    return {
+      phase1: geminiToHtml(clean[0] || ''),
+      phase2: geminiToHtml(clean[1] || ''),
+      phase3: geminiToHtml(clean[2] || ''),
+      ai:     geminiToHtml(clean[3] || '')
+    };
   }
 
   // ----- Cinematic camera (4 shots over 16s) -----
@@ -7442,27 +7680,43 @@ JSON: {"equation":"...","products":["..."],"coefficients":[...],"conditions":{"c
       requestAnimationFrame(tickBar);
 
       (async () => {
-        // Phase 1 — 0 → 4s
+        // --- Fetch Gemini song song với animation camera (700ms) ---
         await new Promise(r => setTimeout(r, 600));
+
+        // Hiện loading ở phase 1 ngay
         flashBanner('GIAI ĐOẠN 1 · TRƯỚC PHẢN ỨNG', 2200);
         ph1.classList.add('active');
-        await typeText(ph1.querySelector('.rc-text'), describePhase1(snapshot), 2400);
-        await new Promise(r => setTimeout(r, 600));
+        const loadingEl = ph1.querySelector('.rc-text');
+        loadingEl.innerHTML = '⏳ <i style="color:#64748b">AI đang phân tích...</i><span class="rc-cursor"></span>';
+
+        // Gọi Gemini (song song với camera bay)
+        const geminiResult = await fetchAllPhasesFromGemini(snapshot, res);
+
+        // --- Phase 1 ---
+        const p1text = (geminiResult && geminiResult.phase1) ? geminiResult.phase1 : fallbackPhase1(snapshot);
+        loadingEl.innerHTML = '';
+        await typeText(loadingEl, p1text, 2600);
+        await new Promise(r => setTimeout(r, 500));
         ph1.classList.remove('active'); ph1.classList.add('done');
 
-        // Phase 2 — 4 → 11s
+        // --- Phase 2 ---
         flashBanner('GIAI ĐOẠN 2 · ĐANG PHẢN ỨNG', 2200);
         ph2.classList.add('active');
-        await typeText(ph2.querySelector('.rc-text'), describePhase2(res), 5000);
-        await new Promise(r => setTimeout(r, 1200));
+        const p2text = (geminiResult && geminiResult.phase2) ? geminiResult.phase2 : fallbackPhase2(res);
+        await typeText(ph2.querySelector('.rc-text'), p2text, 4500);
+        await new Promise(r => setTimeout(r, 1000));
         ph2.classList.remove('active'); ph2.classList.add('done');
 
-        // Phase 3 — 11s → 16s
+        // --- Phase 3 ---
         flashBanner('GIAI ĐOẠN 3 · SAU PHẢN ỨNG', 2200);
         ph3.classList.add('active');
-        await typeText(ph3.querySelector('.rc-text'), describePhase3(res), 3500);
+        const p3text = (geminiResult && geminiResult.phase3) ? geminiResult.phase3 : fallbackPhase3(res);
+        await typeText(ph3.querySelector('.rc-text'), p3text, 3500);
         ph3.classList.remove('active'); ph3.classList.add('done');
-        await typeText(ai, aiExplain(res), 2500);
+
+        // --- AI insight ---
+        const aitext = (geminiResult && geminiResult.ai) ? geminiResult.ai : fallbackAI(res);
+        await typeText(ai, aitext, 2800);
       })();
 
       return ret;
