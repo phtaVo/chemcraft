@@ -7722,6 +7722,26 @@ PHẦN 4 (Giải thích phân tử - cơ chế ion/electron, tại sao xảy ra 
       return ret;
     };
 
+    // QUAN TRỌNG: btn-react bị rebind mỗi lần buildUI2D() chạy (gọi trong enterLab2D).
+    // Wrap buildUI2D để sau khi bind gốc chạy xong, ta override lại btn-react.
+    function patchBtnReact() {
+      const btnReact = document.getElementById('btn-react');
+      if (btnReact) {
+        btnReact.onclick = function(){ window.triggerReactionSequence(); };
+      }
+    }
+    if (typeof window.buildUI2D === 'function' && !window.buildUI2D._cinemaBound) {
+      const origBuild = window.buildUI2D;
+      window.buildUI2D = function() {
+        const r = origBuild.apply(this, arguments);
+        patchBtnReact();
+        return r;
+      };
+      window.buildUI2D._cinemaBound = true;
+      console.log('[Cinema] buildUI2D wrapped ✓');
+    }
+    patchBtnReact(); // patch ngay lần đầu nếu đã có
+
     ['btn-close-reaction','btn-return-3d'].forEach(id => {
       const b = document.getElementById(id); if (!b) return;
       const o = b.onclick;
