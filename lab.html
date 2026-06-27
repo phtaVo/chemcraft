@@ -21,13 +21,13 @@
         #crosshair { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background-color: rgba(255,255,255,0.8); border-radius: 50%; transform: translate(-50%, -50%); border: 1px solid rgba(0,0,0,0.5); box-shadow: 0 0 5px rgba(0,0,0,0.8); transition: all 0.2s; }
         #crosshair.active { width: 16px; height: 16px; background-color: transparent; border: 3px solid #00e5ff; box-shadow: 0 0 15px #00e5ff;}
         
-        #instructions-3d { position: absolute; top: 20px; left: 20px; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(5px); color: white; padding: 15px; border-radius: 10px; font-size: 1rem; line-height: 1.6; border: 1px solid rgba(0, 229, 255, 0.3); box-shadow: 0 4px 15px rgba(0,0,0,0.5);}
+        #instructions-3d { position: absolute; top: 20px; left: 20px; background-color: rgba(0, 0, 0, 0.5); backdrop-filter: none; color: white; padding: 15px; border-radius: 10px; font-size: 1rem; line-height: 1.6; border: 1px solid rgba(0, 229, 255, 0.3); box-shadow: 0 4px 15px rgba(0,0,0,0.5);}
         
-        #interaction-hint { position: absolute; bottom: 15%; left: 50%; transform: translateX(-50%); background-color: rgba(0, 0, 0, 0.85); color: #00e5ff; padding: 15px 30px; border-radius: 30px; font-size: 1.3rem; font-weight: bold; border: 2px solid #00e5ff; box-shadow: 0 0 20px rgba(0, 229, 255, 0.5); display: none; text-align: center; backdrop-filter: blur(5px);}
+        #interaction-hint { position: absolute; bottom: 15%; left: 50%; transform: translateX(-50%); background-color: rgba(0, 0, 0, 0.85); color: #00e5ff; padding: 15px 30px; border-radius: 30px; font-size: 1.3rem; font-weight: bold; border: 2px solid #00e5ff; box-shadow: 0 0 20px rgba(0, 229, 255, 0.5); display: none; text-align: center; backdrop-filter: none;}
         #interaction-desc { font-size: 0.9rem; color: #fff; font-weight: normal; margin-top: 5px; }
 
         /* HUD TÚI ĐỒ (INVENTORY) */
-        #inventory-hud { position: absolute; top: 20px; right: 20px; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(5px); color: white; padding: 15px; border-radius: 10px; border: 1px solid #00e5ff; font-size: 1rem; min-width: 160px; z-index: 10; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5);}
+        #inventory-hud { position: absolute; top: 20px; right: 20px; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: none; color: white; padding: 15px; border-radius: 10px; border: 1px solid #00e5ff; font-size: 1rem; min-width: 160px; z-index: 10; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5);}
         #inventory-hud::-webkit-scrollbar { width: 5px; }
         #inventory-hud::-webkit-scrollbar-thumb { background: #00e5ff; border-radius: 5px; }
         #inventory-hud h3 { margin: 0 0 10px 0; color: #00e5ff; font-size: 1.1rem; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;}
@@ -36,7 +36,7 @@
         #inventory-list li::before { content: '🧪'; margin-right: 8px; font-size: 1.1rem;}
 
         /* BẢNG THÔNG TIN NGUYÊN TỐ (MODAL) */
-        #element-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(10, 15, 25, 0.95); border: 2px solid #ffeb3b; border-radius: 15px; padding: 30px; width: 400px; z-index: 50; display: none; flex-direction: column; align-items: center; box-shadow: 0 0 30px rgba(255, 235, 59, 0.3); backdrop-filter: blur(10px); color: white;}
+        #element-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(10, 15, 25, 0.95); border: 2px solid #ffeb3b; border-radius: 15px; padding: 30px; width: 400px; z-index: 50; display: none; flex-direction: column; align-items: center; box-shadow: 0 0 30px rgba(255, 235, 59, 0.3); backdrop-filter: none; color: white;}
         #el-modal-symbol { font-size: 5rem; font-weight: bold; color: #ffeb3b; margin-bottom: 10px; line-height: 1;}
         #el-modal-name { font-size: 2rem; color: #00e5ff; margin-bottom: 5px;}
         #el-modal-num { font-size: 1.2rem; color: #94a3b8; margin-bottom: 5px;}
@@ -48,7 +48,7 @@
         /* ==================================================
            LỚP UI 2D LAB CHUẨN BỊ 
            ================================================== */
-        #ui-2d-lab { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(10, 15, 25, 0.95); display: none; z-index: 20; color: white; flex-direction: row; padding: 20px; box-sizing: border-box; backdrop-filter: blur(15px); }
+        #ui-2d-lab { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(10, 15, 25, 0.95); display: none; z-index: 20; color: white; flex-direction: row; padding: 20px; box-sizing: border-box; backdrop-filter: none; }
         
         .panel { background: rgba(255,255,255,0.03); border: 1px solid rgba(0, 229, 255, 0.2); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; box-shadow: inset 0 0 20px rgba(0,0,0,0.5);}
         .panel-header { font-size: 1.5rem; font-weight: bold; color: #00e5ff; border-bottom: 2px solid rgba(0, 229, 255, 0.5); padding-bottom: 15px; margin-bottom: 20px; text-align: center; letter-spacing: 1px; text-transform: uppercase;}
@@ -99,7 +99,7 @@
         .chem-btn .state-badge { font-size: 0.65rem; color: #00e5ff; background: rgba(0,229,255,0.12); padding: 2px 6px; border-radius: 6px; margin-top: 4px; display: inline-block;}
 
         /* Modal chọn trạng thái */
-        #state-modal { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.75); z-index: 60; display:none; justify-content:center; align-items:center; backdrop-filter: blur(8px);}
+        #state-modal { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.75); z-index: 60; display:none; justify-content:center; align-items:center; backdrop-filter: none;}
         #state-modal .box { background: linear-gradient(180deg, #0f172a, #050810); border: 2px solid #00e5ff; border-radius: 18px; padding: 30px 40px; text-align: center; color:white; box-shadow: 0 0 40px rgba(0,229,255,0.3); min-width: 380px;}
         #state-modal h3 { color:#00e5ff; margin: 0 0 8px; font-size:1.4rem;}
         #state-modal p { color:#94a3b8; margin: 0 0 20px;}
@@ -123,7 +123,7 @@
         #btn-back:hover { background-color: #64748b; color: white; transform: translateY(-2px);}
 
         /* LỚP UI KẾT QUẢ SAU REACTION 3D */
-        #reaction-result-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 30; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);}
+        #reaction-result-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 30; background: rgba(0,0,0,0.6); backdrop-filter: none;}
         .result-box { background: linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(0,0,0,0.95) 100%); border: 2px solid #00e5ff; border-radius: 20px; padding: 40px; max-width: 800px; text-align: center; color: white; animation: zoomIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 0 50px rgba(0, 229, 255, 0.2);}
         .result-title { color: #00e5ff; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px;}
         .result-eq { font-size: 2.5rem; color: #ffeb3b; font-weight: bold; margin-bottom: 25px; text-shadow: 0 0 15px rgba(255, 235, 59, 0.4); padding: 20px; background: rgba(255,255,255,0.05); border-radius: 15px;}
@@ -178,7 +178,7 @@
     <!-- Màn hình khởi động -->
     <div id="start-screen">
         <h1>✨ HIGH-TECH CHEMISTRY LAB ✨</h1>
-        <div style="font-size: 1.2rem; max-width: 650px; line-height: 1.8; text-align: left; background: rgba(0,0,0,0.5); padding: 30px; border-radius: 15px; color: #fff; border: 1px solid rgba(0, 229, 255, 0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: blur(5px);">
+        <div style="font-size: 1.2rem; max-width: 650px; line-height: 1.8; text-align: left; background: rgba(0,0,0,0.5); padding: 30px; border-radius: 15px; color: #fff; border: 1px solid rgba(0, 229, 255, 0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: none;">
             <p style="margin-top:0; color: #00e5ff; font-size: 1.4rem; text-align: center; letter-spacing: 1px;"><b>NHIỆM VỤ CỦA BẠN</b></p>
             <ul style="margin-bottom:0">
                 <li>Dùng <b>W, A, S, D</b> để đi quanh phòng. Dùng <b>Chuột</b> để nhìn.</li>
@@ -226,7 +226,7 @@
     </div>
 
     <!-- Khung tìm kiếm chất (kích hoạt bằng phím F) -->
-    <div id="search-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.72);z-index:200;justify-content:center;align-items:flex-start;padding-top:14vh;backdrop-filter:blur(6px);">
+    <div id="search-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.72);z-index:200;justify-content:center;align-items:flex-start;padding-top:14vh;backdrop-filter:none;">
         <div style="background:#0f1724;border:2px solid #00e5ff;border-radius:14px;padding:22px;width:520px;max-width:90vw;box-shadow:0 0 60px rgba(0,229,255,0.45);">
             <div style="color:#00e5ff;font-weight:bold;margin-bottom:10px;font-size:16px;">🔍 Tìm Chất Hóa Học <span style="color:#64748b;font-weight:normal;font-size:12px;float:right;">ESC để đóng</span></div>
             <input id="search-input" placeholder="Nhập tên chất, ví dụ: NaOH, Glucose, Ag2O..." autocomplete="off" style="width:100%;padding:12px;background:#0a1018;border:1px solid #00e5ff;color:#fff;font-size:15px;border-radius:8px;outline:none;box-sizing:border-box;">
@@ -377,15 +377,11 @@
         </div>
     </div>
 
-    <!-- Banner nhiệm vụ từ lesson -->
-    <div id="mission-banner" style="display:none;position:absolute;top:15px;left:50%;transform:translateX(-50%);z-index:50;background:rgba(10,15,25,0.92);border:2px solid #ffc107;color:#fff;padding:12px 22px;border-radius:30px;font-family:'Segoe UI',sans-serif;box-shadow:0 4px 25px rgba(255,193,7,0.4);backdrop-filter:blur(8px);display:flex;align-items:center;gap:15px;">
-        <span id="mission-banner-icon" style="font-size:1.4rem;">🎯</span>
-        <div>
-            <div style="font-size:0.75rem;color:#ffc107;letter-spacing:1px;font-weight:bold;">NHIỆM VỤ TỪ BÀI HỌC</div>
-            <div id="mission-banner-text" style="font-size:1rem;font-weight:bold;"></div>
-        </div>
-        <button id="mission-banner-back" style="margin-left:10px;padding:8px 16px;background:#43a047;color:#fff;border:none;border-radius:20px;font-weight:bold;cursor:pointer;font-size:0.9rem;">⬅ Bài học</button>
-    </div>
+    <!-- Banner nhiệm vụ từ lesson (đã ẩn) -->
+    <div id="mission-banner" style="display:none !important;"></div>
+    <span id="mission-banner-icon" style="display:none"></span>
+    <span id="mission-banner-text" style="display:none"></span>
+    <button id="mission-banner-back" style="display:none"></button>
 
     <!-- Modal chọn trạng thái khi thêm hóa chất -->
     <div id="state-modal">
@@ -398,7 +394,7 @@
     </div>
 
     <!-- ===== MOLECULAR VIEW MODAL ===== -->
-    <div id="mol-view-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:80;backdrop-filter:blur(12px);">
+    <div id="mol-view-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:80;backdrop-filter:none;">
         <div style="position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;padding:20px;box-sizing:border-box;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                 <h2 style="color:#a78bfa;margin:0;font-size:1.4rem;">🔬 Phân Tích Phân Tử — <span id="mol-reaction-title" style="color:#00e5ff;"></span></h2>
@@ -436,7 +432,7 @@
     </div>
 
     <!-- ===== AI ASSISTANT MODAL ===== -->
-    <div id="ai-assistant-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:80;backdrop-filter:blur(12px);">
+    <div id="ai-assistant-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:80;backdrop-filter:none;">
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(700px,95vw);height:85vh;background:linear-gradient(180deg,#0f172a,#050810);border:2px solid #00e5ff;border-radius:20px;display:flex;flex-direction:column;padding:24px;box-sizing:border-box;box-shadow:0 0 60px rgba(0,229,255,0.2);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                 <h2 style="color:#00e5ff;margin:0;font-size:1.3rem;">🤖 AI Chemistry Assistant</h2>
@@ -453,7 +449,7 @@
     </div>
 
     <!-- ===== SMART NOTEBOOK MODAL ===== -->
-    <div id="notebook-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:80;backdrop-filter:blur(12px);">
+    <div id="notebook-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:80;backdrop-filter:none;">
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(700px,95vw);height:88vh;background:linear-gradient(180deg,#0f172a,#050810);border:2px solid #0ea5e9;border-radius:20px;display:flex;flex-direction:column;padding:24px;box-sizing:border-box;box-shadow:0 0 60px rgba(14,165,233,0.2);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                 <h2 style="color:#0ea5e9;margin:0;font-size:1.3rem;">📓 Smart Notebook</h2>
@@ -474,7 +470,7 @@
     </div>
 
     <!-- ===== AI ASSESSMENT MODAL ===== -->
-    <div id="assessment-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:80;backdrop-filter:blur(12px);">
+    <div id="assessment-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:80;backdrop-filter:none;">
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(680px,95vw);max-height:90vh;overflow-y:auto;background:linear-gradient(180deg,#0f172a,#050810);border:2px solid #10b981;border-radius:20px;padding:28px;box-sizing:border-box;box-shadow:0 0 60px rgba(16,185,129,0.2);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
                 <h2 style="color:#10b981;margin:0;font-size:1.3rem;">🎯 AI Assessment — Đánh Giá Thí Nghiệm</h2>
@@ -701,12 +697,30 @@
             init: function() {
                 if(this.isInitialized) return;
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if(!AudioContext) return;
                 this.ctx = new AudioContext();
                 this.isInitialized = true;
+                // Resume ngay trong user-gesture đầu tiên
+                try { this.ctx.resume(); } catch(e) {}
+                // Một số trình duyệt suspend lại sau fullscreen/pointerlock — gắn listener khôi phục
+                const resumeFn = () => {
+                    if(this.ctx && this.ctx.state === 'suspended') {
+                        this.ctx.resume().catch(()=>{});
+                    }
+                };
+                ['pointerdown','mousedown','keydown','touchstart','click'].forEach(ev => {
+                    window.addEventListener(ev, resumeFn, { capture: true });
+                });
+                document.addEventListener('fullscreenchange', resumeFn);
+                document.addEventListener('pointerlockchange', resumeFn);
+                document.addEventListener('visibilitychange', () => {
+                    if(!document.hidden) resumeFn();
+                });
             },
 
             playPour: function() {
-                if(!this.ctx || this.ctx.state === 'suspended') return;
+                if(!this.ctx) return;
+                if(this.ctx.state === 'suspended') this.ctx.resume();
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();
                 const filter = this.ctx.createBiquadFilter();
@@ -728,7 +742,8 @@
             },
 
             startFire: function() {
-                if(!this.ctx || this.fireNode || this.ctx.state === 'suspended') return;
+                if(!this.ctx || this.fireNode) return;
+                if(this.ctx.state === 'suspended') this.ctx.resume();
                 
                 // Dùng buffer tạo tiếng ồn trầm (Brown noise style)
                 const bufferSize = this.ctx.sampleRate * 2; 
@@ -769,14 +784,16 @@
             },
 
             startBubbles: function() {
-                if(!this.ctx || this.ctx.state === 'suspended') return;
+                if(!this.ctx) return;
+                if(this.ctx.state === 'suspended') this.ctx.resume();
                 if (this._bubblesRunning) return; // Đã đang chạy, không tạo thêm
                 this._bubblesRunning = true;
                 this._scheduleBubble();
             },
 
             _scheduleBubble: function() {
-                if (!this._bubblesRunning || !this.ctx || this.ctx.state === 'suspended') return;
+                if (!this._bubblesRunning || !this.ctx) return;
+                if(this.ctx.state === 'suspended') this.ctx.resume();
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();
                 osc.type = 'sine';
@@ -800,7 +817,8 @@
             },
 
             playSuccess: function() {
-                if(!this.ctx || this.ctx.state === 'suspended') return;
+                if(!this.ctx) return;
+                if(this.ctx.state === 'suspended') this.ctx.resume();
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();
                 
@@ -816,6 +834,114 @@
                 
                 osc.connect(gain); gain.connect(this.ctx.destination);
                 osc.start(); osc.stop(this.ctx.currentTime + 1.5);
+            },
+
+            // ===== ÂM THANH NỀN LIÊN TỤC TRONG LÚC PHẢN ỨNG 3D =====
+            // Bảo đảm LUÔN có âm thanh phù hợp suốt animation phản ứng,
+            // không còn bị "mất tiếng" với các loại phản ứng không sủi bọt.
+            _reactionNodes: null,
+            startReactionAmbience: function(type) {
+                if(!this.ctx) return;
+                if(this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch(e){} }
+                this.stopReactionAmbience();
+
+                const ctx = this.ctx;
+                const now = ctx.currentTime;
+                const master = ctx.createGain();
+                master.gain.setValueAtTime(0, now);
+                master.gain.linearRampToValueAtTime(1, now + 0.6); // fade-in mượt
+                master.connect(ctx.destination);
+
+                const nodes = { master: master, sources: [], extras: [] };
+
+                // Helper: tạo buffer noise loop
+                const makeNoise = () => {
+                    const len = ctx.sampleRate * 2;
+                    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+                    const d = buf.getChannelData(0);
+                    let last = 0;
+                    for (let i = 0; i < len; i++) {
+                        const white = Math.random() * 2 - 1;
+                        last = (last + 0.02 * white) / 1.02; // brown-ish noise
+                        d[i] = last * 3.5;
+                    }
+                    const src = ctx.createBufferSource();
+                    src.buffer = buf; src.loop = true;
+                    return src;
+                };
+
+                if (type === 'combustion' || type === 'glow_sparks') {
+                    // Tiếng lửa cháy + lép bép
+                    const noise = makeNoise();
+                    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
+                    const g = ctx.createGain(); g.gain.value = 0.9;
+                    noise.connect(lp); lp.connect(g); g.connect(master);
+                    noise.start(); nodes.sources.push(noise);
+                    // crackle ngẫu nhiên
+                    nodes._crackle = setInterval(() => {
+                        if(ctx.state === 'suspended') return;
+                        const o = ctx.createOscillator(); const cg = ctx.createGain();
+                        o.type = 'square'; o.frequency.value = 800 + Math.random()*1600;
+                        cg.gain.setValueAtTime(0.06 + Math.random()*0.06, ctx.currentTime);
+                        cg.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+                        o.connect(cg); cg.connect(master); o.start(); o.stop(ctx.currentTime + 0.05);
+                    }, 90);
+                } else if (type === 'precipitate') {
+                    // Tiếng "xèo" nhẹ khi kết tủa lắng xuống
+                    const noise = makeNoise();
+                    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1200; bp.Q.value = 0.7;
+                    const g = ctx.createGain(); g.gain.value = 0.25;
+                    noise.connect(bp); bp.connect(g); g.connect(master);
+                    noise.start(); nodes.sources.push(noise);
+                } else if (type === 'swirl' || type === 'titration') {
+                    // Tiếng khuấy/xoáy dung dịch trầm ấm
+                    const noise = makeNoise();
+                    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600;
+                    const g = ctx.createGain(); g.gain.value = 0.3;
+                    // LFO tạo cảm giác xoáy
+                    const lfo = ctx.createOscillator(); lfo.frequency.value = 1.5;
+                    const lfoG = ctx.createGain(); lfoG.gain.value = 0.18;
+                    lfo.connect(lfoG); lfoG.connect(g.gain);
+                    noise.connect(lp); lp.connect(g); g.connect(master);
+                    noise.start(); lfo.start();
+                    nodes.sources.push(noise, lfo);
+                } else {
+                    // Mặc định (color_change, none, ...): tiếng sủi tăm / lăn tăn nhẹ
+                    const noise = makeNoise();
+                    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+                    const g = ctx.createGain(); g.gain.value = 0.18;
+                    noise.connect(lp); lp.connect(g); g.connect(master);
+                    noise.start(); nodes.sources.push(noise);
+                    // tiếng tăm khí lăn tăn
+                    nodes._fizz = setInterval(() => {
+                        if(ctx.state === 'suspended') return;
+                        const o = ctx.createOscillator(); const fg = ctx.createGain();
+                        o.type = 'sine'; const f = 500 + Math.random()*600;
+                        o.frequency.setValueAtTime(f, ctx.currentTime);
+                        o.frequency.exponentialRampToValueAtTime(Math.max(60, f-250), ctx.currentTime + 0.08);
+                        fg.gain.setValueAtTime(0.05 + Math.random()*0.05, ctx.currentTime);
+                        fg.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+                        o.connect(fg); fg.connect(master); o.start(); o.stop(ctx.currentTime + 0.08);
+                    }, 160);
+                }
+
+                this._reactionNodes = nodes;
+            },
+            stopReactionAmbience: function() {
+                const nodes = this._reactionNodes;
+                if(!nodes) return;
+                this._reactionNodes = null;
+                if(nodes._crackle) clearInterval(nodes._crackle);
+                if(nodes._fizz) clearInterval(nodes._fizz);
+                try {
+                    const t = this.ctx.currentTime;
+                    nodes.master.gain.cancelScheduledValues(t);
+                    nodes.master.gain.setValueAtTime(nodes.master.gain.value, t);
+                    nodes.master.gain.linearRampToValueAtTime(0, t + 0.35); // fade-out
+                } catch(e) {}
+                setTimeout(() => {
+                    (nodes.sources || []).forEach(s => { try { s.stop(); } catch(e){} });
+                }, 400);
             }
         };
 
@@ -1644,16 +1770,16 @@
 
         function init() {
             const container = document.getElementById('canvas-container');
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", stencil: false });
             renderer.setSize(getW(), getH());
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.0));
             renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.shadowMap.type = THREE.BasicShadowMap;
             // Phòng gần như tĩnh -> không cần tính lại bóng mỗi frame.
             // Chỉ cập nhật bóng ở vài frame đầu rồi "đóng băng" -> giảm lag mạnh khi quay/di chuyển.
             renderer.shadowMap.autoUpdate = false;
             renderer.shadowMap.needsUpdate = true;
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMapping = THREE.LinearToneMapping;
             renderer.toneMappingExposure = 1.1;
             container.appendChild(renderer.domElement);
 
@@ -1704,7 +1830,7 @@
             })();
             sceneRoom.background = new THREE.Color('#0c1612');
             sceneRoom.fog = new THREE.Fog('#c9d3dc', 28, 70);
-            cameraRoom = new THREE.PerspectiveCamera(70, getW() / getH(), 0.1, 1000);
+            cameraRoom = new THREE.PerspectiveCamera(70, getW() / getH(), 0.2, 150);
             cameraRoom.position.set(0, 5, 15);
 
             // Lighting — cân bằng giữa sáng & tương phản (giữ chi tiết, không bị bệt)
@@ -1717,8 +1843,8 @@
             const sunLight = new THREE.DirectionalLight(0xfff4dc, 1.35);
             sunLight.position.set(15, 22, 10);
             sunLight.castShadow = true;
-            sunLight.shadow.mapSize.width = 1024;
-            sunLight.shadow.mapSize.height = 1024;
+            sunLight.shadow.mapSize.width = 512;
+            sunLight.shadow.mapSize.height = 512;
             sunLight.shadow.camera.left = -30;
             sunLight.shadow.camera.right = 30;
             sunLight.shadow.camera.top = 30;
@@ -1774,17 +1900,100 @@
             cameraReact.position.set(0, 0.5, 9);
             cameraReact.lookAt(0, 0, 0);
 
-            sceneReact.add(new THREE.AmbientLight(0x8090b0, 0.35));
-            const reactSpot = new THREE.SpotLight(0xfff8f0, 6);
-            reactSpot.position.set(2, 10, 4); reactSpot.angle = Math.PI/5; reactSpot.penumbra = 0.5;
-            sceneReact.add(reactSpot);
-            const fillLight = new THREE.PointLight(0x4488ff, 2.5, 20);
-            fillLight.position.set(-5, 2, 3); sceneReact.add(fillLight);
-            const reactBack = new THREE.PointLight(0x00e5ff, 2.5, 18);
-            reactBack.position.set(0, 2, -5); sceneReact.add(reactBack);
-            const bottomLight = new THREE.PointLight(0x00ffcc, 1.0, 10);
-            bottomLight.position.set(0, -3, 0); sceneReact.add(bottomLight);
-            sceneReact.fog = new THREE.FogExp2(0x050810, 0.045);
+            // ============================================================
+            // 🎬 CINEMATIC LIGHTING — KHÔNG DÙNG SPOTLIGHT
+            // Ánh sáng dịu bao quanh cốc + global illumination qua envMap
+            // để thủy tinh trong suốt khúc xạ/phản chiếu thật, lòng cốc
+            // không còn đen do transmission lấy mẫu từ environment.
+            // ============================================================
+
+            // --- ENV MAP cinematic (PMREM) cho sceneReact ---
+            (function buildReactEnv(){
+                const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+                const g = c.getContext('2d');
+                // Gradient nền studio tối, trung tính — không gây chói
+                const sky = g.createLinearGradient(0,0,0,256);
+                sky.addColorStop(0.00, '#d8e8f0');
+                sky.addColorStop(0.40, '#6888a0');
+                sky.addColorStop(0.70, '#1a2530');
+                sky.addColorStop(1.00, '#080c14');
+                g.fillStyle = sky; g.fillRect(0,0,512,256);
+                // Softbox nhẹ, chỉ đủ để tạo reflection đẹp trên cốc thủy tinh
+                function softbox(x,y,w,h,col){
+                    const rg = g.createRadialGradient(x,y,2, x,y, Math.max(w,h));
+                    rg.addColorStop(0, col);
+                    rg.addColorStop(1, 'rgba(0,0,0,0)');
+                    g.fillStyle = rg;
+                    g.fillRect(x-w, y-h, w*2, h*2);
+                }
+                softbox(128, 64, 100, 60, 'rgba(255,248,235,0.70)'); // key warm — giảm
+                softbox(384, 80, 110, 65, 'rgba(160,200,240,0.55)'); // fill cool — giảm
+                softbox(256,220, 160, 60, 'rgba(240,210,170,0.30)'); // bottom bounce nhẹ
+                const envTex = new THREE.CanvasTexture(c);
+                envTex.mapping = THREE.EquirectangularReflectionMapping;
+                if (THREE.sRGBEncoding) envTex.encoding = THREE.sRGBEncoding;
+                try {
+                    const pmrem = new THREE.PMREMGenerator(renderer);
+                    pmrem.compileEquirectangularShader();
+                    const rt = pmrem.fromEquirectangular(envTex);
+                    sceneReact.environment = rt.texture;
+                    pmrem.dispose();
+                    envTex.dispose();
+                } catch(e){
+                    sceneReact.environment = envTex;
+                }
+            })();
+
+            // --- Ánh sáng nền: đủ sáng để thấy rõ cốc ---
+            sceneReact.add(new THREE.AmbientLight(0xffffff, 0.75));
+
+            // --- Hemisphere: trời trắng ấm, đất xanh tối nhẹ ---
+            const reactHemi = new THREE.HemisphereLight(0xfff8f0, 0x1a2230, 0.6);
+            reactHemi.position.set(0, 8, 0);
+            sceneReact.add(reactHemi);
+
+            // --- Key light chính: chiếu thẳng vào cốc từ trên-trước ---
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            keyLight.position.set(2, 8, 6);
+            keyLight.target.position.set(0, 1, 0);
+            sceneReact.add(keyLight);
+            sceneReact.add(keyLight.target);
+
+            // --- Fill light: từ bên trái để hạn chế bóng tối cứng ---
+            const fillLight = new THREE.DirectionalLight(0xe8f4ff, 0.6);
+            fillLight.position.set(-4, 4, 2);
+            sceneReact.add(fillLight);
+
+            // --- Spotlight trực tiếp chiếu vào cốc: đảm bảo cốc luôn sáng rõ ---
+            const beakerSpot = new THREE.PointLight(0xfff5e0, 2.2, 10, 2);
+            beakerSpot.position.set(0, 5, 3);
+            sceneReact.add(beakerSpot);
+
+            // --- Rim light nhẹ phía sau để cốc nổi bật khỏi nền tối ---
+            const rimLight = new THREE.PointLight(0x80b0ff, 0.8, 8, 2);
+            rimLight.position.set(0, 2, -4);
+            sceneReact.add(rimLight);
+
+            // --- Bloom nhẹ phía sau cốc (chỉ 1 sprite, opacity thấp) ---
+            const bloomCanvas = document.createElement('canvas');
+            bloomCanvas.width = bloomCanvas.height = 256;
+            const bctx = bloomCanvas.getContext('2d');
+            const bgrad = bctx.createRadialGradient(128,128,0, 128,128,128);
+            bgrad.addColorStop(0.00, 'rgba(255,245,220,0.55)');
+            bgrad.addColorStop(0.40, 'rgba(220,235,255,0.18)');
+            bgrad.addColorStop(1.00, 'rgba(0,0,0,0)');
+            bctx.fillStyle = bgrad; bctx.fillRect(0,0,256,256);
+            const bloomTex = new THREE.CanvasTexture(bloomCanvas);
+            const bloomSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: bloomTex, transparent: true, depthWrite: false,
+                blending: THREE.AdditiveBlending, opacity: 0.28
+            }));
+            bloomSprite.position.set(0, 1.5, -1.5);
+            bloomSprite.scale.set(10, 10, 1);
+            sceneReact.add(bloomSprite);
+
+            // --- Fog rất nhẹ (tăng density để ít hơn trước) ---
+            sceneReact.fog = new THREE.FogExp2(0x080c18, 0.018);
 
             buildReactionBeaker();
 
@@ -3778,6 +3987,7 @@
 
             SoundEngine.stopBubbles();
             SoundEngine.stopFire();
+            SoundEngine.stopReactionAmbience();
 
             // QUAN TRỌNG: set TRANSITION ngay lập tức để animate() không chạy LAB_2D path
             // trong khi đang chờ playTransition callback
@@ -3816,6 +4026,8 @@
                 currentMode = 'REACTION_3D';
 
                 const res = evaluateReaction();
+                // Bắt đầu âm thanh nền phản ứng — phủ MỌI loại phản ứng để không bị mất tiếng
+                try { SoundEngine.startReactionAmbience(res.type); } catch(e) { console.warn('Reaction ambience:', e); }
                 try { SessionLog.record(res); } catch(e) { console.warn('SessionLog error', e); }
                 const targetH = Math.max(0.05, (currentTotalVolume / MAX_VOLUME)); 
                 reactionBeakerLiquid.scale.y = targetH;
@@ -4178,9 +4390,10 @@
                     } catch(e) {}
                     
                     SoundEngine.stopBubbles();
+                    SoundEngine.stopReactionAmbience();
                     SoundEngine.playSuccess(); // PLAY ÂM THANH HOÀN THÀNH
 
-                }, 18000); 
+                }, 31000); 
                 setTimeout(() => { try { LessonMission.checkReaction(evaluateReaction()); } catch(e) { console.warn(e); } }, 4600);
             });
         }
@@ -4569,6 +4782,7 @@
 
         function endReactionSequence() { 
             try { LessonMission.hideCompleteBanner(); } catch(e) {}
+            try { SoundEngine.stopReactionAmbience(); SoundEngine.stopBubbles(); SoundEngine.stopFire(); } catch(e) {}
             document.getElementById('reaction-result-overlay').style.display = 'none';
             const oldTubeE = sceneReact.getObjectByName('gasTube3D'); if (oldTubeE) sceneReact.remove(oldTubeE);
             const oldTL = sceneReact.getObjectByName('gasTubeLight'); if (oldTL) sceneReact.remove(oldTL);
@@ -4682,6 +4896,16 @@
             const rawDelta = clock.getDelta();
             const delta = Math.min(Math.max(rawDelta, 0), 0.1);
 
+            // Giới hạn tốc độ frame khi đứng yên trong ROOM_3D để giảm tải GPU laptop
+            if (currentMode === 'ROOM_3D') {
+                const _isMoving = moveF || moveB || moveL || moveR;
+                window._roomFpsAcc = (window._roomFpsAcc || 0) + rawDelta;
+                // Di chuyển: ~60fps; Đứng yên: ~30fps
+                const _fpsTarget = _isMoving ? 0.016 : 0.033;
+                if (window._roomFpsAcc < _fpsTarget) return;
+                window._roomFpsAcc -= _fpsTarget;
+            }
+
             if (currentMode === 'ROOM_3D') {
                 velocity.x -= velocity.x * friction * delta; velocity.z -= velocity.z * friction * delta;
                 direction.z = Number(moveF) - Number(moveB); direction.x = Number(moveR) - Number(moveL); direction.normalize();
@@ -4705,7 +4929,9 @@
                 // t = 1 khi đứng ngay bàn, 0 khi cách >= 9 đơn vị
                 const tFocus = Math.max(0, Math.min(1, 1 - (distF - 2.5) / 6.5));
                 const lerp = (a, b, k) => a + (b - a) * k;
-                if (window._roomAmbient && window._roomHemi && window._roomFocusSpot && sceneRoom.fog) {
+                // Focus lerp — chỉ update mỗi 2 frame (ánh sáng lerp không cần 60fps)
+                window._focusLerpTick = (window._focusLerpTick || 0) + 1;
+                if (window._focusLerpTick % 2 === 0 && window._roomAmbient && window._roomHemi && window._roomFocusSpot && sceneRoom.fog) {
                     const k = 0.08; // smoothing
                     window._roomAmbient.intensity = lerp(window._roomAmbient.intensity, lerp(0.45, 0.15, tFocus), k);
                     window._roomHemi.intensity    = lerp(window._roomHemi.intensity,    lerp(0.35, 0.10, tFocus), k);
@@ -4726,9 +4952,9 @@
                 }
 
 
-                // Raycast tra cứu vật thể khá nặng -> chỉ chạy mỗi 3 frame (đủ mượt cho mắt người)
+                // Raycast tra cứu vật thể khá nặng -> chỉ chạy mỗi 5 frame
                 window._roomRayTick = (window._roomRayTick || 0) + 1;
-                if (window._roomRayTick % 3 === 0) {
+                if (window._roomRayTick % 5 === 0) {
                 raycaster.setFromCamera(centerPos, cameraRoom);
                 const intersects = raycaster.intersectObjects(roomInteractables);
                 const hint = document.getElementById('interaction-hint'); const desc = document.getElementById('interaction-desc'); const ch = document.getElementById('crosshair');
@@ -4762,9 +4988,13 @@
                 }
 
                 // Chỉ cập nhật màu quỳ tím từ evaluateReaction() khi có giấy quỳ trong cốc
+                // Throttle: chỉ chạy mỗi 10 frame thay vì mỗi frame
                 if (Canvas2D.isLitmusActive) {
-                    const res = evaluateReaction();
-                    if (res.hasLitmus) Canvas2D.litmusColorStr = res.litmusColor;
+                    window._litmusTick = (window._litmusTick || 0) + 1;
+                    if (window._litmusTick % 10 === 0) {
+                        const res = evaluateReaction();
+                        if (res.hasLitmus) Canvas2D.litmusColorStr = res.litmusColor;
+                    }
                 }
                 Canvas2D.draw();
 
@@ -4822,13 +5052,14 @@
                     if (_3dColorAnim._rippleTimer <= 0) {
                         _3dColorAnim._rippleTimer = 0.28 + Math.random() * 0.2;
                         const waterTopY = (reactionBeakerLiquid.scale.y * 3.5) - 1.98;
-                        const rippleGeo = new THREE.RingGeometry(0.04, 0.12, 20);
+                        // Tái dùng geometry được cache thay vì tạo mới mỗi lần
+                        if (!window._rippleGeoCache) window._rippleGeoCache = new THREE.RingGeometry(0.04, 0.12, 12);
                         const rippleMat = new THREE.MeshBasicMaterial({
                             color: reactionBeakerLiquid.material.color,
                             transparent: true, opacity: 0.55 * _3dBoilIntensity,
                             side: THREE.DoubleSide, depthWrite: false
                         });
-                        const ripple = new THREE.Mesh(rippleGeo, rippleMat);
+                        const ripple = new THREE.Mesh(window._rippleGeoCache, rippleMat);
                         ripple.rotation.x = -Math.PI / 2;
                         const rx = (Math.random() - 0.5) * 1.8;
                         const rz = (Math.random() - 0.5) * 1.8;
@@ -4847,7 +5078,7 @@
                     rp.material.opacity = Math.max(0, rp.userData.life * 0.5 * _3dBoilIntensity);
                     if (rp.userData.life <= 0) {
                         sceneReact.remove(rp);
-                        rp.geometry.dispose(); rp.material.dispose();
+                        rp.material.dispose(); // geometry tái sử dụng nên không dispose
                         _3dBoilRipples.splice(ri, 1);
                     }
                 }
@@ -6493,7 +6724,7 @@ Trả về JSON thuần túy, không có markdown, không có giải thích thê
                 if(document.getElementById('multistep-panel')) return;
                 const panel = document.createElement('div');
                 panel.id = 'multistep-panel';
-                panel.style.cssText = 'position:fixed;top:0;right:0;width:330px;max-height:100vh;overflow-y:auto;background:linear-gradient(180deg,rgba(10,15,25,0.96),rgba(15,20,35,0.96));backdrop-filter:blur(10px);border-left:1px solid rgba(0,229,255,0.3);color:#fff;font-family:Segoe UI,sans-serif;z-index:25;padding:14px;box-sizing:border-box;display:none;box-shadow:-4px 0 25px rgba(0,0,0,0.6);';
+                panel.style.cssText = 'position:fixed;top:0;right:0;width:330px;max-height:100vh;overflow-y:auto;background:linear-gradient(180deg,rgba(10,15,25,0.96),rgba(15,20,35,0.96));backdrop-filter:none;border-left:1px solid rgba(0,229,255,0.3);color:#fff;font-family:Segoe UI,sans-serif;z-index:25;padding:14px;box-sizing:border-box;display:none;box-shadow:-4px 0 25px rgba(0,0,0,0.6);';
                 panel.innerHTML = `
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                         <h3 style="margin:0;color:#00e5ff;font-size:1.1rem;letter-spacing:1px;">⚗️ MULTI-STEP LAB</h3>
@@ -7099,7 +7330,7 @@ JSON: {"equation":"...","products":["..."],"coefficients":[...],"conditions":{"c
                     if(document.getElementById('intel-path-panel')) return;
                     const panel = document.createElement('div');
                     panel.id = 'intel-path-panel';
-                    panel.style.cssText='position:fixed;top:0;left:0;width:340px;max-height:100vh;overflow-y:auto;background:linear-gradient(180deg,rgba(15,10,30,0.96),rgba(20,15,40,0.96));backdrop-filter:blur(10px);border-right:1px solid rgba(124,58,237,0.4);color:#fff;font-family:Segoe UI,sans-serif;z-index:25;padding:14px;box-sizing:border-box;display:none;';
+                    panel.style.cssText='position:fixed;top:0;left:0;width:340px;max-height:100vh;overflow-y:auto;background:linear-gradient(180deg,rgba(15,10,30,0.96),rgba(20,15,40,0.96));backdrop-filter:none;border-right:1px solid rgba(124,58,237,0.4);color:#fff;font-family:Segoe UI,sans-serif;z-index:25;padding:14px;box-sizing:border-box;display:none;';
                     panel.innerHTML = `
                       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                         <h3 style="margin:0;color:#a78bfa;font-size:1.05rem;">🧬 SYNTHESIS PATHWAY</h3>
@@ -7405,43 +7636,56 @@ JSON: {"equation":"...","products":["..."],"coefficients":[...],"conditions":{"c
 
 
 <style>
-/* === REACTION CINEMA v2 — Bảng quan sát 3 giai đoạn === */
-#rc-panel { position: fixed; right: 18px; top: 80px; width: 400px; max-height: 80vh; background: linear-gradient(160deg, rgba(10,15,28,0.97), rgba(15,23,42,0.95)); backdrop-filter: blur(14px); color: #e0f7fa; border: 2px solid rgba(0,229,255,0.5); border-radius: 16px; padding: 18px 20px; z-index: 200; font-family: 'Segoe UI', sans-serif; box-shadow: 0 20px 60px rgba(0,229,255,0.25), 0 0 0 1px rgba(0,229,255,0.1) inset; display: none; overflow-y: auto; animation: rcSlideIn .5s cubic-bezier(.16,1,.3,1); }
+/* === REACTION CINEMA v2 — Bảng quan sát nhỏ gọn, trong suốt === */
+#rc-panel {
+  position: fixed; right: 14px; top: 80px; width: 300px;
+  background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none;
+  color: #ffffff; border: none; border-radius: 12px; padding: 10px 14px;
+  z-index: 200; font-family: 'Segoe UI', sans-serif;
+  display: none; overflow: visible; opacity: 1;
+  animation: rcSlideIn .5s cubic-bezier(.16,1,.3,1);
+  text-shadow: 0 1px 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.9);
+}
 @keyframes rcSlideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-#rc-panel h3 { margin: 0 0 12px; color: #00e5ff; font-size: 1.05rem; letter-spacing: 2px; font-weight: 700; text-shadow: 0 0 12px rgba(0,229,255,.6); display: flex; align-items: center; gap: 8px; }
-#rc-panel h3::before { content: '●'; color: #ef4444; animation: rcRec 1.2s infinite; }
-@keyframes rcRec { 0%,50% { opacity: 1; } 50.1%,100% { opacity: .2; } }
-.rc-phase { margin: 12px 0; padding: 12px 14px; border-left: 4px solid #334155; border-radius: 8px; background: rgba(15,23,42,0.7); transition: all .4s; opacity: .3; transform: scale(.98); }
-.rc-phase.active { opacity: 1; transform: scale(1); border-left-color: #00e5ff; background: rgba(0,229,255,0.08); box-shadow: 0 0 20px rgba(0,229,255,0.25); }
-.rc-phase.done { opacity: .82; border-left-color: #4ade80; background: rgba(74,222,128,0.05); }
-.rc-phase h4 { margin: 0 0 8px; font-size: .82rem; color: #93c5fd; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
-.rc-phase.done h4 { color: #4ade80; }
-.rc-phase.done h4::after { content: '✓'; color: #4ade80; font-size: 1.1rem; }
+/* Ẩn tiêu đề panel và bar tiến trình */
+#rc-panel h3 { display: none; }
+.rc-bar { display: none; }
+
+/* Các giai đoạn — mặc định ẩn hoàn toàn */
+.rc-phase { display: none; margin: 0; padding: 6px 0; transition: all .4s; }
+/* Chỉ hiện giai đoạn đang active */
+.rc-phase.active { display: block; }
+/* Giai đoạn done cũng ẩn */
+.rc-phase.done { display: none; }
+
+.rc-phase h4 { margin: 0 0 5px; font-size: .72rem; color: #00e5ff; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; text-shadow: 0 0 10px rgba(0,229,255,.8), 0 1px 4px rgba(0,0,0,1); }
 .rc-phase.active h4::after { content: '⟳'; color: #00e5ff; animation: rcSpin 2s linear infinite; }
 @keyframes rcSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-.rc-text { font-size: .94rem; line-height: 1.6; color: #f1f5f9; min-height: 22px; }
-.rc-text b { color: #fde68a; }
-.rc-cursor { display: inline-block; width: 8px; background: #00e5ff; animation: rcBlink .9s infinite; margin-left: 3px; height: 15px; vertical-align: middle; box-shadow: 0 0 8px #00e5ff; }
+.rc-text { font-size: .82rem; line-height: 1.5; color: #f1f5f9; min-height: 18px; text-shadow: 0 1px 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.9); }
+.rc-text b { color: #fde68a; text-shadow: 0 0 8px rgba(253,230,138,.5), 0 1px 4px rgba(0,0,0,1); }
+.rc-cursor { display: inline-block; width: 6px; background: #00e5ff; animation: rcBlink .9s infinite; margin-left: 2px; height: 12px; vertical-align: middle; box-shadow: 0 0 6px #00e5ff; }
 @keyframes rcBlink { 0%,50% { opacity: 1; } 50.1%,100% { opacity: 0; } }
-.rc-ai { margin-top: 14px; padding: 12px 14px; background: linear-gradient(135deg, rgba(167,139,250,.18), rgba(0,229,255,.10)); border-radius: 10px; border: 1px solid rgba(167,139,250,.45); }
-.rc-ai h4 { color: #a78bfa; margin: 0 0 8px; font-size: .82rem; letter-spacing: 1.5px; font-weight: 700; }
-.rc-ai-text { font-size: .9rem; line-height: 1.55; color: #fde68a; min-height: 20px; }
-.rc-bar { height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; margin-top: 12px; }
-.rc-bar > div { height: 100%; background: linear-gradient(90deg, #00e5ff, #a78bfa, #f472b6); width: 0%; transition: width .3s linear; box-shadow: 0 0 8px rgba(0,229,255,.6); }
+
+/* AI block — nhỏ gọn, chỉ hiện khi có nội dung */
+.rc-ai { margin-top: 8px; padding: 0; background: transparent; border: none; }
+.rc-ai h4 { color: #a78bfa; margin: 0 0 4px; font-size: .72rem; letter-spacing: 1.5px; font-weight: 700; text-shadow: 0 0 10px rgba(167,139,250,.7), 0 1px 4px rgba(0,0,0,1); }
+.rc-ai-text { font-size: .8rem; line-height: 1.5; color: #fde68a; min-height: 16px; text-shadow: 0 1px 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.9); }
 
 /* Big phase banner overlay */
-#rc-banner { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); padding: 18px 40px; background: rgba(0,0,0,.85); color: #00e5ff; font-size: 2rem; font-weight: 800; letter-spacing: 5px; border-radius: 14px; border: 2px solid #00e5ff; box-shadow: 0 0 40px rgba(0,229,255,.6); z-index: 199; display: none; text-shadow: 0 0 20px #00e5ff; backdrop-filter: blur(10px); }
-#rc-shot { position: fixed; top: 22px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.85); color: #ffeb3b; padding: 8px 22px; border-radius: 22px; font-size: .9rem; letter-spacing: 3px; z-index: 199; display: none; border: 1.5px solid #ffeb3b; font-weight: 700; box-shadow: 0 0 20px rgba(255,235,59,.4); }
+#rc-banner { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); padding: 14px 32px; background: rgba(0,0,0,.80); color: #00e5ff; font-size: 1.6rem; font-weight: 800; letter-spacing: 4px; border-radius: 12px; border: 1.5px solid rgba(0,229,255,0.6); box-shadow: 0 0 30px rgba(0,229,255,.4); z-index: 199; display: none; text-shadow: 0 0 16px #00e5ff; backdrop-filter: none; }
+#rc-shot { display: none !important; }
 </style>
 <script>
 /* ============================================================
    🎬 REACTION CINEMA v2 — Quan sát 3 giai đoạn rõ ràng (15s)
    ============================================================ */
 (function(){
-  const TOTAL_TIME = 16.0; // tổng thời lượng quan sát (s) — đồng bộ với 18000ms result delay
-  const PHASE1_END = 4.0;
-  const PHASE2_END = 11.0;
-  // (sau đó là phase 3 cho tới 16s)
+  const TOTAL_TIME = 30.0; // tổng thời lượng quan sát (s) — 3 giai đoạn x 10s, đồng bộ 31000ms result delay
+  const PHASE_DURATION = 10.0; // mỗi giai đoạn 10 giây
+  const PHASE1_END = 10.0;
+  const PHASE2_END = 20.0;
+  // (sau đó là phase 3 cho tới 30s)
+  const LOOK_OFFSET_X = 3.0; // dời tâm nhìn sang phải => cốc nằm bên trái màn hình, chừa chỗ cho script
 
   const METAL_IDS = ['Fe','Cu','Zn','Mg','Al','Ag','Hg','Na','K','Ca','Ba','Li','Ni','Sn','Pb','Cr','Mn','Au','Pt'];
   const COLOR_MAP = {
@@ -7590,37 +7834,39 @@ PHẦN 4 (Giải thích phân tử - cơ chế ion/electron, tại sao xảy ra 
     };
   }
 
-  // ----- Cinematic camera (4 shots over 16s) -----
+  // ----- Camera: 1 góc cố định nghiêng từ trên xuống, không lia -----
+  // Camera đứng yên suốt 30s, nhìn xéo xuống cốc; cốc dồn về bên trái nhờ LOOK_OFFSET_X
   const SHOTS = [
-    { name: 'SHOT 1 · TOÀN CẢNH',    t: 0,     pos: [0, 3.6, 9.5],  look: [0, 1.2, 0] },
-    { name: 'SHOT 2 · ZOOM VÀO',     t: 4.0,   pos: [0, 2.2, 6.0],  look: [0, 1.0, 0] },
-    { name: 'SHOT 3 · CẬN CẢNH',     t: 8.0,   pos: [1.8, 1.6, 4.0],look: [0, 1.2, 0] },
-    { name: 'SHOT 4 · ORBIT 360°',   t: 11.5,  orbit: true, radius: 6.5, height: 2.3, lookY: 1.2 }
+    { name: 'GÓC NHÌN NGHIÊNG TỪ TRÊN', t: 0, pos: [-1.2, 4.2, 5.2], look: [0, 1.0, 0] }
   ];
   let cinemaActive = false, cinemaT0 = 0;
 
   function cinemaTick(){
+    // Chỉ set camera 1 lần khi bắt đầu, sau đó để người dùng tự xoay/zoom bằng chuột
     if (!cinemaActive) return;
     if (typeof cameraReact === 'undefined' || !cameraReact) { requestAnimationFrame(cinemaTick); return; }
     if (typeof currentMode !== 'undefined' && currentMode !== 'REACTION_3D') { requestAnimationFrame(cinemaTick); return; }
     const t = (performance.now() - cinemaT0) / 1000;
-    let cur = SHOTS[0];
-    for (let i = 0; i < SHOTS.length; i++) if (SHOTS[i].t <= t) cur = SHOTS[i];
+    const cur = SHOTS[0];
     const sb = document.getElementById('rc-shot'); if (sb) { sb.textContent = cur.name; sb.style.display = 'block'; }
-    let tx,ty,tz,lx,ly,lz;
-    if (cur.orbit){
-      const a = (t - cur.t) * 0.28;
-      tx = Math.sin(a)*cur.radius; ty = cur.height; tz = Math.cos(a)*cur.radius;
-      lx = 0; ly = cur.lookY; lz = 0;
-    } else { tx = cur.pos[0]; ty = cur.pos[1]; tz = cur.pos[2]; lx = cur.look[0]; ly = cur.look[1]; lz = cur.look[2]; }
-    const k = 0.045;
-    cameraReact.position.x += (tx - cameraReact.position.x) * k;
-    cameraReact.position.y += (ty - cameraReact.position.y) * k;
-    cameraReact.position.z += (tz - cameraReact.position.z) * k;
-    cameraReact.lookAt(lx, ly, lz);
     if (t < 30) requestAnimationFrame(cinemaTick);
   }
-  function startCinema(){ cinemaActive = true; cinemaT0 = performance.now(); requestAnimationFrame(cinemaTick); }
+  function startCinema(){
+    cinemaActive = true; cinemaT0 = performance.now();
+    // Đặt camera vào vị trí cố định ban đầu (1 lần duy nhất), sau đó người dùng tự điều khiển
+    if (typeof cameraReact !== 'undefined' && cameraReact) {
+      const cur = SHOTS[0];
+      cameraReact.position.set(cur.pos[0], cur.pos[1], cur.pos[2]);
+      const lx = cur.look[0] + LOOK_OFFSET_X, ly = cur.look[1], lz = cur.look[2];
+      cameraReact.lookAt(lx, ly, lz);
+      if (typeof controlsReact !== 'undefined' && controlsReact) {
+        controlsReact.target.set(lx, ly, lz);
+        controlsReact.enabled = true; // cho phép xoay/zoom bằng chuột
+        controlsReact.update && controlsReact.update();
+      }
+    }
+    requestAnimationFrame(cinemaTick);
+  }
   function stopCinema(){ cinemaActive = false; const sb = document.getElementById('rc-shot'); if (sb) sb.style.display = 'none'; }
 
   function flashBanner(text, ms){
@@ -7680,43 +7926,73 @@ PHẦN 4 (Giải thích phân tử - cơ chế ion/electron, tại sao xảy ra 
       requestAnimationFrame(tickBar);
 
       (async () => {
-        // --- Fetch Gemini song song với animation camera (700ms) ---
-        await new Promise(r => setTimeout(r, 600));
+        const PHASE_MS = 10000; // mỗi giai đoạn 10 giây
+        const phaseStart = performance.now();
+        const waitUntil = (phaseIdx) => {
+          // phaseIdx: 1 => kết thúc giai đoạn 1 (10s), 2 => 20s, 3 => 30s tính từ phaseStart
+          const target = phaseStart + phaseIdx * PHASE_MS;
+          const remain = target - performance.now();
+          return new Promise(r => setTimeout(r, Math.max(0, remain)));
+        };
 
-        // Hiện loading ở phase 1 ngay
-        flashBanner('GIAI ĐOẠN 1 · TRƯỚC PHẢN ỨNG', 2200);
+        // --- GIAI ĐOẠN 1 (0s → 10s) ---
+        flashBanner('GIAI ĐOẠN 1 · TRƯỚC PHẢN ỨNG', 2400);
         ph1.classList.add('active');
         const loadingEl = ph1.querySelector('.rc-text');
         loadingEl.innerHTML = '⏳ <i style="color:#64748b">AI đang phân tích...</i><span class="rc-cursor"></span>';
 
-        // Gọi Gemini (song song với camera bay)
-        const geminiResult = await fetchAllPhasesFromGemini(snapshot, res);
-
-        // --- Phase 1 ---
+        // Gọi Gemini song song — không chặn animation
+        const geminiPromise = fetchAllPhasesFromGemini(snapshot, res);
+        // Cho người học vài giây xem cốc trước khi script bắt đầu chạy
+        await new Promise(r => setTimeout(r, 900));
+        const geminiResult = await Promise.race([
+          geminiPromise,
+          new Promise(r => setTimeout(() => r(null), 3500)) // tối đa chờ 3.5s
+        ]);
         const p1text = (geminiResult && geminiResult.phase1) ? geminiResult.phase1 : fallbackPhase1(snapshot);
         loadingEl.innerHTML = '';
-        await typeText(loadingEl, p1text, 2600);
-        await new Promise(r => setTimeout(r, 500));
+        // Script gõ từ từ trong ~6s, người học vừa xem cốc vừa đọc
+        await typeText(loadingEl, p1text, 6000);
+        await waitUntil(1); // chốt đủ 10s mới sang giai đoạn 2
         ph1.classList.remove('active'); ph1.classList.add('done');
 
-        // --- Phase 2 ---
-        flashBanner('GIAI ĐOẠN 2 · ĐANG PHẢN ỨNG', 2200);
+        // Nếu lần đầu chưa kịp lấy Gemini, thử lấy nốt (không chặn)
+        const geminiFinal = geminiResult || await Promise.race([
+          geminiPromise, new Promise(r => setTimeout(() => r(null), 100))
+        ]);
+
+        // --- GIAI ĐOẠN 2 (10s → 20s) ---
+        flashBanner('GIAI ĐOẠN 2 · ĐANG PHẢN ỨNG', 2400);
         ph2.classList.add('active');
-        const p2text = (geminiResult && geminiResult.phase2) ? geminiResult.phase2 : fallbackPhase2(res);
-        await typeText(ph2.querySelector('.rc-text'), p2text, 4500);
-        await new Promise(r => setTimeout(r, 1000));
+        const p2text = (geminiFinal && geminiFinal.phase2) ? geminiFinal.phase2 : fallbackPhase2(res);
+        await typeText(ph2.querySelector('.rc-text'), p2text, 6500);
+        await waitUntil(2);
         ph2.classList.remove('active'); ph2.classList.add('done');
 
-        // --- Phase 3 ---
-        flashBanner('GIAI ĐOẠN 3 · SAU PHẢN ỨNG', 2200);
+        // --- GIAI ĐOẠN 3 (20s → 30s) ---
+        flashBanner('GIAI ĐOẠN 3 · SAU PHẢN ỨNG', 2400);
         ph3.classList.add('active');
-        const p3text = (geminiResult && geminiResult.phase3) ? geminiResult.phase3 : fallbackPhase3(res);
-        await typeText(ph3.querySelector('.rc-text'), p3text, 3500);
+        const p3text = (geminiFinal && geminiFinal.phase3) ? geminiFinal.phase3 : fallbackPhase3(res);
+        await typeText(ph3.querySelector('.rc-text'), p3text, 5500);
+        // AI insight cùng nằm trong giai đoạn 3
+        const aitext = (geminiFinal && geminiFinal.ai) ? geminiFinal.ai : fallbackAI(res);
+        await typeText(ai, aitext, 3500);
+        await waitUntil(3);
         ph3.classList.remove('active'); ph3.classList.add('done');
 
-        // --- AI insight ---
-        const aitext = (geminiResult && geminiResult.ai) ? geminiResult.ai : fallbackAI(res);
-        await typeText(ai, aitext, 2800);
+        // --- Hết animation: tự ẩn script + banner + shot label ---
+        const panelEl = document.getElementById('rc-panel');
+        if (panelEl) {
+          panelEl.style.transition = 'opacity .6s ease';
+          panelEl.style.opacity = '0';
+          setTimeout(() => {
+            panelEl.style.display = 'none';
+            panelEl.style.opacity = '';
+            panelEl.style.transition = '';
+          }, 650);
+        }
+        const bn = document.getElementById('rc-banner'); if (bn) bn.style.display = 'none';
+        stopCinema();
       })();
 
       return ret;
