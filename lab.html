@@ -195,6 +195,37 @@
             onmouseout="this.style.background='rgba(0,229,255,0.08)';this.style.boxShadow='0 0 12px rgba(0,229,255,0.25)';"
         >📥 Một số thí nghiệm hóa học có thể thử</a>
         <button id="start-btn">VÀO LAB</button>
+
+        <!-- Cài đặt đồ họa -->
+        <div id="gfx-selector" style="margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;">
+            <span style="color:#94a3b8;font-size:0.85rem;letter-spacing:1px;text-transform:uppercase;">⚙ Chất lượng đồ họa:</span>
+            <button class="gfx-btn" data-q="low" onclick="setGraphicsQuality('low')" style="padding:7px 18px;border-radius:20px;font-size:0.82rem;font-weight:bold;cursor:pointer;border:2px solid #64748b;background:#0f172a;color:#cbd5e1;transition:all .2s;">🐢 Siêu thấp</button>
+            <button class="gfx-btn active" data-q="medium" onclick="setGraphicsQuality('medium')" style="padding:7px 18px;border-radius:20px;font-size:0.82rem;font-weight:bold;cursor:pointer;border:2px solid #00e5ff;background:rgba(0,229,255,0.15);color:#00e5ff;box-shadow:0 0 10px rgba(0,229,255,0.4);transition:all .2s;">⚡ Trung bình</button>
+            <button class="gfx-btn" data-q="high" onclick="setGraphicsQuality('high')" style="padding:7px 18px;border-radius:20px;font-size:0.82rem;font-weight:bold;cursor:pointer;border:2px solid #64748b;background:#0f172a;color:#cbd5e1;transition:all .2s;">🔥 Cao</button>
+        </div>
+        <div id="gfx-desc" style="margin-top:8px;font-size:0.78rem;color:#64748b;text-align:center;min-height:1.2em;">Phù hợp laptop thường — cân bằng giữa hiệu năng và hình ảnh.</div>
+
+        <script>
+        window._gfxQuality = 'medium';
+        const _gfxDescMap = {
+            low:    '🐢 Tối giản tối đa — dành cho máy cũ, cấu hình yếu. Loại bỏ bóng và hiệu ứng.',
+            medium: '⚡ Phù hợp laptop thường — cân bằng giữa hiệu năng và hình ảnh.',
+            high:   '🔥 Chất lượng cao — cần laptop có GPU hoặc máy tính bàn. Có bóng mịn và chống răng cưa.'
+        };
+        function setGraphicsQuality(q) {
+            window._gfxQuality = q;
+            document.querySelectorAll('.gfx-btn').forEach(b => {
+                const isActive = b.dataset.q === q;
+                b.style.border = isActive ? '2px solid #00e5ff' : '2px solid #64748b';
+                b.style.background = isActive ? 'rgba(0,229,255,0.15)' : '#0f172a';
+                b.style.color = isActive ? '#00e5ff' : '#cbd5e1';
+                b.style.boxShadow = isActive ? '0 0 10px rgba(0,229,255,0.4)' : 'none';
+                b.classList.toggle('active', isActive);
+            });
+            document.getElementById('gfx-desc').textContent = _gfxDescMap[q];
+        }
+        setGraphicsQuality('medium');
+        </script>
     </div>
 
     <!-- UI đi dạo 3D -->
@@ -1770,16 +1801,25 @@
 
         function init() {
             const container = document.getElementById('canvas-container');
-            renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", stencil: false });
+            const _q = window._gfxQuality || 'medium';
+            const _qHigh   = _q === 'high';
+            const _qLow    = _q === 'low';
+            const _qMedium = _q === 'medium';
+
+            renderer = new THREE.WebGLRenderer({
+                antialias: _qHigh,
+                powerPreference: "high-performance",
+                stencil: false
+            });
             renderer.setSize(getW(), getH());
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.0));
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.BasicShadowMap;
+            renderer.setPixelRatio(_qHigh ? Math.min(window.devicePixelRatio || 1, 2.0) : _qMedium ? 1.0 : 0.75);
+            renderer.shadowMap.enabled = !_qLow;
+            renderer.shadowMap.type = _qHigh ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
             // Phòng gần như tĩnh -> không cần tính lại bóng mỗi frame.
             // Chỉ cập nhật bóng ở vài frame đầu rồi "đóng băng" -> giảm lag mạnh khi quay/di chuyển.
             renderer.shadowMap.autoUpdate = false;
             renderer.shadowMap.needsUpdate = true;
-            renderer.toneMapping = THREE.LinearToneMapping;
+            renderer.toneMapping = _qHigh ? THREE.ACESFilmicToneMapping : THREE.LinearToneMapping;
             renderer.toneMappingExposure = 1.1;
             container.appendChild(renderer.domElement);
 
@@ -1842,9 +1882,9 @@
             // Directional light giả lập ánh sáng tự nhiên qua cửa sổ — mạnh hơn để tạo bóng & chiều sâu
             const sunLight = new THREE.DirectionalLight(0xfff4dc, 1.35);
             sunLight.position.set(15, 22, 10);
-            sunLight.castShadow = true;
-            sunLight.shadow.mapSize.width = 512;
-            sunLight.shadow.mapSize.height = 512;
+            sunLight.castShadow = !_qLow;
+            sunLight.shadow.mapSize.width  = _qHigh ? 2048 : 512;
+            sunLight.shadow.mapSize.height = _qHigh ? 2048 : 512;
             sunLight.shadow.camera.left = -30;
             sunLight.shadow.camera.right = 30;
             sunLight.shadow.camera.top = 30;
@@ -1886,6 +1926,14 @@
             window._roomTableFill = tableFill;
 
 
+
+            // Áp dụng cài đặt theo chất lượng đồ họa
+            if (_qLow) {
+                sceneRoom.fog = null; // tắt sương mù để tiết kiệm GPU
+                window._roomAmbient && (window._roomAmbient.intensity = 0.7); // sáng hơn để bù thiếu sương mù
+            }
+            window._fpsTargetMove  = _qLow ? 0.05 : _qMedium ? 0.016 : 0.012; // 20/60/80fps khi di chuyển
+            window._fpsTargetIdle  = _qLow ? 0.1  : _qMedium ? 0.033 : 0.02;  // 10/30/50fps khi đứng yên
 
             buildRoomArchitecture();
             buildRoomDecorations();
@@ -2007,12 +2055,75 @@
             });
             document.getElementById('btn-close-el-modal').addEventListener('click', closeElementModal);
 
+            // --- OVERLAY "CLICK ĐỂ TIẾP TỤC" khi Pointer Lock bị mất ---
+            (function() {
+                const overlay = document.createElement('div');
+                overlay.id = 'resume-overlay';
+                overlay.style.cssText = [
+                    'position:fixed','top:0','left:0','width:100%','height:100%',
+                    'background:rgba(0,0,0,0.72)','z-index:500',
+                    'display:none','flex-direction:column',
+                    'justify-content:center','align-items:center',
+                    'cursor:pointer','user-select:none'
+                ].join(';');
+                overlay.innerHTML = `
+                    <div style="font-size:3rem;margin-bottom:18px;">🖱️</div>
+                    <div id="resume-title" style="color:#00e5ff;font-size:2rem;font-weight:bold;letter-spacing:2px;text-shadow:0 0 20px #00e5ff;">CLICK ĐỂ TIẾP TỤC</div>
+                    <div style="color:#94a3b8;font-size:1rem;margin-top:12px;">Con trỏ chuột đã thoát ra ngoài — click vào đây để quay lại phòng</div>
+                    <div style="color:#475569;font-size:0.85rem;margin-top:8px;">Nhấn <b style="color:#cbd5e1">ESC</b> để về màn hình chính</div>
+                `;
+                document.body.appendChild(overlay);
+
+                function tryLock() {
+                    const title = document.getElementById('resume-title');
+                    if (currentMode === 'ROOM_3D' && controls) {
+                        try {
+                            controls.lock();
+                            // Kiểm tra sau 800ms nếu lock thất bại
+                            setTimeout(() => {
+                                if (!controls.isLocked && overlay.style.display !== 'none') {
+                                    if (title) title.textContent = 'CLICK LẠI ĐỂ VÀO PHÒNG';
+                                }
+                            }, 800);
+                        } catch(e) {
+                            if (title) title.textContent = 'CLICK LẠI ĐỂ VÀO PHÒNG';
+                        }
+                    }
+                }
+
+                overlay.addEventListener('click', () => {
+                    tryLock();
+                });
+
+                // Ẩn overlay ngay khi pointer lock thành công
+                document.addEventListener('pointerlockchange', () => {
+                    if (document.pointerLockElement) {
+                        overlay.style.display = 'none';
+                    }
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && overlay.style.display !== 'none') {
+                        overlay.style.display = 'none';
+                        document.getElementById('start-screen').style.display = 'flex';
+                        document.getElementById('ui-3d').style.display = 'none';
+                        currentMode = 'START';
+                    }
+                });
+
+                window._showResumeOverlay = () => {
+                    const title = document.getElementById('resume-title');
+                    if (title) title.textContent = 'CLICK ĐỂ TIẾP TỤC';
+                    overlay.style.display = 'flex';
+                };
+                window._hideResumeOverlay = () => { overlay.style.display = 'none'; };
+            })();
+
             controls.addEventListener('unlock', () => {
                 // Chỉ về START nếu thực sự đang ở ROOM_3D, không override các mode khác
                 if (currentMode === 'ROOM_3D') {
-                    document.getElementById('start-screen').style.display = 'flex';
-                    document.getElementById('ui-3d').style.display = 'none';
-                    currentMode = 'START';
+                    // Thay vì về Start ngay, hiện overlay "Click để tiếp tục"
+                    window._showResumeOverlay();
                 }
             });
 
@@ -4900,8 +5011,7 @@
             if (currentMode === 'ROOM_3D') {
                 const _isMoving = moveF || moveB || moveL || moveR;
                 window._roomFpsAcc = (window._roomFpsAcc || 0) + rawDelta;
-                // Di chuyển: ~60fps; Đứng yên: ~30fps
-                const _fpsTarget = _isMoving ? 0.016 : 0.033;
+                const _fpsTarget = _isMoving ? (window._fpsTargetMove || 0.016) : (window._fpsTargetIdle || 0.033);
                 if (window._roomFpsAcc < _fpsTarget) return;
                 window._roomFpsAcc -= _fpsTarget;
             }
@@ -5045,7 +5155,7 @@
                 }
 
                 // === RIPPLE SURFACE khi sôi ===
-                if (_3dBoilIntensity > 0.1 && reactionBeakerLiquid && reactionBeakerLiquid.scale.y > 0.02) {
+                if (_3dBoilIntensity > 0.1 && reactionBeakerLiquid && reactionBeakerLiquid.scale.y > 0.02 && (window._gfxQuality !== 'low')) {
                     // Sinh ripple mới mỗi ~0.35s
                     if (!_3dColorAnim._rippleTimer) _3dColorAnim._rippleTimer = 0;
                     _3dColorAnim._rippleTimer -= delta;
