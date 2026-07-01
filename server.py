@@ -40,6 +40,9 @@ ip_requests: dict[str, list[float]] = defaultdict(list)
 ip_last_req:  dict[str, float]       = {}
 rate_lock = Lock()
 
+@app.route('/admin')
+def serve_admin():
+    return send_from_directory('.', 'admin.html')
 
 def check_rate_limit(ip: str) -> str | None:
     """Return an error message string if rate-limited, else None."""
