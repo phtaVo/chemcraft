@@ -10,26 +10,34 @@
 
 <script>
 /* ── Admin Auth — dùng server session, KHÔNG qua Firebase Auth ── */
+// Gọi hàm an toàn: nếu __onAdminAuthReady chưa định nghĩa thì lưu lại,
+// main script sẽ tự fire khi sẵn sàng.
+function _resolveAuth(session) {
+  if (typeof window.__onAdminAuthReady === 'function') {
+    window.__onAdminAuthReady(session);
+  } else {
+    window._pendingAuthSession = session;
+  }
+}
+
 (async function initAdminAuth() {
-  // Kiểm tra token đã lưu
   const token = sessionStorage.getItem('cc_admin_token');
   if (token) {
     try {
-      const res  = await fetch('/api/admin-verify', {
+      const res = await fetch('/api/admin-verify', {
         headers: { 'X-Admin-Token': token }
       });
       if (res.ok) {
         const info = await res.json();
         window.__adminToken   = token;
         window.__adminSession = info;
-        window.__onAdminAuthReady(info);
+        _resolveAuth(info);
         return;
       }
     } catch(e) { /* server chưa lên hoặc token hết hạn */ }
     sessionStorage.removeItem('cc_admin_token');
   }
-  // Không có token hợp lệ → hiện login
-  window.__onAdminAuthReady(null);
+  _resolveAuth(null);
 })();
 
 /* ── Firebase chỉ dùng cho Firestore (quản lý người dùng) ── */
@@ -464,31 +472,38 @@ if (window.innerWidth > 900) document.getElementById('collapse-btn').style.displ
    AUTH — Server session (không dùng Firebase Auth)
    ════════════════════════════════════════════════════════════ */
 
-/* Được gọi bởi initAdminAuth() trong script đầu trang */
+/* Được gọi bởi _resolveAuth() trong script đầu trang */
 window.__onAdminAuthReady = function(session) {
   const splash = document.getElementById('admin-splash');
   const loginS = document.getElementById('login-screen');
   const appS   = document.getElementById('admin-app');
-  splash.classList.add('hide');
-  setTimeout(() => splash.style.display = 'none', 350);
+
+  // Ẩn splash ngay lập tức, không animation delay
+  if (splash) { splash.style.opacity = '0'; splash.style.pointerEvents = 'none';
+    setTimeout(() => splash.style.display = 'none', 300); }
+
   if (!session) {
-    loginS.classList.add('show');
-    appS.classList.remove('show');
+    if (loginS) loginS.classList.add('show');
+    if (appS)   appS.classList.remove('show');
   } else {
-    loginS.classList.remove('show');
-    appS.classList.add('show');
-    const name = session.name || session.username;
-    document.getElementById('a-user-name').textContent  = name;
-    document.getElementById('a-user-role').textContent  = roleLabel(session.role);
-    document.getElementById('a-user-avatar').textContent = name.slice(0,1).toUpperCase();
+    if (loginS) loginS.classList.remove('show');
+    if (appS)   appS.classList.add('show');
+    const name = session.name || session.username || 'Admin';
+    const nameEl   = document.getElementById('a-user-name');
+    const roleEl   = document.getElementById('a-user-role');
+    const avatarEl = document.getElementById('a-user-avatar');
+    if (nameEl)   nameEl.textContent   = name;
+    if (roleEl)   roleEl.textContent   = roleLabel(session.role);
+    if (avatarEl) avatarEl.textContent = name.slice(0,1).toUpperCase();
     renderDashboard();
     loadDashboardData();
   }
 };
 
-/* Nếu script init chạy xong trước khi DOM ready — fire lại */
+// Nếu init script đã resolve trước khi main script load → fire ngay
 if (window._pendingAuthSession !== undefined) {
   window.__onAdminAuthReady(window._pendingAuthSession);
+  delete window._pendingAuthSession;
 }
 
 async function adminLogin() {
