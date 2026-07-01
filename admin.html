@@ -8,79 +8,55 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
-<script type="module">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
-  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
-  import { getFirestore, doc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
-
-  const ADMIN_ROLES = ['admin', 'super_admin', 'teacher', 'content_manager', 'lab_manager', 'data_analyst'];
-
-  // Gọi __onAdminAuth an toàn dù hàm chưa định nghĩa kịp
-  let _authResolved = false;
-  function safeResolve(user, profile) {
-    if (_authResolved) return;
-    _authResolved = true;
-    if (typeof window.__onAdminAuth === 'function') {
-      window.__onAdminAuth(user, profile);
-    } else {
-      // Chờ DOM/script chính load xong
-      window._pendingAuth = { user, profile };
-    }
+<script>
+/* ── Admin Auth — dùng server session, KHÔNG qua Firebase Auth ── */
+(async function initAdminAuth() {
+  // Kiểm tra token đã lưu
+  const token = sessionStorage.getItem('cc_admin_token');
+  if (token) {
+    try {
+      const res  = await fetch('/api/admin-verify', {
+        headers: { 'X-Admin-Token': token }
+      });
+      if (res.ok) {
+        const info = await res.json();
+        window.__adminToken   = token;
+        window.__adminSession = info;
+        window.__onAdminAuthReady(info);
+        return;
+      }
+    } catch(e) { /* server chưa lên hoặc token hết hạn */ }
+    sessionStorage.removeItem('cc_admin_token');
   }
+  // Không có token hợp lệ → hiện login
+  window.__onAdminAuthReady(null);
+})();
 
-  // Timeout cứng 6s — nếu Firebase không phản hồi, thoát splash
-  const hardTimeout = setTimeout(() => {
-    console.warn('Auth timeout — hiển thị màn hình đăng nhập');
-    safeResolve(null, null);
-  }, 6000);
-
-  // Lấy config với timeout 3s
-  let firebaseConfig = {};
+/* ── Firebase chỉ dùng cho Firestore (quản lý người dùng) ── */
+(async function initFirestoreOnly() {
   try {
+    const { initializeApp }  = await import('https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js');
+    const { getFirestore, doc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp, serverTimestamp }
+      = await import('https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js');
+
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 3000);
-    const cfgResp = await fetch('/api/firebase-config', { signal: controller.signal });
-    clearTimeout(t);
-    if (cfgResp.ok) firebaseConfig = await cfgResp.json();
-  } catch (e) {
-    console.warn('Không lấy được Firebase config (timeout hoặc server chưa chạy):', e.message);
-  }
+    let cfg = {};
+    try {
+      const r = await fetch('/api/firebase-config', { signal: controller.signal });
+      clearTimeout(t);
+      if (r.ok) cfg = await r.json();
+    } catch(e) { clearTimeout(t); }
 
-  let app, auth, db;
-  try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-  } catch (e) {
-    console.warn('Firebase init error:', e);
-    clearTimeout(hardTimeout);
-    safeResolve(null, null);
+    const app = initializeApp(cfg);
+    window._fbDb   = getFirestore(app);
+    window._fbFns  = { doc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp, serverTimestamp };
+    window._fbReady = true;
+  } catch(e) {
+    console.warn('Firestore init failed:', e.message);
+    window._fbReady = false;
   }
-
-  window._fbAuth = auth;
-  window._fbDb = db;
-  window._fbFns = { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut, onAuthStateChanged, doc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp, serverTimestamp };
-
-  if (auth) {
-    onAuthStateChanged(auth, async (user) => {
-      clearTimeout(hardTimeout);
-      if (!user) { safeResolve(null, null); return; }
-      try {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        const data = snap.exists() ? snap.data() : {};
-        const role = data.role || null;
-        safeResolve(user, role && ADMIN_ROLES.includes(role)
-          ? { ...data, role }
-          : { ...(role ? { ...data, role } : {}), denied: true });
-      } catch (e) {
-        console.warn('Lỗi đọc role:', e);
-        safeResolve(user, { denied: true, error: true });
-      }
-    });
-  } else {
-    clearTimeout(hardTimeout);
-    safeResolve(null, null);
-  }
+})();
 </script>
 
 <style>
@@ -305,12 +281,12 @@ table.a-table{width:100%; border-collapse:collapse;}
     <div class="login-head">
       <div class="login-logo"><i class="fa-solid fa-flask-vial"></i></div>
       <h1>ChemCraft Admin</h1>
-      <p>Đăng nhập để truy cập trung tâm điều hành</p>
+      <p>Đăng nhập bằng tài khoản quản trị viên</p>
     </div>
     <div class="login-body">
       <div class="l-field">
-        <label>Email</label>
-        <input type="email" id="li-email" placeholder="admin@chemcraft.vn" autocomplete="username">
+        <label>Tên đăng nhập</label>
+        <input type="text" id="li-email" placeholder="admin" autocomplete="username">
       </div>
       <div class="l-field">
         <label>Mật khẩu</label>
@@ -321,42 +297,12 @@ table.a-table{width:100%; border-collapse:collapse;}
       </button>
       <div class="login-err" id="li-err"></div>
     </div>
-    <div class="login-foot">Chỉ tài khoản được cấp quyền quản trị mới truy cập được.</div>
-
-    <!-- ── Setup lần đầu ── -->
-    <div style="border-top:1px solid var(--border); margin:0 32px;">
-      <button onclick="toggleSetup()" style="width:100%; padding:14px 0; background:none; border:none; font-family:inherit; font-size:0.82rem; font-weight:700; color:var(--text-m); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:7px;">
-        <i class="fa-solid fa-screwdriver-wrench" style="font-size:0.78rem;"></i> Thiết lập tài khoản Admin lần đầu
-        <i class="fa-solid fa-chevron-down" id="setup-chevron" style="font-size:0.7rem; transition:transform .2s;"></i>
-      </button>
-    </div>
-    <div id="setup-section" style="display:none; padding:0 32px 28px;">
-      <div style="background:var(--gold-l); border:1px solid var(--gold); border-radius:var(--r-md); padding:10px 13px; font-size:0.78rem; font-weight:600; color:var(--gold-d); margin-bottom:16px; line-height:1.55;">
-        <i class="fa-solid fa-triangle-exclamation"></i> Chỉ dùng lần đầu để tạo tài khoản Super Admin. Sau khi tạo xong, đăng nhập bình thường ở trên.
-      </div>
-      <div class="l-field">
-        <label>Tên hiển thị</label>
-        <input type="text" id="su-name" placeholder="VD: Admin ChemCraft">
-      </div>
-      <div class="l-field">
-        <label>Email (phải đúng định dạng)</label>
-        <input type="email" id="su-email" placeholder="VD: admin@chemcraft.vn">
-      </div>
-      <div class="l-field">
-        <label>Mật khẩu (ít nhất 6 ký tự)</label>
-        <input type="password" id="su-pass" placeholder="min 6 ký tự">
-      </div>
-      <button class="login-submit" style="background:linear-gradient(135deg,var(--gold),var(--orange)); box-shadow:var(--sh-gold);" onclick="createFirstAdmin()">
-        <i class="fa-solid fa-user-shield"></i> Tạo tài khoản Super Admin
-      </button>
-      <div class="login-err" id="su-err"></div>
-      <div id="su-ok" style="display:none; margin-top:12px; background:var(--green-l); border:1px solid var(--green); border-radius:var(--r-md); padding:11px 14px; font-size:0.84rem; font-weight:700; color:var(--green-d); text-align:center;"></div>
-    </div>
+    <div class="login-foot">Tài khoản do quản trị viên hệ thống cấp. Liên hệ IT nếu quên mật khẩu.</div>
   </div>
 </div>
 
 <!-- ═══ ACCESS DENIED ═══ -->
-<div id="denied-screen" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:20px; background:var(--navy); z-index:4500; overflow-y:auto;">
+<div id="denied-screen" style="display:none; position:fixed; inset:0; align-items:center; justify-content:center; padding:20px; background:var(--navy); z-index:4500; overflow-y:auto;">
   <div class="login-card denied-card" style="max-width:500px;">
     <div class="login-head">
       <div class="denied-icon"><i class="fa-solid fa-lock" id="denied-icon-i"></i></div>
@@ -515,145 +461,93 @@ function toggleCollapse(){
 if (window.innerWidth > 900) document.getElementById('collapse-btn').style.display = 'flex';
 
 /* ════════════════════════════════════════════════════════════
-   AUTH
+   AUTH — Server session (không dùng Firebase Auth)
    ════════════════════════════════════════════════════════════ */
-let _adminUser = null, _adminProfile = null;
 
-async function adminLogin(){
-  const email = document.getElementById('li-email').value.trim();
-  const pass  = document.getElementById('li-pass').value;
-  const errEl = document.getElementById('li-err');
-  const btn   = document.getElementById('li-submit');
-  errEl.classList.remove('show');
-  if (!email || !pass) { errEl.textContent = 'Vui lòng nhập đầy đủ email và mật khẩu.'; errEl.classList.add('show'); return; }
-  if (!window._fbAuth) { errEl.textContent = 'Không thể kết nối hệ thống xác thực. Vui lòng thử lại sau.'; errEl.classList.add('show'); return; }
-  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang đăng nhập…';
-  try {
-    await window._fbFns.signInWithEmailAndPassword(window._fbAuth, email, pass);
-  } catch (e) {
-    let msg = 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
-    if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password') msg = 'Sai email hoặc mật khẩu.';
-    if (e.code === 'auth/user-not-found') msg = 'Tài khoản không tồn tại.';
-    if (e.code === 'auth/too-many-requests') msg = 'Quá nhiều lần thử. Vui lòng đợi và thử lại.';
-    errEl.textContent = msg; errEl.classList.add('show');
-    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Đăng nhập';
-  }
-}
-function adminLogout(){
-  if (window._fbAuth) window._fbFns.signOut(window._fbAuth);
-}
-function copyUID(){
-  const uid = document.getElementById('denied-uid')?.textContent;
-  if (!uid) return;
-  navigator.clipboard.writeText(uid).then(() => {
-    const el = document.getElementById('uid-copied');
-    if (el) { el.style.display='block'; setTimeout(()=>el.style.display='none', 2000); }
-  });
-}
-document.getElementById('li-pass')?.addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
-
-/* ── First-time setup ───────────────────────────────────── */
-function toggleSetup(){
-  const sec = document.getElementById('setup-section');
-  const chev = document.getElementById('setup-chevron');
-  const open = sec.style.display === 'none';
-  sec.style.display = open ? 'block' : 'none';
-  chev.style.transform = open ? 'rotate(180deg)' : '';
-}
-
-async function createFirstAdmin(){
-  const name  = document.getElementById('su-name').value.trim();
-  const email = document.getElementById('su-email').value.trim();
-  const pass  = document.getElementById('su-pass').value;
-  const errEl = document.getElementById('su-err');
-  const okEl  = document.getElementById('su-ok');
-  errEl.classList.remove('show'); okEl.style.display = 'none';
-
-  if (!email || !pass) { errEl.textContent = 'Vui lòng nhập email và mật khẩu.'; errEl.classList.add('show'); return; }
-  if (pass.length < 6) { errEl.textContent = 'Mật khẩu phải có ít nhất 6 ký tự.'; errEl.classList.add('show'); return; }
-  if (!window._fbAuth) { errEl.textContent = 'Firebase chưa kết nối.'; errEl.classList.add('show'); return; }
-
-  const btn = document.querySelector('#setup-section .login-submit');
-  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang tạo…';
-
-  try {
-    const { createUserWithEmailAndPassword, updateProfile, setDoc, doc, serverTimestamp } = window._fbFns;
-    // Tạo tài khoản Firebase Auth
-    const cred = await createUserWithEmailAndPassword(window._fbAuth, email, pass);
-    // Cập nhật tên
-    if (name) await updateProfile(cred.user, { displayName: name });
-    // Tạo document Firestore với role super_admin
-    await setDoc(doc(window._fbDb, 'users', cred.user.uid), {
-      displayName: name || email.split('@')[0],
-      email,
-      role: 'super_admin',
-      lessonHistory: [],
-      createdAt: serverTimestamp(),
-    });
-    okEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Tạo thành công! Đăng nhập bằng:<br><strong>${email}</strong>`;
-    okEl.style.display = 'block';
-    // Auto-fill login form
-    document.getElementById('li-email').value = email;
-    document.getElementById('li-pass').value = pass;
-    setTimeout(() => toggleSetup(), 1500);
-  } catch(e) {
-    let msg = 'Lỗi tạo tài khoản: ' + e.message;
-    if (e.code === 'auth/email-already-in-use') msg = 'Email này đã có tài khoản. Đăng nhập bình thường ở trên.';
-    if (e.code === 'auth/invalid-email') msg = 'Email không hợp lệ.';
-    if (e.code === 'auth/weak-password') msg = 'Mật khẩu quá yếu (ít nhất 6 ký tự).';
-    errEl.textContent = msg; errEl.classList.add('show');
-  }
-  btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-user-shield"></i> Tạo tài khoản Super Admin';
-}
-
-window.__onAdminAuth = function(user, profile){
+/* Được gọi bởi initAdminAuth() trong script đầu trang */
+window.__onAdminAuthReady = function(session) {
   const splash = document.getElementById('admin-splash');
   const loginS = document.getElementById('login-screen');
-  const deniedS = document.getElementById('denied-screen');
-  const appS = document.getElementById('admin-app');
-
+  const appS   = document.getElementById('admin-app');
   splash.classList.add('hide');
-  setTimeout(() => splash.style.display = 'none', 400);
-
-  if (!user) {
-    loginS.classList.add('show'); deniedS.style.display = 'none'; appS.classList.remove('show');
-    return;
+  setTimeout(() => splash.style.display = 'none', 350);
+  if (!session) {
+    loginS.classList.add('show');
+    appS.classList.remove('show');
+  } else {
+    loginS.classList.remove('show');
+    appS.classList.add('show');
+    const name = session.name || session.username;
+    document.getElementById('a-user-name').textContent  = name;
+    document.getElementById('a-user-role').textContent  = roleLabel(session.role);
+    document.getElementById('a-user-avatar').textContent = name.slice(0,1).toUpperCase();
+    renderDashboard();
+    loadDashboardData();
   }
-  if (!profile || profile.denied) {
-    loginS.classList.remove('show'); appS.classList.remove('show');
-    deniedS.style.display = 'flex';
-    // Populate denied screen with helpful info
-    const infoEl    = document.getElementById('denied-info');
-    const guideEl   = document.getElementById('denied-guide');
-    const rulesWarn = document.getElementById('denied-rules-warn');
-    const uidEl     = document.getElementById('denied-uid');
-    const emailEl   = document.getElementById('denied-email');
-    if (user && infoEl) {
-      emailEl.textContent = user.email || '';
-      uidEl.textContent   = user.uid;
-      infoEl.style.display  = 'block';
-      guideEl.style.display = 'block';
-    }
-    if (profile && profile.error && rulesWarn) {
-      rulesWarn.style.display = 'block';
-      document.getElementById('denied-title').textContent = 'Lỗi đọc quyền truy cập';
-      document.getElementById('denied-subtitle').textContent = 'Không thể đọc hồ sơ từ Firestore — có thể do Security Rules hoặc chưa có document.';
-      document.getElementById('denied-icon-i').className = 'fa-solid fa-triangle-exclamation';
-      document.querySelector('.denied-icon').style.background = 'linear-gradient(135deg,#F59E0B,#FB7C45)';
-    }
-    return;
-  }
-  _adminUser = user; _adminProfile = profile;
-  loginS.classList.remove('show'); deniedS.style.display = 'none';
-  appS.classList.add('show');
-
-  const name = profile.displayName || user.email.split('@')[0];
-  document.getElementById('a-user-name').textContent = name;
-  document.getElementById('a-user-role').textContent = roleLabel(profile.role);
-  document.getElementById('a-user-avatar').textContent = name.slice(0,1).toUpperCase();
-
-  loadDashboardData();
 };
+
+/* Nếu script init chạy xong trước khi DOM ready — fire lại */
+if (window._pendingAuthSession !== undefined) {
+  window.__onAdminAuthReady(window._pendingAuthSession);
+}
+
+async function adminLogin() {
+  const username = document.getElementById('li-email').value.trim();
+  const pass     = document.getElementById('li-pass').value;
+  const errEl    = document.getElementById('li-err');
+  const btn      = document.getElementById('li-submit');
+  errEl.classList.remove('show');
+
+  if (!username || !pass) {
+    errEl.textContent = 'Vui lòng nhập tên đăng nhập và mật khẩu.';
+    errEl.classList.add('show'); return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xác thực…';
+
+  try {
+    const res = await fetch('/api/admin-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password: pass }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Đăng nhập thất bại.';
+      errEl.classList.add('show');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Đăng nhập';
+      return;
+    }
+    sessionStorage.setItem('cc_admin_token', data.token);
+    window.__adminToken   = data.token;
+    window.__adminSession = data;
+    window.__onAdminAuthReady(data);
+  } catch(e) {
+    errEl.textContent = 'Không kết nối được server. Đảm bảo server.py đang chạy.';
+    errEl.classList.add('show');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Đăng nhập';
+  }
+}
+
+async function adminLogout() {
+  const token = sessionStorage.getItem('cc_admin_token');
+  if (token) {
+    try { await fetch('/api/admin-logout', { method:'POST', headers:{'X-Admin-Token': token} }); } catch(e) {}
+    sessionStorage.removeItem('cc_admin_token');
+  }
+  window.__adminToken = null;
+  window.__adminSession = null;
+  document.getElementById('admin-app').classList.remove('show');
+  document.getElementById('login-screen').classList.add('show');
+  document.getElementById('li-pass').value = '';
+  document.getElementById('li-err').classList.remove('show');
+  document.getElementById('li-submit').disabled = false;
+  document.getElementById('li-submit').innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Đăng nhập';
+}
+
+document.getElementById('li-pass')?.addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
 
 function roleLabel(role){
   const map = { super_admin:'Super Admin', admin:'Admin', teacher:'Teacher', content_manager:'Content Manager', lab_manager:'Lab Manager', data_analyst:'Data Analyst' };
