@@ -879,6 +879,374 @@ function refreshChartsTheme(){
   if (document.getElementById('chart-growth')) renderMockCharts();
 }
 </script>
+
+<script>
+/* === admin-real-data (inlined) === */
+/* ChemCraft — Admin Real Data
+   -------------------------------------------------------------
+   Chèn 1 dòng vào cuối <body> của admin.html:
+     <script src="/admin-real-data.js"></script>
+
+   File này GHI ĐÈ các hàm demo bằng dữ liệu thật:
+     - Overview: KPI + 4 chart chính (từ /api/admin-metrics + Firestore)
+     - AI Analytics: top câu hỏi, phân bổ chủ đề, word cloud (thật)
+     - Learning Analytics: growth, session, funnel (thật)
+     - Lab Analytics: lượt vào, tỉ lệ hoàn thành (thật)
+     - Heatmap giờ x ngày (thật)
+   ------------------------------------------------------------- */
+(function () {
+  const API = '/api/admin-metrics';
+
+  function token() {
+    return window.__adminToken || sessionStorage.getItem('cc_admin_token') || '';
+  }
+
+  async function fetchMetrics() {
+    const t = token();
+    if (!t) throw new Error('Chưa đăng nhập admin');
+    const r = await fetch(API, { headers: { 'X-Admin-Token': t } });
+    if (!r.ok) throw new Error('Lỗi tải metrics: ' + r.status);
+    return r.json();
+  }
+
+  async function fetchEvents(type, limit = 200) {
+    const t = token();
+    const url = `/api/admin-events?type=${encodeURIComponent(type)}&limit=${limit}`;
+    const r = await fetch(url, { headers: { 'X-Admin-Token': t } });
+    if (!r.ok) return { events: [] };
+    return r.json();
+  }
+
+  async function countUsersFromFirestore() {
+    try {
+      if (!window._fbDb || !window._fbFns) return null;
+      const { collection, getCountFromServer } = window._fbFns;
+      const snap = await getCountFromServer(collection(window._fbDb, 'users'));
+      return snap.data().count;
+    } catch (e) { return null; }
+  }
+
+  async function sumLessonsFromFirestore() {
+    try {
+      if (!window._fbDb || !window._fbFns) return { lessons: 0, users: 0, avgProgress: 0 };
+      const { collection, getDocs } = window._fbFns;
+      const snap = await getDocs(collection(window._fbDb, 'users'));
+      let lessons = 0, users = 0, progressSum = 0, progressCount = 0;
+      snap.forEach(d => {
+        const u = d.data();
+        users++;
+        lessons += (u.lessonHistory || []).length;
+        const p = u.lessonProgress || {};
+        Object.values(p).forEach(v => {
+          const val = typeof v === 'number' ? v : (v?.percent ?? v?.progress ?? 0);
+          if (typeof val === 'number') { progressSum += val; progressCount++; }
+        });
+      });
+      const avg = progressCount ? Math.round(progressSum / progressCount) : 0;
+      return { lessons, users, avgProgress: avg };
+    } catch (e) {
+      return { lessons: 0, users: 0, avgProgress: 0 };
+    }
+  }
+
+  const DOW_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+  function last7Labels() {
+    const out = []; const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      out.push(DOW_LABELS[(d.getDay() + 6) % 7]);
+    }
+    return out;
+  }
+
+  function chartColors() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    return { grid: dark ? '#232E45' : '#E4E9F1', text: dark ? '#9FAEC8' : '#5B6477' };
+  }
+
+  function safeDestroy() {
+    if (window._charts) Object.values(window._charts).forEach(c => { try { c.destroy(); } catch (e) {} });
+    window._charts = window._charts || {};
+  }
+
+  /* ═══════════════ OVERRIDE: renderMockCharts ═══════════════ */
+  const _renderReal = async function () {
+    safeDestroy();
+    const C = chartColors();
+    if (window.Chart) Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+
+    let m;
+    try { m = await fetchMetrics(); }
+    catch (e) { console.warn('[real-data] metrics unavailable:', e.message); return; }
+
+    // Growth chart — hoạt động 7 ngày
+    const g = document.getElementById('chart-growth');
+    if (g) {
+      window._charts.growth = new Chart(g, {
+        type: 'line',
+        data: {
+          labels: last7Labels(),
+          datasets: [{
+            label: 'Hoạt động',
+            data: m.daily.activity_7d,
+            borderColor: '#06B6D4',
+            backgroundColor: 'rgba(6,182,212,0.14)',
+            fill: true, tension: .4, pointRadius: 3,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: C.grid }, ticks: { color: C.text } },
+            y: { grid: { color: C.grid }, ticks: { color: C.text }, beginAtZero: true },
+          },
+        },
+      });
+    }
+
+    // Donut — phân bổ hoạt động
+    const dn = document.getElementById('chart-donut');
+    if (dn) {
+      const d = m.donut || {};
+      window._charts.donut = new Chart(dn, {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(d),
+          datasets: [{
+            data: Object.values(d),
+            backgroundColor: ['#4F6BFF', '#F59E0B', '#06B6D4', '#8B5CF6'],
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '68%',
+          plugins: { legend: { position: 'bottom', labels: { color: C.text, padding: 14, usePointStyle: true } } },
+        },
+      });
+    }
+
+    // Bar — 4 tuần lab
+    const bar = document.getElementById('chart-bar');
+    if (bar) {
+      window._charts.bar = new Chart(bar, {
+        type: 'bar',
+        data: {
+          labels: ['Tuần -3', 'Tuần -2', 'Tuần -1', 'Tuần này'],
+          datasets: [{
+            label: 'Lượt vào Lab',
+            data: m.weekly_labs,
+            backgroundColor: '#10B981', borderRadius: 6, maxBarThickness: 36,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: C.text } },
+            y: { grid: { color: C.grid }, ticks: { color: C.text }, beginAtZero: true },
+          },
+        },
+      });
+    }
+
+    // Area — tỉ lệ hoàn thành theo tuần (đơn giản: dùng daily lesson 7d)
+    const area = document.getElementById('chart-area');
+    if (area) {
+      window._charts.area = new Chart(area, {
+        type: 'line',
+        data: {
+          labels: last7Labels(),
+          datasets: [{
+            label: 'Bài học hoàn thành',
+            data: m.daily.lesson_7d,
+            borderColor: '#EC4899',
+            backgroundColor: 'rgba(236,72,153,0.14)',
+            fill: true, tension: .35, pointRadius: 3,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: C.text } },
+            y: { grid: { color: C.grid }, ticks: { color: C.text }, beginAtZero: true },
+          },
+        },
+      });
+    }
+  };
+  window.renderMockCharts = _renderReal;
+
+  /* ═══════════════ OVERRIDE: loadDashboardData ═══════════════ */
+  window.loadDashboardData = async function () {
+    if (!document.getElementById('kpi-totalUsers')) return;
+
+    const [m, userCount, agg] = await Promise.all([
+      fetchMetrics().catch(() => null),
+      countUsersFromFirestore(),
+      sumLessonsFromFirestore(),
+    ]);
+
+    const set = (k, v) => {
+      const el = document.getElementById('kpi-' + k);
+      if (el) el.innerHTML = v;
+    };
+
+    set('totalUsers', (userCount ?? agg.users ?? 0).toLocaleString('vi-VN'));
+
+    // Người dùng mới trong 7 ngày — dựa vào users.createdAt (Firestore)
+    let newUsers = '—';
+    try {
+      if (window._fbDb && window._fbFns) {
+        const { collection, query, where, getCountFromServer, Timestamp } = window._fbFns;
+        const wk = new Date(Date.now() - 7 * 86400_000);
+        const q = query(collection(window._fbDb, 'users'), where('createdAt', '>=', Timestamp.fromDate(wk)));
+        const snap = await getCountFromServer(q);
+        newUsers = '+' + snap.data().count;
+      }
+    } catch (e) {}
+    set('newUsers', newUsers);
+
+    if (m) {
+      set('onlineUsers',  m.server.active_ips.toLocaleString('vi-VN'));
+      set('totalLessons', (agg.lessons || m.counts.lessons_done).toLocaleString('vi-VN'));
+      set('totalQuiz',    m.counts.quiz_done.toLocaleString('vi-VN'));
+      set('totalLab',     m.counts.lab_open.toLocaleString('vi-VN'));
+      set('aiChats',      m.counts.ai_chats.toLocaleString('vi-VN'));
+      set('completion',   (agg.avgProgress || m.counts.lab_completion) + '%');
+    } else {
+      ['onlineUsers','totalLessons','totalQuiz','totalLab','aiChats','completion'].forEach(k => set(k, '—'));
+    }
+
+    // Bảng recent users — tận dụng logic Firestore sẵn có
+    try {
+      if (window._fbDb && window._fbFns) {
+        const { collection, getDocs, orderBy, query, limit } = window._fbFns;
+        const q = query(collection(window._fbDb, 'users'), orderBy('createdAt', 'desc'), limit(6));
+        const snap = await getDocs(q);
+        const users = [];
+        snap.forEach(d => users.push({ id: d.id, ...d.data() }));
+        if (typeof window.renderRecentUsersTable === 'function') {
+          window.renderRecentUsersTable(users);
+        }
+      }
+    } catch (e) { console.warn('Recent users:', e); }
+
+    _renderReal();
+  };
+
+  /* ═══════════════ OVERRIDE: AI Analytics ═══════════════ */
+  const origRenderAI = window.renderAIAnalytics;
+  window.renderAIAnalytics = async function () {
+    if (typeof origRenderAI === 'function') origRenderAI();
+    let m;
+    try { m = await fetchMetrics(); } catch (e) { return; }
+
+    // Cập nhật KPI cards ở đầu trang (4 thẻ đầu tiên trong .kpi-grid vừa render)
+    const cards = document.querySelectorAll('.kpi-card .kpi-value');
+    if (cards.length >= 4) {
+      const errRate = m.server.chat_total ? Math.round(100 * m.server.chat_errors / m.server.chat_total) : 0;
+      cards[0].textContent = m.counts.ai_chats.toLocaleString('vi-VN');
+      cards[1].textContent = (m.top_questions[0]?.[0] || '—').slice(0, 28);
+      cards[2].textContent = m.server.rate_limit_hits + ' lần';
+      cards[3].textContent = errRate + '% lỗi';
+    }
+
+    // Top câu hỏi (thay demo)
+    const box = document.getElementById('ai-top-questions');
+    if (box && m.top_questions.length) {
+      box.innerHTML = m.top_questions.map(([q, n], i) => `
+        <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line);">
+          <div style="width:22px;height:22px;border-radius:6px;background:${i < 3 ? 'var(--gold-l)' : 'var(--surface-2)'};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;color:${i < 3 ? 'var(--gold-d)' : 'var(--fg-mute)'};flex-shrink:0;">${i + 1}</div>
+          <div style="flex:1;font-size:.84rem;font-weight:600;color:var(--fg);">${escapeHtml(q)}</div>
+          <div style="font-size:.78rem;font-weight:800;color:var(--cyan-d);white-space:nowrap;">${n} lần</div>
+        </div>`).join('');
+    } else if (box) {
+      box.innerHTML = '<div style="text-align:center;color:var(--fg-mute);padding:24px;font-size:.85rem;">Chưa có câu hỏi AI nào được ghi nhận.</div>';
+    }
+
+    // Word cloud thật
+    const wc = document.getElementById('word-cloud');
+    if (wc) {
+      if (!m.word_cloud.length) {
+        wc.innerHTML = '<div style="color:var(--fg-mute);font-size:.85rem;">Chưa đủ dữ liệu.</div>';
+      } else {
+        const max = m.word_cloud[0][1] || 1;
+        wc.innerHTML = m.word_cloud.map(([w, n]) => {
+          const s = Math.max(0.78, Math.min(1.6, 0.78 + (n / max) * 0.9));
+          return `<span style="font-size:${s}rem;font-weight:800;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--indigo);">${escapeHtml(w)}</span>`;
+        }).join('');
+      }
+    }
+  };
+
+  /* ═══════════════ OVERRIDE: Lab Analytics ═══════════════ */
+  const origRenderLab = window.renderLabAnalytics;
+  window.renderLabAnalytics = async function () {
+    if (typeof origRenderLab === 'function') origRenderLab();
+    let m;
+    try { m = await fetchMetrics(); } catch (e) { return; }
+    const cards = document.querySelectorAll('.kpi-card .kpi-value');
+    if (cards.length >= 4) {
+      const dropped = m.counts.lab_open - m.counts.lab_completed;
+      const dropRate = m.counts.lab_open ? Math.round(100 * dropped / m.counts.lab_open) : 0;
+      cards[0].textContent = m.counts.lab_open.toLocaleString('vi-VN');
+      cards[1].textContent = m.counts.lab_completion + '%';
+      cards[2].textContent = dropRate + '%';
+      cards[3].textContent = '—';
+    }
+  };
+
+  /* ═══════════════ OVERRIDE: Learning Analytics ═══════════════ */
+  const origRenderLA = window.renderLearningAnalytics;
+  window.renderLearningAnalytics = async function () {
+    if (typeof origRenderLA === 'function') origRenderLA();
+    let m;
+    try { m = await fetchMetrics(); } catch (e) { return; }
+    const cards = document.querySelectorAll('.kpi-card .kpi-value');
+    if (cards.length >= 4) {
+      cards[2].textContent = m.server.active_ips + ' active';
+      cards[3].textContent = (m.counts.lab_open ? Math.round(100 * m.counts.lab_open / Math.max(1, m.counts.lessons_done)) : 0) + '%';
+    }
+    // Heatmap thật
+    const hm = document.getElementById('la-heatmap');
+    if (hm && m.heatmap) {
+      const hours = ['0h','1h','2h','3h','4h','5h','6h','7h','8h','9h','10h','11h','12h','13h','14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
+      const dows  = ['T2','T3','T4','T5','T6','T7','CN'];
+      let max = 1;
+      m.heatmap.forEach(row => row.forEach(v => { if (v > max) max = v; }));
+      const color = v => {
+        const r = v / max;
+        if (r < .1) return 'var(--surface-2)';
+        if (r < .3) return 'var(--cyan-l)';
+        if (r < .55) return '#7ED8E8';
+        if (r < .8) return 'var(--cyan)';
+        return 'var(--cyan-d)';
+      };
+      let html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:separate;border-spacing:2px;font-size:.68rem;">';
+      html += '<tr><th></th>' + hours.map(h => `<th style="color:var(--fg-mute);font-weight:600;text-align:center;">${h}</th>`).join('') + '</tr>';
+      m.heatmap.forEach((row, di) => {
+        html += `<tr><td style="font-weight:700;color:var(--fg-soft);padding:2px 6px;">${dows[di]}</td>`;
+        row.forEach(v => { html += `<td style="background:${color(v)};height:18px;border-radius:3px;" title="${v} hoạt động"></td>`; });
+        html += '</tr>';
+      });
+      html += '</table></div>';
+      hm.innerHTML = html;
+    }
+  };
+
+  /* ═══════════════ Helper: escapeHtml ═══════════════ */
+  function escapeHtml(s) {
+    return (s + '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  console.log('[ChemCraft] admin-real-data.js loaded — mock functions overridden.');
+})();
+
+</script>
 </body>
 </html>
 
