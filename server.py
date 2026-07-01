@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import secrets
 import requests
 from collections import defaultdict
 from threading import Lock
@@ -40,9 +41,20 @@ ip_requests: dict[str, list[float]] = defaultdict(list)
 ip_last_req:  dict[str, float]       = {}
 rate_lock = Lock()
 
-@app.route('/admin')
-def serve_admin():
-    return send_from_directory('.', 'admin.html')
+# ── Admin accounts (tách biệt hoàn toàn khỏi Firebase) ───────────────────────
+ADMIN_ACCOUNTS = {
+    'admin': {
+        'password': 'admin@11235',
+        'name':     'Admin ChemCraft',
+        'role':     'super_admin',
+    },
+    # Thêm tài khoản mới ở đây theo cú pháp:
+    # 'username': { 'password': '...', 'name': '...', 'role': 'admin' },
+}
+
+_admin_sessions: dict[str, dict] = {}   # token -> {username, name, role, created_at}
+_SESSION_TTL = 8 * 3600                  # 8 tiếng
+
 
 def check_rate_limit(ip: str) -> str | None:
     """Return an error message string if rate-limited, else None."""
@@ -175,6 +187,51 @@ def chat():
         return jsonify({'error': 'Đã xảy ra lỗi. Vui lòng thử lại.'}), 500
 
 
+# ── /api/admin-login ──────────────────────────────────────────────────────────
+@app.route('/api/admin-login', methods=['POST'])
+def admin_login():
+    body     = request.get_json(silent=True) or {}
+    username = body.get('username', '').strip().lower()
+    password = body.get('password', '')
+
+    account = ADMIN_ACCOUNTS.get(username)
+    if not account or account['password'] != password:
+        time.sleep(0.5)   # chống brute-force đơn giản
+        return jsonify({'error': 'Sai tên đăng nhập hoặc mật khẩu.'}), 401
+
+    token = secrets.token_hex(32)
+    _admin_sessions[token] = {
+        'username':   username,
+        'name':       account['name'],
+        'role':       account['role'],
+        'created_at': time.time(),
+    }
+    return jsonify({'token': token, 'name': account['name'], 'role': account['role']})
+
+
+# ── /api/admin-verify ─────────────────────────────────────────────────────────
+@app.route('/api/admin-verify', methods=['GET'])
+def admin_verify():
+    token   = request.headers.get('X-Admin-Token', '')
+    session = _admin_sessions.get(token)
+    if not session:
+        return jsonify({'error': 'Token không hợp lệ.'}), 401
+    if time.time() - session['created_at'] > _SESSION_TTL:
+        del _admin_sessions[token]
+        return jsonify({'error': 'Phiên đăng nhập đã hết hạn.'}), 401
+    # Gia hạn session mỗi lần verify
+    session['created_at'] = time.time()
+    return jsonify({'username': session['username'], 'name': session['name'], 'role': session['role']})
+
+
+# ── /api/admin-logout ─────────────────────────────────────────────────────────
+@app.route('/api/admin-logout', methods=['POST'])
+def admin_logout():
+    token = request.headers.get('X-Admin-Token', '')
+    _admin_sessions.pop(token, None)
+    return jsonify({'ok': True})
+
+
 # ── /api/firebase-config ──────────────────────────────────────────────────────
 @app.route('/api/firebase-config', methods=['GET'])
 def firebase_config():
@@ -186,6 +243,12 @@ def firebase_config():
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
+
+# Admin panel
+@app.route('/admin')
+@app.route('/admin.html')
+def serve_admin():
+    return send_from_directory('.', 'admin.html')
 
 # Serve lab.html explicitly (supports both /lab and /lab.html)
 @app.route('/lab')
