@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChemCraft Admin — Trung tâm điều hành</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+  import { getFirestore, doc, getDoc, collection, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
+
+  let firebaseConfig = {};
+  try {
+    const cfgResp = await fetch('/api/firebase-config');
+    firebaseConfig = await cfgResp.json();
+  } catch (e) { console.warn('Không thể lấy Firebase config:', e); }
+
+  let app, auth, db;
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (e) { console.warn('Firebase init error:', e); }
+
+  window._fbAuth = auth;
+  window._fbDb = db;
+  window._fbFns = { signInWithEmailAndPassword, signOut, onAuthStateChanged, doc, getDoc, collection, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp };
+
+  const ADMIN_ROLES = ['admin', 'super_admin', 'teacher', 'content_manager', 'lab_manager', 'data_analyst'];
+
+  if (auth) {
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { window.__onAdminAuth(null, null); return; }
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        const data = snap.exists() ? snap.data() : {};
+        const role = data.role || null;
+        window.__onAdminAuth(user, role && ADMIN_ROLES.includes(role) ? { ...data, role } : (role ? { ...data, role, denied: true } : { denied: true }));
+      } catch (e) {
+        console.warn('Lỗi đọc hồ sơ quyền:', e);
+        window.__onAdminAuth(user, { denied: true, error: true });
+      }
+    });
+  } else {
+    window.addEventListener('DOMContentLoaded', () => window.__onAdminAuth(null, null));
+  }
+</script>
+
+<style>
+/* ════════════════════════════════════════════════════════════
+   CHEMCRAFT ADMIN — Design tokens (kế thừa từ design system chính)
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --navy:#0B1220; --navy-2:#141C2E; --indigo:#4F6BFF; --indigo-d:#3B52D6; --indigo-l:#EEF1FF;
+  --cyan:#06B6D4; --cyan-d:#0891A8; --cyan-l:#E3F8FB;
+  --purple:#8B5CF6; --purple-d:#7141DB; --purple-l:#F2EDFE;
+  --gold:#F59E0B; --gold-d:#B45309; --gold-l:#FEF3DD;
+  --pink:#EC4899; --pink-l:#FDEAF3;
+  --orange:#FB7C45; --orange-l:#FFEEE6;
+  --green:#10B981; --green-d:#0D9166; --green-l:#E6F8F1;
+  --red:#EF4444; --red-d:#C8312A; --red-l:#FDEDED;
+  --sky:#F6F8FC; --sky2:#EEF2F9; --white:#FFFFFF;
+  --ink:#101725; --text:#1E2433; --text-m:#5B6477; --text-l:#8C95A8;
+  --border:#E4E9F1; --border-soft:#EEF1F6;
+  --shadow:rgba(20,28,46,0.10);
+  --sh-1: 0 1px 2px rgba(16,23,37,0.06), 0 1px 1px rgba(16,23,37,0.04);
+  --sh-2: 0 4px 14px rgba(16,23,37,0.08), 0 1px 3px rgba(16,23,37,0.06);
+  --sh-3: 0 12px 28px rgba(16,23,37,0.12), 0 3px 8px rgba(16,23,37,0.06);
+  --sh-4: 0 24px 56px rgba(16,23,37,0.16), 0 6px 16px rgba(16,23,37,0.08);
+  --sh-cyan: 0 8px 24px rgba(6,182,212,0.28);
+  --r-sm:8px; --r-md:12px; --r-lg:18px; --r-xl:24px; --r-pill:999px;
+
+  /* surface aliases — bị ghi đè khi [data-theme="dark"] */
+  --bg:var(--sky); --bg-2:var(--white); --surface:var(--white); --surface-2:var(--sky2);
+  --line:var(--border); --fg:var(--text); --fg-soft:var(--text-m); --fg-mute:var(--text-l);
+  --glass-bg:rgba(255,255,255,0.72); --glass-border:rgba(255,255,255,0.5);
+  --sidebar-bg:var(--navy); --sidebar-fg:rgba(255,255,255,0.68); --sidebar-active:rgba(255,255,255,0.08);
+}
+[data-theme="dark"]{
+  --bg:#0B1220; --bg-2:#0F1726; --surface:#141C2E; --surface-2:#19233A;
+  --line:#232E45; --fg:#EAF0FB; --fg-soft:#9FAEC8; --fg-mute:#6B7892;
+  --glass-bg:rgba(20,28,46,0.72); --glass-border:rgba(255,255,255,0.08);
+  --sidebar-bg:#070B14; --sidebar-fg:rgba(255,255,255,0.62); --sidebar-active:rgba(255,255,255,0.06);
+  --shadow:rgba(0,0,0,0.4);
+}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{height:100%;}
+body{
+  font-family:'Be Vietnam Pro',sans-serif; background:var(--bg); color:var(--fg);
+  -webkit-font-smoothing:antialiased; transition:background .25s ease, color .25s ease;
+}
+::-webkit-scrollbar{width:8px; height:8px;}
+::-webkit-scrollbar-thumb{background:var(--line); border-radius:99px;}
+::-webkit-scrollbar-track{background:transparent;}
+a{color:inherit; text-decoration:none;}
+button{font-family:inherit;}
+
+/* ── Loading splash ─────────────────────────────────────── */
+#admin-splash{position:fixed; inset:0; background:var(--navy); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px; z-index:9999; transition:opacity .4s ease;}
+#admin-splash .spin{width:42px; height:42px; border-radius:50%; border:3px solid rgba(6,182,212,0.25); border-top-color:var(--cyan); animation:spin 0.9s linear infinite;}
+#admin-splash span{color:rgba(255,255,255,0.7); font-weight:600; font-size:0.9rem; letter-spacing:0.02em;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#admin-splash.hide{opacity:0; pointer-events:none;}
+
+/* ── Login screen ───────────────────────────────────────── */
+#login-screen{position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:20px;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(6,182,212,0.18), transparent 45%),
+    radial-gradient(circle at 85% 80%, rgba(79,107,255,0.18), transparent 45%),
+    var(--navy);
+  z-index:5000;}
+#login-screen.show{display:flex;}
+.login-card{width:100%; max-width:408px; background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--sh-4); overflow:hidden; animation:cardIn .4s cubic-bezier(.16,1,.3,1);}
+@keyframes cardIn{from{opacity:0; transform:translateY(14px) scale(.98);} to{opacity:1; transform:none;}}
+.login-head{padding:34px 32px 22px; text-align:center;}
+.login-logo{width:54px; height:54px; border-radius:16px; background:linear-gradient(135deg,var(--cyan),var(--indigo)); display:flex; align-items:center; justify-content:center; margin:0 auto 16px; box-shadow:var(--sh-cyan);}
+.login-logo i{color:#fff; font-size:1.4rem;}
+.login-head h1{font-size:1.32rem; font-weight:800; color:var(--fg); letter-spacing:-0.01em;}
+.login-head p{font-size:0.86rem; color:var(--fg-soft); margin-top:6px; font-weight:500;}
+.login-body{padding:8px 32px 32px;}
+.l-field{margin-bottom:16px;}
+.l-field label{display:block; font-size:0.78rem; font-weight:700; color:var(--fg-soft); margin-bottom:7px; text-transform:uppercase; letter-spacing:0.04em;}
+.l-field input{width:100%; border:1.5px solid var(--line); border-radius:var(--r-md); padding:13px 15px; font-family:inherit; font-size:0.95rem; font-weight:500; color:var(--fg); background:var(--bg-2); outline:none; transition:border-color .2s, box-shadow .2s;}
+.l-field input:focus{border-color:var(--cyan); box-shadow:0 0 0 3px rgba(6,182,212,0.15);}
+.login-submit{width:100%; padding:14px; border:none; border-radius:var(--r-pill); font-weight:700; font-size:0.95rem; color:#fff; background:linear-gradient(135deg,var(--cyan),var(--indigo)); box-shadow:var(--sh-cyan); cursor:pointer; transition:transform .18s, filter .18s; display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px;}
+.login-submit:hover{transform:translateY(-2px); filter:brightness(1.05);}
+.login-submit:disabled{opacity:.6; cursor:not-allowed; transform:none;}
+.login-err{display:none; margin-top:14px; background:var(--red-l); border:1px solid var(--red); border-radius:var(--r-md); padding:11px 14px; font-size:0.84rem; font-weight:500; color:var(--red-d);}
+.login-err.show{display:block;}
+.login-foot{text-align:center; padding:0 32px 26px; font-size:0.78rem; color:var(--fg-mute); font-weight:500;}
+
+/* Denied (logged in, no admin role) */
+.denied-card{max-width:440px;}
+.denied-icon{width:54px; height:54px; border-radius:16px; background:linear-gradient(135deg,var(--red),var(--orange)); display:flex; align-items:center; justify-content:center; margin:0 auto 16px;}
+.denied-icon i{color:#fff; font-size:1.4rem;}
+
+/* ── App shell ──────────────────────────────────────────── */
+#admin-app{display:none;}
+#admin-app.show{display:flex; min-height:100vh;}
+
+/* Sidebar */
+.a-sidebar{width:264px; flex-shrink:0; background:var(--sidebar-bg); color:var(--sidebar-fg); display:flex; flex-direction:column; position:sticky; top:0; height:100vh; overflow-y:auto; transition:width .22s ease, transform .22s ease; z-index:200;}
+.a-sidebar::-webkit-scrollbar{width:5px;}
+.a-brand{display:flex; align-items:center; gap:11px; padding:22px 20px; flex-shrink:0;}
+.a-brand-icon{width:36px; height:36px; border-radius:11px; background:linear-gradient(135deg,var(--cyan),var(--indigo)); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+.a-brand-icon i{color:#fff; font-size:1rem;}
+.a-brand-text{font-weight:800; font-size:1.02rem; color:#fff; letter-spacing:-0.01em; white-space:nowrap;}
+.a-brand-text small{display:block; font-size:0.68rem; font-weight:600; color:rgba(255,255,255,0.4); letter-spacing:0.04em; text-transform:uppercase;}
+
+.a-nav{flex:1; padding:6px 12px 18px;}
+.a-nav-group{margin-top:18px;}
+.a-nav-group:first-child{margin-top:4px;}
+.a-nav-label{font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:rgba(255,255,255,0.3); padding:0 12px 8px;}
+.a-nav-item{display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:11px; font-size:0.875rem; font-weight:600; color:var(--sidebar-fg); cursor:pointer; transition:background .15s, color .15s; margin-bottom:2px; position:relative; white-space:nowrap;}
+.a-nav-item i{width:18px; text-align:center; font-size:0.95rem; flex-shrink:0;}
+.a-nav-item:hover{background:rgba(255,255,255,0.05); color:#fff;}
+.a-nav-item.active{background:var(--sidebar-active); color:#fff;}
+.a-nav-item.active::before{content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:3px; background:linear-gradient(180deg,var(--cyan),var(--indigo));}
+.a-nav-badge{margin-left:auto; font-size:0.62rem; font-weight:800; background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.55); padding:2px 7px; border-radius:99px; letter-spacing:0.02em;}
+
+.a-sidebar-foot{padding:14px 18px 20px; border-top:1px solid rgba(255,255,255,0.06); flex-shrink:0;}
+.a-user-chip{display:flex; align-items:center; gap:10px; padding:8px; border-radius:12px; cursor:pointer; transition:background .15s;}
+.a-user-chip:hover{background:rgba(255,255,255,0.05);}
+.a-user-avatar{width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--gold),var(--pink)); display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; font-size:0.82rem; flex-shrink:0;}
+.a-user-meta{flex:1; min-width:0;}
+.a-user-meta .un{font-size:0.84rem; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.a-user-meta .ur{font-size:0.7rem; color:rgba(255,255,255,0.45); font-weight:600;}
+.a-logout-btn{width:100%; margin-top:10px; padding:9px; border:1px solid rgba(255,255,255,0.1); background:transparent; color:rgba(255,255,255,0.6); border-radius:10px; font-size:0.78rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:7px; transition:all .15s;}
+.a-logout-btn:hover{background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.3); color:#FCA5A5;}
+
+/* Main column */
+.a-main{flex:1; min-width:0; display:flex; flex-direction:column;}
+.a-topbar{position:sticky; top:0; z-index:150; display:flex; align-items:center; gap:14px; padding:14px 26px; background:var(--glass-bg); backdrop-filter:blur(14px); border-bottom:1px solid var(--line);}
+.a-burger{display:none; width:38px; height:38px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--fg); align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;}
+.a-crumb{font-size:1.04rem; font-weight:800; color:var(--fg); letter-spacing:-0.01em;}
+.a-crumb-sub{font-size:0.78rem; color:var(--fg-soft); font-weight:500; margin-top:2px;}
+.a-topbar-spacer{flex:1;}
+.a-topbar-actions{display:flex; align-items:center; gap:10px;}
+.a-icon-btn{width:38px; height:38px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--fg-soft); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s; position:relative; flex-shrink:0;}
+.a-icon-btn:hover{color:var(--cyan); border-color:var(--cyan);}
+.a-icon-btn .dot{position:absolute; top:7px; right:7px; width:7px; height:7px; border-radius:50%; background:var(--red); border:1.5px solid var(--surface);}
+
+.a-content{padding:24px 26px 60px; flex:1;}
+.a-content-inner{max-width:1400px; margin:0 auto; animation:fadeUp .35s ease;}
+@keyframes fadeUp{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
+
+.a-page-head{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap;}
+.a-page-title{font-size:1.5rem; font-weight:800; color:var(--fg); letter-spacing:-0.02em;}
+.a-page-desc{font-size:0.88rem; color:var(--fg-soft); margin-top:5px; font-weight:500; max-width:560px;}
+.a-filter-pills{display:flex; gap:6px; background:var(--surface); border:1px solid var(--line); padding:4px; border-radius:var(--r-pill);}
+.a-filter-pill{padding:7px 15px; font-size:0.78rem; font-weight:700; border-radius:var(--r-pill); cursor:pointer; color:var(--fg-soft); transition:all .15s;}
+.a-filter-pill.active{background:linear-gradient(135deg,var(--cyan),var(--indigo)); color:#fff;}
+
+/* KPI cards */
+.kpi-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:16px; margin-bottom:22px;}
+.kpi-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:20px; box-shadow:var(--sh-1); transition:transform .18s, box-shadow .18s;}
+.kpi-card:hover{transform:translateY(-3px); box-shadow:var(--sh-2);}
+.kpi-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+.kpi-icon{width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:0.95rem; color:#fff;}
+.kpi-trend{font-size:0.74rem; font-weight:800; padding:3px 8px; border-radius:99px;}
+.kpi-trend.up{color:var(--green-d); background:var(--green-l);}
+.kpi-trend.down{color:var(--red-d); background:var(--red-l);}
+.kpi-value{font-size:1.66rem; font-weight:800; color:var(--fg); letter-spacing:-0.02em; line-height:1.1;}
+.kpi-value .sk{display:inline-block; width:54px; height:22px; border-radius:6px; background:var(--surface-2); vertical-align:middle; animation:pulse 1.3s ease infinite;}
+@keyframes pulse{0%,100%{opacity:.5;} 50%{opacity:1;}}
+.kpi-label{font-size:0.8rem; color:var(--fg-soft); font-weight:600; margin-top:4px;}
+
+/* Panels / charts */
+.panel-grid{display:grid; grid-template-columns:1.5fr 1fr; gap:16px; margin-bottom:16px;}
+@media (max-width:980px){.panel-grid{grid-template-columns:1fr;}}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); padding:20px; box-shadow:var(--sh-1);}
+.panel-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;}
+.panel-title{font-size:0.96rem; font-weight:800; color:var(--fg);}
+.panel-tag{font-size:0.68rem; font-weight:700; color:var(--fg-mute); background:var(--surface-2); padding:3px 9px; border-radius:99px;}
+.chart-wrap{position:relative; height:260px;}
+.chart-wrap.sm{height:200px;}
+
+/* Stub / placeholder for unbuilt modules */
+.stub-wrap{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:70px 24px; background:var(--surface); border:1px dashed var(--line); border-radius:var(--r-xl);}
+.stub-icon{width:64px; height:64px; border-radius:18px; background:linear-gradient(135deg, var(--cyan-l), var(--indigo-l)); display:flex; align-items:center; justify-content:center; margin-bottom:18px;}
+.stub-icon i{font-size:1.7rem; background:linear-gradient(135deg,var(--cyan-d),var(--indigo-d)); -webkit-background-clip:text; background-clip:text; color:transparent;}
+.stub-wrap h3{font-size:1.12rem; font-weight:800; color:var(--fg); margin-bottom:8px;}
+.stub-wrap p{font-size:0.88rem; color:var(--fg-soft); max-width:440px; line-height:1.6; font-weight:500;}
+.stub-list{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:18px; max-width:560px;}
+.stub-chip{font-size:0.76rem; font-weight:700; color:var(--fg-soft); background:var(--surface-2); border:1px solid var(--line); padding:6px 12px; border-radius:99px;}
+.stub-badge{margin-top:20px; font-size:0.72rem; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; color:var(--gold-d); background:var(--gold-l); padding:6px 14px; border-radius:99px;}
+
+/* Table (mock for users list preview) */
+.a-table-wrap{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--sh-1);}
+table.a-table{width:100%; border-collapse:collapse;}
+.a-table th{text-align:left; font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--fg-mute); padding:13px 18px; border-bottom:1px solid var(--line); background:var(--surface-2);}
+.a-table td{padding:13px 18px; font-size:0.86rem; font-weight:500; color:var(--fg); border-bottom:1px solid var(--line);}
+.a-table tr:last-child td{border-bottom:none;}
+.row-user{display:flex; align-items:center; gap:10px;}
+.row-avatar{width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,var(--purple),var(--pink)); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:0.72rem; flex-shrink:0;}
+.badge{font-size:0.7rem; font-weight:700; padding:3px 10px; border-radius:99px;}
+.badge.ok{background:var(--green-l); color:var(--green-d);}
+.badge.warn{background:var(--gold-l); color:var(--gold-d);}
+.badge.off{background:var(--surface-2); color:var(--fg-mute);}
+
+/* Mobile */
+.a-overlay{display:none; position:fixed; inset:0; background:rgba(11,18,32,0.5); z-index:190;}
+.a-overlay.show{display:block;}
+@media (max-width:900px){
+  .a-burger{display:flex;}
+  .a-sidebar{position:fixed; top:0; bottom:0; left:0; transform:translateX(-100%); box-shadow:var(--sh-4);}
+  .a-sidebar.open{transform:translateX(0);}
+  .a-content{padding:18px 14px 50px;}
+  .panel-grid{grid-template-columns:1fr;}
+}
+.a-collapsed .a-sidebar{width:78px;}
+.a-collapsed .a-brand-text, .a-collapsed .a-nav-label, .a-collapsed .a-nav-item span, .a-collapsed .a-user-meta, .a-collapsed .a-logout-btn span, .a-collapsed .a-nav-badge{display:none;}
+.a-collapsed .a-nav-item{justify-content:center;}
+.a-collapsed .a-user-chip{justify-content:center;}
+@media (max-width:900px){ .a-collapsed .a-sidebar{width:264px;} .a-collapsed .a-brand-text, .a-collapsed .a-nav-label, .a-collapsed .a-nav-item span, .a-collapsed .a-user-meta, .a-collapsed .a-logout-btn span, .a-collapsed .a-nav-badge{display:initial;} }
+</style>
+</head>
+<body>
+
+<!-- ═══ SPLASH ═══ -->
+<div id="admin-splash"><div class="spin"></div><span>Đang xác thực quyền truy cập…</span></div>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-head">
+      <div class="login-logo"><i class="fa-solid fa-flask-vial"></i></div>
+      <h1>ChemCraft Admin</h1>
+      <p>Đăng nhập để truy cập trung tâm điều hành</p>
+    </div>
+    <div class="login-body">
+      <div class="l-field">
+        <label>Email</label>
+        <input type="email" id="li-email" placeholder="admin@chemcraft.vn" autocomplete="username">
+      </div>
+      <div class="l-field">
+        <label>Mật khẩu</label>
+        <input type="password" id="li-pass" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="login-submit" id="li-submit" onclick="adminLogin()">
+        <i class="fa-solid fa-right-to-bracket"></i> Đăng nhập
+      </button>
+      <div class="login-err" id="li-err"></div>
+    </div>
+    <div class="login-foot">Chỉ tài khoản được cấp quyền quản trị mới truy cập được.</div>
+  </div>
+</div>
+
+<!-- ═══ ACCESS DENIED ═══ -->
+<div id="denied-screen" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:20px; background:var(--navy); z-index:4500;">
+  <div class="login-card denied-card">
+    <div class="login-head">
+      <div class="denied-icon"><i class="fa-solid fa-lock"></i></div>
+      <h1>Không có quyền truy cập</h1>
+      <p>Tài khoản này chưa được cấp quyền quản trị ChemCraft Admin.</p>
+    </div>
+    <div class="login-body" style="padding-top:0;">
+      <button class="login-submit" style="background:var(--surface-2); color:var(--fg); box-shadow:none; border:1px solid var(--line);" onclick="adminLogout()">
+        <i class="fa-solid fa-arrow-left"></i> Đăng xuất &amp; quay lại
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ APP SHELL ═══ -->
+<div id="admin-app">
+  <div class="a-overlay" id="a-overlay" onclick="toggleSidebar(false)"></div>
+
+  <aside class="a-sidebar" id="a-sidebar">
+    <div class="a-brand">
+      <div class="a-brand-icon"><i class="fa-solid fa-flask-vial"></i></div>
+      <div class="a-brand-text">ChemCraft<small>Trung tâm điều hành</small></div>
+    </div>
+
+    <nav class="a-nav">
+      <div class="a-nav-group">
+        <div class="a-nav-label">Tổng quan</div>
+        <div class="a-nav-item active" data-page="dashboard"><i class="fa-solid fa-gauge-high"></i><span>Dashboard</span></div>
+      </div>
+
+      <div class="a-nav-group">
+        <div class="a-nav-label">Người dùng</div>
+        <div class="a-nav-item" data-page="users"><i class="fa-solid fa-users"></i><span>Quản lý người dùng</span></div>
+        <div class="a-nav-item" data-page="profile"><i class="fa-solid fa-id-card"></i><span>Hồ sơ học sinh</span></div>
+        <div class="a-nav-item" data-page="leaderboard"><i class="fa-solid fa-ranking-star"></i><span>Xếp hạng</span></div>
+      </div>
+
+      <div class="a-nav-group">
+        <div class="a-nav-label">Nội dung học tập</div>
+        <div class="a-nav-item" data-page="courses"><i class="fa-solid fa-book-open"></i><span>Khóa học &amp; bài học</span></div>
+        <div class="a-nav-item" data-page="quiz"><i class="fa-solid fa-list-check"></i><span>Quiz</span></div>
+        <div class="a-nav-item" data-page="lab"><i class="fa-solid fa-vial-circle-check"></i><span>Lab 3D<span class="a-nav-badge">CORE</span></span></div>
+        <div class="a-nav-item" data-page="reactions"><i class="fa-solid fa-database"></i><span>DB phản ứng</span></div>
+        <div class="a-nav-item" data-page="media"><i class="fa-solid fa-photo-film"></i><span>Media</span></div>
+      </div>
+
+      <div class="a-nav-group">
+        <div class="a-nav-label">Phân tích</div>
+        <div class="a-nav-item" data-page="ai-analytics"><i class="fa-solid fa-robot"></i><span>AI Assistant</span></div>
+        <div class="a-nav-item" data-page="learning-analytics"><i class="fa-solid fa-chart-line"></i><span>Learning Analytics</span></div>
+        <div class="a-nav-item" data-page="lab-analytics"><i class="fa-solid fa-diagram-project"></i><span>Phân tích Lab 3D</span></div>
+      </div>
+
+      <div class="a-nav-group">
+        <div class="a-nav-label">Hệ thống</div>
+        <div class="a-nav-item" data-page="notifications"><i class="fa-solid fa-bell"></i><span>Thông báo</span></div>
+        <div class="a-nav-item" data-page="roles"><i class="fa-solid fa-user-shield"></i><span>Phân quyền</span></div>
+        <div class="a-nav-item" data-page="logs"><i class="fa-solid fa-clock-rotate-left"></i><span>Nhật ký hệ thống</span></div>
+        <div class="a-nav-item" data-page="settings"><i class="fa-solid fa-gear"></i><span>Cài đặt</span></div>
+      </div>
+    </nav>
+
+    <div class="a-sidebar-foot">
+      <div class="a-user-chip">
+        <div class="a-user-avatar" id="a-user-avatar">A</div>
+        <div class="a-user-meta">
+          <div class="un" id="a-user-name">—</div>
+          <div class="ur" id="a-user-role">—</div>
+        </div>
+      </div>
+      <button class="a-logout-btn" onclick="adminLogout()"><i class="fa-solid fa-right-from-bracket"></i> <span>Đăng xuất</span></button>
+    </div>
+  </aside>
+
+  <div class="a-main">
+    <div class="a-topbar">
+      <button class="a-burger" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+      <button class="a-icon-btn" id="collapse-btn" onclick="toggleCollapse()" style="display:none;" title="Thu gọn"><i class="fa-solid fa-angles-left"></i></button>
+      <div>
+        <div class="a-crumb" id="page-title">Dashboard</div>
+        <div class="a-crumb-sub" id="page-sub">Tổng quan toàn hệ thống ChemCraft</div>
+      </div>
+      <div class="a-topbar-spacer"></div>
+      <div class="a-topbar-actions">
+        <button class="a-icon-btn" title="Thông báo"><i class="fa-regular fa-bell"></i><span class="dot"></span></button>
+        <button class="a-icon-btn" id="theme-toggle" onclick="toggleTheme()" title="Chuyển giao diện"><i class="fa-solid fa-moon"></i></button>
+      </div>
+    </div>
+
+    <div class="a-content"><div class="a-content-inner" id="page-root"><!-- render here --></div></div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   THEME
+   ════════════════════════════════════════════════════════════ */
+(function initTheme(){
+  const saved = localStorage.getItem('cc_admin_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+})();
+function toggleTheme(){
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('cc_admin_theme', next);
+  document.getElementById('theme-toggle').innerHTML = next === 'dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+  refreshChartsTheme();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  document.getElementById('theme-toggle').innerHTML = cur === 'dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+});
+
+/* ════════════════════════════════════════════════════════════
+   SIDEBAR (mobile + collapse)
+   ════════════════════════════════════════════════════════════ */
+function toggleSidebar(force){
+  const sb = document.getElementById('a-sidebar');
+  const ov = document.getElementById('a-overlay');
+  const open = force !== undefined ? force : !sb.classList.contains('open');
+  sb.classList.toggle('open', open);
+  ov.classList.toggle('show', open);
+}
+function toggleCollapse(){
+  document.body.classList.toggle('a-collapsed');
+}
+if (window.innerWidth > 900) document.getElementById('collapse-btn').style.display = 'flex';
+
+/* ════════════════════════════════════════════════════════════
+   AUTH
+   ════════════════════════════════════════════════════════════ */
+let _adminUser = null, _adminProfile = null;
+
+async function adminLogin(){
+  const email = document.getElementById('li-email').value.trim();
+  const pass  = document.getElementById('li-pass').value;
+  const errEl = document.getElementById('li-err');
+  const btn   = document.getElementById('li-submit');
+  errEl.classList.remove('show');
+  if (!email || !pass) { errEl.textContent = 'Vui lòng nhập đầy đủ email và mật khẩu.'; errEl.classList.add('show'); return; }
+  if (!window._fbAuth) { errEl.textContent = 'Không thể kết nối hệ thống xác thực. Vui lòng thử lại sau.'; errEl.classList.add('show'); return; }
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang đăng nhập…';
+  try {
+    await window._fbFns.signInWithEmailAndPassword(window._fbAuth, email, pass);
+  } catch (e) {
+    let msg = 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
+    if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password') msg = 'Sai email hoặc mật khẩu.';
+    if (e.code === 'auth/user-not-found') msg = 'Tài khoản không tồn tại.';
+    if (e.code === 'auth/too-many-requests') msg = 'Quá nhiều lần thử. Vui lòng đợi và thử lại.';
+    errEl.textContent = msg; errEl.classList.add('show');
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Đăng nhập';
+  }
+}
+function adminLogout(){
+  if (window._fbAuth) window._fbFns.signOut(window._fbAuth);
+}
+document.getElementById('li-pass')?.addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
+
+window.__onAdminAuth = function(user, profile){
+  const splash = document.getElementById('admin-splash');
+  const loginS = document.getElementById('login-screen');
+  const deniedS = document.getElementById('denied-screen');
+  const appS = document.getElementById('admin-app');
+
+  splash.classList.add('hide');
+  setTimeout(() => splash.style.display = 'none', 400);
+
+  if (!user) {
+    loginS.classList.add('show'); deniedS.style.display = 'none'; appS.classList.remove('show');
+    return;
+  }
+  if (!profile || profile.denied) {
+    loginS.classList.remove('show'); appS.classList.remove('show');
+    deniedS.style.display = 'flex';
+    return;
+  }
+  _adminUser = user; _adminProfile = profile;
+  loginS.classList.remove('show'); deniedS.style.display = 'none';
+  appS.classList.add('show');
+
+  const name = profile.displayName || user.email.split('@')[0];
+  document.getElementById('a-user-name').textContent = name;
+  document.getElementById('a-user-role').textContent = roleLabel(profile.role);
+  document.getElementById('a-user-avatar').textContent = name.slice(0,1).toUpperCase();
+
+  loadDashboardData();
+};
+
+function roleLabel(role){
+  const map = { super_admin:'Super Admin', admin:'Admin', teacher:'Teacher', content_manager:'Content Manager', lab_manager:'Lab Manager', data_analyst:'Data Analyst' };
+  return map[role] || role || 'Quản trị viên';
+}
+
+/* ════════════════════════════════════════════════════════════
+   NAVIGATION / PAGE ROUTER
+   ════════════════════════════════════════════════════════════ */
+const PAGES = {
+  dashboard:  { title:'Dashboard', sub:'Tổng quan toàn hệ thống ChemCraft', render: renderDashboard },
+  users:      { title:'Quản lý người dùng', sub:'Danh sách tài khoản, phân quyền, trạng thái', render: () => renderStub('fa-users','Quản lý người dùng',
+      'Danh sách toàn bộ tài khoản với avatar, họ tên, email, vai trò, trường/lớp, ngày đăng ký, lần đăng nhập cuối. Hỗ trợ tìm kiếm, lọc, khóa/mở khóa, reset mật khẩu, chỉnh sửa, xóa và phân quyền.',
+      ['Tìm kiếm & bộ lọc','Khóa / mở khóa','Reset mật khẩu','Phân quyền']) },
+  profile:    { title:'Hồ sơ học sinh', sub:'Chi tiết tiến độ học & hành vi từng học sinh', render: () => renderStub('fa-id-card','Hồ sơ chi tiết học sinh',
+      'Khi nhấn vào một học sinh: tiến độ học, điểm Quiz, điểm trung bình, bài đã học, Lab đã thực hiện, lịch sử AI, thời gian học, heatmap hoạt động, hành trình học, lỗi thường mắc — tất cả hiển thị bằng biểu đồ.',
+      ['Heatmap hoạt động','Hành trình học','Lịch sử AI','Lỗi thường gặp']) },
+  leaderboard:{ title:'Xếp hạng học sinh', sub:'Bảng xếp hạng theo điểm trung bình & số bài hoàn thành', render: () => renderStub('fa-ranking-star','Bảng xếp hạng',
+      'Kết hợp điểm trung bình và số bài học đã hoàn thành thành một leaderboard tổng, hỗ trợ giáo viên nhận diện học sinh nổi bật hoặc cần hỗ trợ thêm.', ['Điểm trung bình','Bài hoàn thành','Top học sinh']) },
+  courses:    { title:'Khóa học & bài học', sub:'CRUD chương, bài học, video, PDF, công thức, animation', render: () => renderStub('fa-book-open','Quản lý khóa học',
+      'CRUD đầy đủ cho chương, bài học, video, hình ảnh, file PDF, công thức, animation — kèm trình soạn thảo Rich Text hỗ trợ kéo thả.', ['Rich Text Editor','Kéo thả nội dung','Quản lý chương/bài']) },
+  quiz:       { title:'Quản lý Quiz', sub:'Tạo câu hỏi & phân tích kết quả theo từng câu', render: () => renderStub('fa-list-check','Quản lý Quiz',
+      'Tạo trắc nghiệm, điền đáp án, kéo thả, ghép đôi, câu hỏi hình ảnh. Phân tích tỉ lệ đúng/sai theo từng câu, độ khó, thời gian làm bài, tỉ lệ làm lại — để phát hiện câu hỏi quá khó hoặc nội dung chưa rõ.',
+      ['Tỉ lệ đúng/sai theo câu','Độ khó','Thời gian làm bài','Tỉ lệ làm lại']) },
+  lab:        { title:'Quản lý Lab 3D', sub:'Hóa chất, dụng cụ, phản ứng, mô hình 3D — không cần code', render: () => renderStub('fa-vial-circle-check','Quản lý Lab 3D',
+      'Module quan trọng nhất: quản lý hóa chất, dụng cụ, phản ứng, file mô hình 3D, animation, particle, shader và database phản ứng qua giao diện trực quan — admin chỉ cần nhập dữ liệu (hóa chất mới, phản ứng mới, kết tủa, khí, chỉ thị màu, ion màu, dữ liệu pH), hệ thống tự cập nhật, không cần sửa code.',
+      ['Hóa chất & dụng cụ','Phản ứng & kết tủa','Chỉ thị màu / pH','Mô hình 3D & shader']) },
+  reactions:  { title:'Cơ sở dữ liệu phản ứng', sub:'Import/Export Excel, kiểm tra & so sánh dữ liệu', render: () => renderStub('fa-database','DB phản ứng',
+      'Đọc trực tiếp từ Excel/Database. Giao diện Import/Export Excel, kiểm tra dữ liệu, cảnh báo trùng lặp, so sánh phiên bản và chỉnh sửa từng phản ứng.', ['Import / Export Excel','Cảnh báo trùng dữ liệu','So sánh phiên bản']) },
+  media:      { title:'Quản lý Media', sub:'Ảnh, video, PDF, mô hình 3D, texture, HDRI, âm thanh', render: () => renderStub('fa-photo-film','Quản lý Media',
+      'Quản lý ảnh, video, PDF, mô hình 3D, texture, HDRI, âm thanh — hỗ trợ upload, preview, version, folder và tag.', ['Upload & Preview','Version & Folder','Gắn Tag']) },
+  'ai-analytics': { title:'AI Assistant Analytics', sub:'Chủ đề, từ khóa, mức hài lòng từ lịch sử trò chuyện', render: () => renderStub('fa-robot','AI Assistant Analytics',
+      'Thống kê chủ đề hỏi nhiều nhất, từ khóa phổ biến, tỉ lệ hài lòng, câu hỏi chưa trả lời tốt, follow-up — kèm Word Cloud, Top 100 câu hỏi và biểu đồ xu hướng.', ['Word Cloud','Top 100 câu hỏi','Tỉ lệ hài lòng']) },
+  'learning-analytics': { title:'Learning Analytics', sub:'User Growth, Retention, Churn, Funnel, Leaderboard', render: () => renderStub('fa-chart-line','Learning Analytics',
+      'Triển khai đầy đủ: User Growth, Retention, Churn, Session Time, Heatmap, User Journey, Funnel, Leaderboard — có thể lọc theo trường, lớp, khóa học, bài học, khoảng thời gian.', ['Retention / Churn','Funnel hành trình','Lọc theo trường/lớp']) },
+  'lab-analytics': { title:'Phân tích Lab 3D', sub:'Sankey, Funnel, Drop-off — bước nào học sinh hay sai nhất', render: () => renderStub('fa-diagram-project','Phân tích Lab 3D',
+      'Thu thập thí nghiệm đã thực hiện, bước sai, thời gian mỗi bước, bỏ giữa chừng, làm lại, quan sát sai hiện tượng. Hiển thị bằng Sankey Diagram, Funnel, Step Completion, Drop-off Analysis để biết chính xác bước nào khiến nhiều học sinh thất bại nhất.',
+      ['Sankey Diagram','Drop-off Analysis','Step Completion']) },
+  notifications: { title:'Thông báo', sub:'Gửi thông báo toàn hệ thống, theo lớp/trường/người dùng', render: () => renderStub('fa-bell','Thông báo',
+      'Soạn và gửi thông báo toàn hệ thống, theo lớp, theo trường, hoặc theo từng người dùng cụ thể.', ['Toàn hệ thống','Theo lớp / trường','Theo người dùng']) },
+  roles:      { title:'Phân quyền', sub:'Super Admin, Admin, Teacher, Content/Lab Manager, Data Analyst', render: () => renderStub('fa-user-shield','Phân quyền',
+      'Quản lý vai trò Super Admin, Admin, Teacher, Content Manager, Lab Manager, Data Analyst — mỗi quyền chỉ truy cập các module được cấp.', ['6 nhóm vai trò','Giới hạn module theo quyền']) },
+  logs:       { title:'Nhật ký hệ thống', sub:'Audit log: ai sửa gì, khi nào, thiết bị, IP', render: () => renderStub('fa-clock-rotate-left','Nhật ký hệ thống',
+      'Lưu lại ai sửa gì, khi nào, từ thiết bị/IP nào, và các lỗi phát sinh — dưới dạng Audit Log đầy đủ.', ['Audit Log','Theo dõi IP/thiết bị','Lịch sử lỗi']) },
+  settings:   { title:'Cài đặt', sub:'Cấu hình chung hệ thống Admin', render: () => renderStub('fa-gear','Cài đặt hệ thống',
+      'Cấu hình chung cho hệ thống Admin: thông tin nền tảng, tích hợp, sao lưu dữ liệu.', ['Thông tin nền tảng','Tích hợp & API','Sao lưu dữ liệu']) },
+};
+
+document.querySelectorAll('.a-nav-item').forEach(item => {
+  item.addEventListener('click', () => navigateTo(item.dataset.page));
+});
+
+function navigateTo(key){
+  const page = PAGES[key]; if (!page) return;
+  document.querySelectorAll('.a-nav-item').forEach(i => i.classList.toggle('active', i.dataset.page === key));
+  document.getElementById('page-title').textContent = page.title;
+  document.getElementById('page-sub').textContent = page.sub;
+  page.render();
+  if (window.innerWidth <= 900) toggleSidebar(false);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ════════════════════════════════════════════════════════════
+   STUB RENDERER (cho các module sẽ xây tiếp theo)
+   ════════════════════════════════════════════════════════════ */
+function renderStub(icon, title, desc, chips){
+  document.getElementById('page-root').innerHTML = `
+    <div class="stub-wrap">
+      <div class="stub-icon"><i class="fa-solid ${icon}"></i></div>
+      <h3>${title}</h3>
+      <p>${desc}</p>
+      <div class="stub-list">${(chips||[]).map(c => `<div class="stub-chip">${c}</div>`).join('')}</div>
+      <div class="stub-badge"><i class="fa-solid fa-hammer"></i> Module sẵn sàng để phát triển tiếp</div>
+    </div>`;
+}
+
+/* ════════════════════════════════════════════════════════════
+   DASHBOARD — KPI thật từ Firestore + biểu đồ minh họa
+   ════════════════════════════════════════════════════════════ */
+let _charts = {};
+
+function renderDashboard(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div>
+        <div class="a-page-title">Chào mừng trở lại 👋</div>
+        <div class="a-page-desc">Tổng quan hoạt động nền tảng ChemCraft theo thời gian thực.</div>
+      </div>
+      <div class="a-filter-pills">
+        <div class="a-filter-pill active" data-range="today">Hôm nay</div>
+        <div class="a-filter-pill" data-range="week">Tuần</div>
+        <div class="a-filter-pill" data-range="month">Tháng</div>
+        <div class="a-filter-pill" data-range="year">Năm</div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="kpi-grid"></div>
+
+    <div class="panel-grid">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Tăng trưởng người dùng</div><div class="panel-tag">Line chart</div></div>
+        <div class="chart-wrap"><canvas id="chart-growth"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Phân bổ hoạt động</div><div class="panel-tag">Donut chart</div></div>
+        <div class="chart-wrap"><canvas id="chart-donut"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel-grid">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Thí nghiệm Lab theo tuần</div><div class="panel-tag">Bar chart</div></div>
+        <div class="chart-wrap sm"><canvas id="chart-bar"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Tỉ lệ hoàn thành khóa học</div><div class="panel-tag">Area chart</div></div>
+        <div class="chart-wrap sm"><canvas id="chart-area"></canvas></div>
+      </div>
+    </div>
+
+    <div class="a-table-wrap">
+      <table class="a-table">
+        <thead><tr><th>Người dùng</th><th>Trường / Lớp</th><th>Đăng ký</th><th>Trạng thái</th></tr></thead>
+        <tbody id="recent-users-body">
+          <tr><td colspan="4" style="text-align:center; color:var(--fg-mute); padding:24px;">Đang tải dữ liệu Firestore…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.querySelectorAll('.a-filter-pill').forEach(p => p.addEventListener('click', () => {
+    document.querySelectorAll('.a-filter-pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+  }));
+
+  renderKpiSkeletons();
+  renderMockCharts();
+  loadDashboardData();
+}
+
+function renderKpiSkeletons(){
+  const items = [
+    {key:'totalUsers', label:'Tổng số người dùng', icon:'fa-users', color:'linear-gradient(135deg,var(--indigo),#6B82FF)'},
+    {key:'newUsers',   label:'Người dùng mới (tuần)', icon:'fa-user-plus', color:'linear-gradient(135deg,var(--green),#34D399)'},
+    {key:'onlineUsers',label:'Đang hoạt động', icon:'fa-circle-dot', color:'linear-gradient(135deg,var(--cyan),#22D3EE)'},
+    {key:'totalLessons',label:'Tổng số bài học', icon:'fa-book', color:'linear-gradient(135deg,var(--gold),#FBBF24)'},
+    {key:'totalQuiz',  label:'Tổng số Quiz', icon:'fa-list-check', color:'linear-gradient(135deg,var(--purple),#A78BFA)'},
+    {key:'totalLab',   label:'Thí nghiệm Lab', icon:'fa-vial', color:'linear-gradient(135deg,var(--pink),#F472B6)'},
+    {key:'aiChats',    label:'Cuộc hội thoại AI', icon:'fa-robot', color:'linear-gradient(135deg,var(--orange),#FB923C)'},
+    {key:'completion', label:'Tỉ lệ hoàn thành KH', icon:'fa-chart-pie', color:'linear-gradient(135deg,var(--red),#F87171)'},
+  ];
+  document.getElementById('kpi-grid').innerHTML = items.map(it => `
+    <div class="kpi-card">
+      <div class="kpi-top">
+        <div class="kpi-icon" style="background:${it.color}"><i class="fa-solid ${it.icon}"></i></div>
+      </div>
+      <div class="kpi-value" id="kpi-${it.key}"><span class="sk"></span></div>
+      <div class="kpi-label">${it.label}</div>
+    </div>`).join('');
+}
+
+async function loadDashboardData(){
+  if (!window._fbDb || !document.getElementById('kpi-totalUsers')) return;
+  const { collection, getCountFromServer, query, where, Timestamp, getDocs, orderBy, limit } = window._fbFns;
+  const db = window._fbDb;
+
+  // Tổng số người dùng (thật, từ Firestore)
+  try {
+    const snap = await getCountFromServer(collection(db, 'users'));
+    setKpi('totalUsers', snap.data().count.toLocaleString('vi-VN'));
+  } catch (e) { setKpi('totalUsers', '—'); console.warn(e); }
+
+  // Người dùng mới trong 7 ngày qua (thật)
+  try {
+    const weekAgo = Timestamp.fromMillis(Date.now() - 7*24*60*60*1000);
+    const q = query(collection(db, 'users'), where('createdAt', '>=', weekAgo));
+    const snap = await getCountFromServer(q);
+    setKpi('newUsers', '+' + snap.data().count.toLocaleString('vi-VN'));
+  } catch (e) { setKpi('newUsers', '—'); }
+
+  // Danh sách người dùng gần đây nhất (thật)
+  try {
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(6));
+    const snap = await getDocs(q);
+    const rows = [];
+    snap.forEach(d => {
+      const u = d.data();
+      const name = u.displayName || (u.email ? u.email.split('@')[0] : 'Học sinh');
+      const initials = name.slice(0,1).toUpperCase();
+      rows.push(`<tr>
+        <td><div class="row-user"><div class="row-avatar">${initials}</div><div><div style="font-weight:700;">${escapeHtml(name)}</div><div style="font-size:0.76rem; color:var(--fg-mute);">${escapeHtml(u.email||'')}</div></div></div></td>
+        <td>${escapeHtml(u.school || '—')}${u.class ? ' / ' + escapeHtml(u.class) : ''}</td>
+        <td>${formatDate(u.createdAt)}</td>
+        <td><span class="badge ok">Hoạt động</span></td>
+      </tr>`);
+    });
+    document.getElementById('recent-users-body').innerHTML = rows.length ? rows.join('') :
+      '<tr><td colspan="4" style="text-align:center; color:var(--fg-mute); padding:24px;">Chưa có dữ liệu người dùng.</td></tr>';
+  } catch (e) {
+    document.getElementById('recent-users-body').innerHTML =
+      `<tr><td colspan="4" style="text-align:center; color:var(--fg-mute); padding:24px;">Không thể tải danh sách (${escapeHtml(e.message||'lỗi Firestore')}).</td></tr>`;
+  }
+
+  // Các chỉ số chưa có collection riêng trong dữ liệu hiện tại — minh họa, sẽ nối khi module tương ứng được xây
+  setKpi('onlineUsers', '—', true);
+  setKpi('totalLessons', '—', true);
+  setKpi('totalQuiz', '—', true);
+  setKpi('totalLab', '—', true);
+  setKpi('aiChats', '—', true);
+  setKpi('completion', '—', true);
+}
+
+function setKpi(key, value, pending){
+  const el = document.getElementById('kpi-' + key);
+  if (!el) return;
+  el.innerHTML = value + (pending ? ' <span style="font-size:0.64rem; font-weight:700; color:var(--fg-mute); vertical-align:middle;">(chưa kết nối)</span>' : '');
+}
+function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function formatDate(ts){
+  try {
+    if (!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString('vi-VN');
+  } catch(e){ return '—'; }
+}
+
+/* ── Charts minh họa (sẽ thay bằng dữ liệu thật khi các module ghi log được xây) ── */
+function chartColors(){
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return { grid: dark ? '#232E45' : '#E4E9F1', text: dark ? '#9FAEC8' : '#5B6477' };
+}
+function renderMockCharts(){
+  Object.values(_charts).forEach(c => c && c.destroy());
+  const C = chartColors();
+  Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+
+  _charts.growth = new Chart(document.getElementById('chart-growth'), {
+    type:'line',
+    data:{ labels:['T2','T3','T4','T5','T6','T7','CN'],
+      datasets:[{ label:'Người dùng mới', data:[12,19,14,22,28,31,26], borderColor:'#06B6D4', backgroundColor:'rgba(6,182,212,0.12)', fill:true, tension:.4, pointRadius:3 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{color:C.grid}, ticks:{color:C.text}}, y:{grid:{color:C.grid}, ticks:{color:C.text}} } }
+  });
+
+  _charts.donut = new Chart(document.getElementById('chart-donut'), {
+    type:'doughnut',
+    data:{ labels:['Bài học','Quiz','Lab 3D','Trợ lý AI'],
+      datasets:[{ data:[38,27,21,14], backgroundColor:['#4F6BFF','#F59E0B','#06B6D4','#8B5CF6'], borderWidth:0 }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'68%', plugins:{ legend:{ position:'bottom', labels:{color:C.text, padding:14, usePointStyle:true} } } }
+  });
+
+  _charts.bar = new Chart(document.getElementById('chart-bar'), {
+    type:'bar',
+    data:{ labels:['Tuần 1','Tuần 2','Tuần 3','Tuần 4'],
+      datasets:[{ label:'Lượt thực hiện', data:[120,160,142,188], backgroundColor:'#10B981', borderRadius:6, maxBarThickness:36 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}, ticks:{color:C.text}}, y:{grid:{color:C.grid}, ticks:{color:C.text}} } }
+  });
+
+  _charts.area = new Chart(document.getElementById('chart-area'), {
+    type:'line',
+    data:{ labels:['Hóa 10','Hóa 11','Hóa 12'],
+      datasets:[{ label:'Tỉ lệ hoàn thành (%)', data:[64,71,58], borderColor:'#EC4899', backgroundColor:'rgba(236,72,153,0.14)', fill:true, tension:.35, pointRadius:3 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}, ticks:{color:C.text}}, y:{grid:{color:C.grid}, ticks:{color:C.text}, suggestedMax:100} } }
+  });
+}
+function refreshChartsTheme(){
+  if (document.getElementById('chart-growth')) renderMockCharts();
+}
+</script>
+</body>
+</html>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: QUẢN LÝ NGƯỜI DÙNG (thật — đọc từ Firestore)
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['users'] = { title:'Quản lý người dùng', sub:'Danh sách tài khoản, phân quyền, trạng thái', render: renderUsers };
+
+let _usersCache = [];
+let _usersFiltered = [];
+let _usersPage = 1;
+const USERS_PER_PAGE = 15;
+
+async function renderUsers(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div>
+        <div class="a-page-title">Quản lý người dùng</div>
+        <div class="a-page-desc">Toàn bộ tài khoản đã đăng ký — tìm kiếm, lọc, phân quyền.</div>
+      </div>
+      <button class="mod-btn mod-btn-primary" onclick="openUserCreateModal()">
+        <i class="fa-solid fa-user-plus"></i> Thêm tài khoản
+      </button>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="u-toolbar">
+      <div class="u-search-wrap">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="u-search" placeholder="Tìm tên, email…" oninput="filterUsers()">
+      </div>
+      <select id="u-filter-role" class="u-select" onchange="filterUsers()">
+        <option value="">Tất cả vai trò</option>
+        <option value="student">Học sinh</option>
+        <option value="teacher">Teacher</option>
+        <option value="admin">Admin</option>
+        <option value="super_admin">Super Admin</option>
+        <option value="content_manager">Content Manager</option>
+        <option value="lab_manager">Lab Manager</option>
+        <option value="data_analyst">Data Analyst</option>
+      </select>
+      <select id="u-filter-status" class="u-select" onchange="filterUsers()">
+        <option value="">Tất cả trạng thái</option>
+        <option value="active">Hoạt động</option>
+        <option value="locked">Đã khóa</option>
+      </select>
+      <div class="u-count" id="u-count"></div>
+    </div>
+
+    <!-- Table -->
+    <div class="a-table-wrap">
+      <table class="a-table" id="u-table">
+        <thead>
+          <tr>
+            <th>Người dùng</th>
+            <th>Vai trò</th>
+            <th>Trường / Lớp</th>
+            <th>Ngày đăng ký</th>
+            <th>Đăng nhập cuối</th>
+            <th>Trạng thái</th>
+            <th style="width:100px;">Thao tác</th>
+          </tr>
+        </thead>
+        <tbody id="u-body">
+          <tr><td colspan="7"><div class="tbl-loading"><div class="spin"></div> Đang tải từ Firestore…</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="u-pagination" class="u-pagination"></div>
+
+    <!-- User detail/edit modal -->
+    <div class="mod-overlay" id="user-modal-overlay" onclick="if(event.target===this)closeUserModal()">
+      <div class="mod-panel" id="user-modal"><!-- inject --></div>
+    </div>
+  `;
+
+  await fetchUsersFromFirestore();
+}
+
+async function fetchUsersFromFirestore(){
+  const { collection, getDocs, orderBy, query } = window._fbFns;
+  const db = window._fbDb;
+  try {
+    const q = query(collection(db,'users'), orderBy('createdAt','desc'));
+    const snap = await getDocs(q);
+    _usersCache = [];
+    snap.forEach(d => _usersCache.push({ id: d.id, ...d.data() }));
+    filterUsers();
+  } catch(e){
+    document.getElementById('u-body').innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--fg-mute); padding:28px;">Lỗi tải dữ liệu: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function filterUsers(){
+  const q    = (document.getElementById('u-search')?.value || '').toLowerCase();
+  const role = document.getElementById('u-filter-role')?.value || '';
+  const status = document.getElementById('u-filter-status')?.value || '';
+  _usersFiltered = _usersCache.filter(u => {
+    const name  = (u.displayName || '').toLowerCase();
+    const email = (u.email || '').toLowerCase();
+    if (q && !name.includes(q) && !email.includes(q)) return false;
+    if (role && (u.role || 'student') !== role) return false;
+    if (status === 'locked' && !u.locked) return false;
+    if (status === 'active' && u.locked) return false;
+    return true;
+  });
+  _usersPage = 1;
+  renderUsersTable();
+}
+
+function renderUsersTable(){
+  const total = _usersFiltered.length;
+  const el = document.getElementById('u-count');
+  if (el) el.textContent = `${total.toLocaleString('vi-VN')} người dùng`;
+
+  const start = (_usersPage - 1) * USERS_PER_PAGE;
+  const slice = _usersFiltered.slice(start, start + USERS_PER_PAGE);
+
+  const roleColors = {
+    super_admin:'background:var(--red-l); color:var(--red-d)',
+    admin:'background:var(--indigo-l); color:var(--indigo-d)',
+    teacher:'background:var(--green-l); color:var(--green-d)',
+    content_manager:'background:var(--gold-l); color:var(--gold-d)',
+    lab_manager:'background:var(--purple-l); color:var(--purple-d)',
+    data_analyst:'background:var(--cyan-l); color:var(--cyan-d)',
+    student:'background:var(--surface-2); color:var(--fg-mute)',
+  };
+
+  const rows = slice.map(u => {
+    const name = u.displayName || u.email?.split('@')[0] || 'Ẩn danh';
+    const role = u.role || 'student';
+    const roleSt = roleColors[role] || roleColors.student;
+    const locked = !!u.locked;
+    return `<tr>
+      <td>
+        <div class="row-user">
+          <div class="row-avatar" style="background:${avatarGrad(name)}">${name.slice(0,1).toUpperCase()}</div>
+          <div>
+            <div style="font-weight:700; font-size:0.88rem;">${escapeHtml(name)}</div>
+            <div style="font-size:0.75rem; color:var(--fg-mute);">${escapeHtml(u.email||'')}</div>
+          </div>
+        </div>
+      </td>
+      <td><span class="badge" style="${roleSt}">${roleLabel(role)}</span></td>
+      <td style="font-size:0.82rem; color:var(--fg-soft);">${escapeHtml(u.school||'—')}${u.class?' / '+escapeHtml(u.class):''}</td>
+      <td style="font-size:0.82rem; color:var(--fg-soft);">${formatDate(u.createdAt)}</td>
+      <td style="font-size:0.82rem; color:var(--fg-soft);">${formatDate(u.lastLogin)||'—'}</td>
+      <td><span class="badge ${locked?'warn':'ok'}">${locked?'Đã khóa':'Hoạt động'}</span></td>
+      <td>
+        <div style="display:flex; gap:5px;">
+          <button class="tbl-act-btn" title="Xem hồ sơ" onclick="openUserProfile('${u.id}')"><i class="fa-solid fa-eye"></i></button>
+          <button class="tbl-act-btn" title="Chỉnh sửa" onclick="openUserEditModal('${u.id}')"><i class="fa-solid fa-pen"></i></button>
+          <button class="tbl-act-btn danger" title="${locked?'Mở khóa':'Khóa tài khoản'}" onclick="toggleLockUser('${u.id}',${locked})">
+            <i class="fa-solid ${locked?'fa-lock-open':'fa-lock'}"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('u-body').innerHTML = rows || '<tr><td colspan="7" style="text-align:center; color:var(--fg-mute); padding:28px;">Không tìm thấy kết quả.</td></tr>';
+  renderPagination(total);
+}
+
+function renderPagination(total){
+  const pages = Math.ceil(total / USERS_PER_PAGE);
+  const pg = document.getElementById('u-pagination');
+  if (!pg || pages <= 1) { if(pg) pg.innerHTML=''; return; }
+  let html = '<div class="pg-wrap">';
+  html += `<button class="pg-btn" ${_usersPage<=1?'disabled':''} onclick="gotoPage(${_usersPage-1})"><i class="fa-solid fa-chevron-left"></i></button>`;
+  for (let i=1;i<=pages;i++){
+    if (i===1||i===pages||Math.abs(i-_usersPage)<=1) {
+      html += `<button class="pg-btn ${i===_usersPage?'active':''}" onclick="gotoPage(${i})">${i}</button>`;
+    } else if (Math.abs(i-_usersPage)===2) { html += '<span class="pg-ellipsis">…</span>'; }
+  }
+  html += `<button class="pg-btn" ${_usersPage>=pages?'disabled':''} onclick="gotoPage(${_usersPage+1})"><i class="fa-solid fa-chevron-right"></i></button>`;
+  pg.innerHTML = html + '</div>';
+}
+function gotoPage(n){ _usersPage=n; renderUsersTable(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+function avatarGrad(name){
+  const grads=['linear-gradient(135deg,#4F6BFF,#8B5CF6)','linear-gradient(135deg,#06B6D4,#10B981)','linear-gradient(135deg,#F59E0B,#EC4899)','linear-gradient(135deg,#EC4899,#8B5CF6)','linear-gradient(135deg,#10B981,#06B6D4)'];
+  return grads[name.charCodeAt(0) % grads.length];
+}
+
+async function toggleLockUser(uid, currentlyLocked){
+  if (!confirm(currentlyLocked ? 'Mở khóa tài khoản này?' : 'Khóa tài khoản này?')) return;
+  const { doc, updateDoc } = window._fbFns || {};
+  if (!updateDoc) { alert('Chức năng này cần thêm updateDoc vào _fbFns.'); return; }
+  try {
+    await updateDoc(doc(window._fbDb,'users',uid), { locked: !currentlyLocked });
+    const u = _usersCache.find(x=>x.id===uid);
+    if (u) u.locked = !currentlyLocked;
+    filterUsers();
+  } catch(e){ alert('Lỗi: ' + e.message); }
+}
+
+function openUserEditModal(uid){
+  const u = _usersCache.find(x=>x.id===uid);
+  if (!u) return;
+  const roles = ['student','teacher','admin','super_admin','content_manager','lab_manager','data_analyst'];
+  document.getElementById('user-modal').innerHTML = `
+    <div class="mod-head"><div class="mod-title"><i class="fa-solid fa-pen"></i> Chỉnh sửa người dùng</div><button class="mod-close" onclick="closeUserModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="mod-body">
+      <div class="mod-field"><label>Tên hiển thị</label><input type="text" id="me-name" value="${escapeHtml(u.displayName||'')}"></div>
+      <div class="mod-field"><label>Email</label><input type="text" id="me-email" value="${escapeHtml(u.email||'')}" disabled style="opacity:.5;"></div>
+      <div class="mod-field"><label>Trường học</label><input type="text" id="me-school" value="${escapeHtml(u.school||'')}"></div>
+      <div class="mod-field"><label>Lớp</label><input type="text" id="me-class" value="${escapeHtml(u.class||'')}"></div>
+      <div class="mod-field"><label>Vai trò</label>
+        <select id="me-role">${roles.map(r=>`<option value="${r}" ${(u.role||'student')===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="mod-foot">
+      <button class="mod-btn mod-btn-ghost" onclick="closeUserModal()">Hủy</button>
+      <button class="mod-btn mod-btn-primary" onclick="saveUserEdit('${u.id}')"><i class="fa-solid fa-floppy-disk"></i> Lưu thay đổi</button>
+    </div>`;
+  openModal('user-modal-overlay');
+}
+
+async function saveUserEdit(uid){
+  const name   = document.getElementById('me-name').value.trim();
+  const school = document.getElementById('me-school').value.trim();
+  const cls    = document.getElementById('me-class').value.trim();
+  const role   = document.getElementById('me-role').value;
+  const { doc, updateDoc } = window._fbFns;
+  try {
+    await updateDoc(doc(window._fbDb,'users',uid), { displayName:name, school, class:cls, role });
+    const u = _usersCache.find(x=>x.id===uid);
+    if (u) Object.assign(u, { displayName:name, school, class:cls, role });
+    filterUsers(); closeUserModal();
+  } catch(e){ alert('Lỗi lưu: ' + e.message); }
+}
+
+function openUserProfile(uid){
+  const u = _usersCache.find(x=>x.id===uid);
+  if (!u) return;
+  navigateTo('profile');
+  setTimeout(() => renderProfileForUser(u), 100);
+}
+
+function openUserCreateModal(){
+  document.getElementById('user-modal').innerHTML = `
+    <div class="mod-head"><div class="mod-title"><i class="fa-solid fa-user-plus"></i> Thêm tài khoản</div><button class="mod-close" onclick="closeUserModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="mod-body">
+      <div class="mod-note">Để tạo tài khoản mới, hãy dùng Firebase Console hoặc Admin SDK để bảo mật thông tin đăng nhập. Module này sẽ kết nối với API backend khi được xây dựng tiếp.</div>
+    </div>
+    <div class="mod-foot"><button class="mod-btn mod-btn-ghost" onclick="closeUserModal()">Đóng</button></div>`;
+  openModal('user-modal-overlay');
+}
+function closeUserModal(){ closeModal('user-modal-overlay'); }
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: HỒ SƠ HỌC SINH
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['profile'] = { title:'Hồ sơ học sinh', sub:'Chi tiết tiến độ học & hành vi từng học sinh', render: renderProfileSearch };
+
+function renderProfileSearch(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">Hồ sơ học sinh</div><div class="a-page-desc">Chọn học sinh để xem hồ sơ chi tiết.</div></div>
+    </div>
+    <div class="u-toolbar" style="margin-bottom:18px;">
+      <div class="u-search-wrap">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="ps-search" placeholder="Tìm tên, email…" oninput="filterProfileSearch()">
+      </div>
+    </div>
+    <div class="kpi-grid" id="ps-list" style="grid-template-columns: repeat(auto-fill, minmax(220px,1fr));">
+      <div class="tbl-loading"><div class="spin"></div> Đang tải…</div>
+    </div>`;
+  setTimeout(filterProfileSearch, 100);
+}
+
+function filterProfileSearch(){
+  const q = (document.getElementById('ps-search')?.value||'').toLowerCase();
+  const list = (q ? _usersCache.filter(u => (u.displayName||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q)) : _usersCache).slice(0,24);
+  document.getElementById('ps-list').innerHTML = list.map(u => {
+    const name = u.displayName || u.email?.split('@')[0] || 'Ẩn danh';
+    const lessons = (u.lessonHistory||[]).length;
+    return `<div class="kpi-card" style="cursor:pointer; user-select:none;" onclick="renderProfileForUser(${JSON.stringify(JSON.stringify(u))})">
+      <div class="kpi-top">
+        <div class="kpi-icon" style="background:${avatarGrad(name)}">${name.slice(0,1).toUpperCase()}</div>
+        <span class="badge ok">Hoạt động</span>
+      </div>
+      <div style="font-weight:800; font-size:1rem; color:var(--fg); margin-top:4px;">${escapeHtml(name)}</div>
+      <div style="font-size:0.76rem; color:var(--fg-mute); font-weight:500; margin-top:2px;">${escapeHtml(u.email||'')}</div>
+      <div style="margin-top:10px; font-size:0.8rem; color:var(--fg-soft); font-weight:600;">${lessons} bài đã học</div>
+    </div>`;
+  }).join('') || '<div style="color:var(--fg-mute); padding:24px;">Không tìm thấy học sinh.</div>';
+}
+
+function renderProfileForUser(u){
+  if (typeof u === 'string') { try { u = JSON.parse(u); } catch(e){ return; } }
+  const name = u.displayName || u.email?.split('@')[0] || 'Ẩn danh';
+  const lessons = (u.lessonHistory || []);
+  const score = typeof u.avgScore === 'number' ? u.avgScore.toFixed(1) : '—';
+
+  document.getElementById('page-root').innerHTML = `
+    <div style="margin-bottom:20px;">
+      <button class="mod-btn mod-btn-ghost" onclick="renderProfileSearch()" style="margin-bottom:16px;"><i class="fa-solid fa-arrow-left"></i> Quay lại</button>
+      <div class="profile-hero">
+        <div class="p-avatar" style="background:${avatarGrad(name)}">${name.slice(0,1).toUpperCase()}</div>
+        <div>
+          <div style="font-size:1.36rem; font-weight:800; color:var(--fg);">${escapeHtml(name)}</div>
+          <div style="font-size:0.84rem; color:var(--fg-soft); margin-top:3px;">${escapeHtml(u.email||'')} &nbsp;·&nbsp; ${escapeHtml(u.school||'Chưa rõ trường')} ${u.class?'/ '+escapeHtml(u.class):''}</div>
+          <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="badge ok">Hoạt động</span>
+            <span class="badge" style="background:var(--indigo-l); color:var(--indigo-d);">${roleLabel(u.role||'student')}</span>
+            <span class="badge off">Đăng ký: ${formatDate(u.createdAt)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      ${[['Bài đã học', lessons.length, 'fa-book', 'var(--indigo)'], ['Điểm TB', score, 'fa-star', 'var(--gold)'],
+         ['Giờ học', u.totalMinutes ? Math.round(u.totalMinutes/60)+'h' : '—', 'fa-clock', 'var(--cyan)'],
+         ['Lần hỏi AI', u.aiChats||'—', 'fa-robot', 'var(--purple)']
+       ].map(([l,v,ic,co]) => `
+        <div class="kpi-card">
+          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div></div>
+          <div class="kpi-value">${v}</div><div class="kpi-label">${l}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="panel-grid">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Bài học đã hoàn thành</div></div>
+        <div style="max-height:260px; overflow-y:auto;">
+          ${lessons.length ? lessons.slice(-10).reverse().map(h => `
+            <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);">
+              <div style="width:28px; height:28px; border-radius:8px; background:var(--indigo-l); display:flex; align-items:center; justify-content:center;"><i class="fa-solid fa-book" style="color:var(--indigo); font-size:.78rem;"></i></div>
+              <div style="font-size:0.84rem; font-weight:600; color:var(--fg);">${escapeHtml(h.title||h.id||'Bài học')}</div>
+              <div style="margin-left:auto; font-size:0.76rem; color:var(--fg-mute);">${formatDate(h.date)||''}</div>
+            </div>`).join('') : '<div style="color:var(--fg-mute); text-align:center; padding:28px;">Chưa có lịch sử học.</div>'}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Heatmap hoạt động (minh họa)</div></div>
+        <div id="heatmap-wrap"></div>
+        <div style="font-size:0.74rem; color:var(--fg-mute); margin-top:8px; font-weight:500;">Mỗi ô = 1 ngày trong 12 tuần gần nhất</div>
+      </div>
+    </div>
+  `;
+  renderHeatmap('heatmap-wrap');
+}
+
+function renderHeatmap(containerId){
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const days = 84, cols = 12;
+  const mock = Array.from({length:days}, () => Math.random() < .35 ? 0 : Math.floor(Math.random()*4)+1);
+  const colors = ['var(--surface-2)','var(--cyan-l)','#7ED8E8','var(--cyan)','var(--cyan-d)'];
+  const labels = ['Không hoạt động','Ít','Vừa','Nhiều','Rất nhiều'];
+  let html = '<div style="display:grid; grid-template-columns:repeat('+cols+',1fr); gap:3px;">';
+  mock.forEach(v => { html += `<div title="${labels[v]}" style="height:12px; border-radius:3px; background:${colors[v]};"></div>`; });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: AI ASSISTANT ANALYTICS
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['ai-analytics'] = { title:'AI Assistant Analytics', sub:'Chủ đề, từ khóa, mức hài lòng', render: renderAIAnalytics };
+
+function renderAIAnalytics(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">AI Assistant Analytics</div>
+      <div class="a-page-desc">Phân tích lịch sử trò chuyện với Gemini để hiểu học sinh đang vướng ở đâu.</div></div>
+    </div>
+
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      ${[['Tổng câu hỏi','4,218','fa-comment-dots','var(--cyan)','↑ 12%'],
+         ['Chủ đề phổ biến','Oxi hóa khử','fa-fire','var(--orange)',''],
+         ['Follow-up','38%','fa-reply','var(--purple)','↑ 5%'],
+         ['Chưa trả lời tốt','142','fa-circle-exclamation','var(--red)','']
+       ].map(([l,v,ic,co,tr])=>`
+        <div class="kpi-card">
+          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div>${tr?`<span class="kpi-trend up">${tr}</span>`:''}</div>
+          <div class="kpi-value" style="font-size:1.3rem;">${v}</div><div class="kpi-label">${l}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="panel-grid" style="margin-bottom:16px;">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Top câu hỏi được hỏi nhiều nhất</div><div class="panel-tag">Firestore: ai_logs</div></div>
+        <div id="ai-top-questions">
+          ${[['Tại sao KMnO₄ mất màu trong phản ứng oxi hóa?',125],
+             ['Este là gì? Cho ví dụ.',97],['Halogen phản ứng như thế nào với kim loại?',80],
+             ['Cách cân bằng phản ứng oxi hóa khử?',76],['Độ pH của dung dịch kiềm là bao nhiêu?',64],
+             ['Phân biệt phản ứng thuận nghịch và không thuận nghịch',58],
+             ['Tại sao NaOH làm quỳ tím hóa xanh?',51],['Công thức cấu tạo của benzen?',44]
+           ].map(([q,n],i)=>`
+            <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line);">
+              <div style="width:22px; height:22px; border-radius:6px; background:${i<3?'var(--gold-l)':'var(--surface-2)'}; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:800; color:${i<3?'var(--gold-d)':'var(--fg-mute)'}; flex-shrink:0;">${i+1}</div>
+              <div style="flex:1; font-size:0.84rem; font-weight:600; color:var(--fg);">${escapeHtml(q)}</div>
+              <div style="font-size:0.78rem; font-weight:800; color:var(--cyan-d); white-space:nowrap;">${n} lần</div>
+            </div>`).join('')}
+          <div class="mod-note" style="margin-top:12px;">Dữ liệu minh họa. Kết nối collection <code>ai_logs</code> trong Firestore để hiển thị dữ liệu thật.</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Phân bổ chủ đề</div><div class="panel-tag">Pie chart</div></div>
+        <div class="chart-wrap"><canvas id="chart-ai-topics"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Xu hướng câu hỏi theo tuần</div><div class="panel-tag">Line chart</div></div>
+      <div class="chart-wrap sm"><canvas id="chart-ai-trend"></canvas></div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head"><div class="panel-title">Word Cloud — Từ khóa phổ biến</div></div>
+      <div id="word-cloud" style="display:flex; flex-wrap:wrap; gap:8px; padding:12px 0;"></div>
+    </div>
+  `;
+
+  const C = chartColors();
+  Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+  new Chart(document.getElementById('chart-ai-topics'),{
+    type:'pie',
+    data:{labels:['Oxi hóa - khử','Hữu cơ','Dung dịch - pH','Điện hóa','Chu kỳ bảng tuần hoàn'],
+      datasets:[{data:[32,24,19,15,10], backgroundColor:['#06B6D4','#8B5CF6','#F59E0B','#10B981','#EC4899'], borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{color:C.text}}}}
+  });
+  new Chart(document.getElementById('chart-ai-trend'),{
+    type:'line',
+    data:{labels:['T1','T2','T3','T4','T5','T6','T7','T8'],
+      datasets:[
+        {label:'Tổng câu hỏi', data:[480,510,560,490,620,710,680,760], borderColor:'#06B6D4', fill:false, tension:.4},
+        {label:'Follow-up', data:[140,160,210,190,240,290,270,300], borderColor:'#8B5CF6', fill:false, tension:.4}
+      ]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{labels:{color:C.text}}},
+      scales:{x:{grid:{color:C.grid},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text}}}}
+  });
+
+  const words = [['KMnO₄',5],['Este',4],['Halogen',4],['Oxi hóa',5],['pH',3],['NaOH',3],['Benzen',3],['Điện cực',2],['Axit',4],['Bazơ',3],['Ion',3],['Muối',2],['Dung dịch',3],['Phân tử',2],['Electron',3],['Hóa trị',2],['Công thức',2]];
+  const szmap = {2:'0.78rem',3:'0.92rem',4:'1.1rem',5:'1.36rem'};
+  const cmap  = {2:'var(--fg-mute)',3:'var(--fg-soft)',4:'var(--cyan)',5:'var(--indigo)'};
+  document.getElementById('word-cloud').innerHTML = words.sort(()=>Math.random()-.5).map(([w,s])=>
+    `<span style="font-size:${szmap[s]};color:${cmap[s]};font-weight:800; padding:4px 8px; border-radius:6px; background:var(--surface-2); cursor:default;">${w}</span>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: LEARNING ANALYTICS
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['learning-analytics'] = { title:'Learning Analytics', sub:'Retention, Churn, Funnel, Session, Heatmap', render: renderLearningAnalytics };
+
+function renderLearningAnalytics(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">Learning Analytics</div>
+      <div class="a-page-desc">Phân tích hành vi học tập: tăng trưởng, giữ chân, phễu chuyển đổi, thời gian học.</div></div>
+      <div class="a-filter-pills">
+        <div class="a-filter-pill active">Tháng này</div>
+        <div class="a-filter-pill">Quý</div>
+        <div class="a-filter-pill">Năm</div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      ${[['Retention 7 ngày','62%','fa-rotate','var(--green)','↑ 4%'],
+         ['Churn rate','18%','fa-user-minus','var(--red)','↓ 2%'],
+         ['Session TB','18 phút','fa-clock','var(--indigo)',''],
+         ['Tỉ lệ vào Lab','31%','fa-vial','var(--cyan)','↑ 8%']
+       ].map(([l,v,ic,co,tr])=>`
+        <div class="kpi-card">
+          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div>${tr?`<span class="kpi-trend ${tr.startsWith('↑')?'up':'down'}">${tr}</span>`:''}</div>
+          <div class="kpi-value" style="font-size:1.4rem;">${v}</div><div class="kpi-label">${l}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="panel-grid" style="margin-bottom:16px;">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Funnel hành trình học (100 học sinh)</div><div class="panel-tag">Funnel</div></div>
+        <div id="funnel-chart"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Heatmap hoạt động theo giờ & ngày</div></div>
+        <div id="la-heatmap"></div>
+      </div>
+    </div>
+
+    <div class="panel-grid">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Tăng trưởng người dùng</div><div class="panel-tag">Area chart</div></div>
+        <div class="chart-wrap sm"><canvas id="chart-la-growth"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Phân phối thời gian học (phút/session)</div><div class="panel-tag">Bar chart</div></div>
+        <div class="chart-wrap sm"><canvas id="chart-session"></canvas></div>
+      </div>
+    </div>
+  `;
+
+  renderFunnel();
+  renderLAHeatmap();
+  const C = chartColors();
+  Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+  new Chart(document.getElementById('chart-la-growth'),{
+    type:'line',
+    data:{labels:['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'],
+      datasets:[{label:'Người dùng tích lũy', data:[80,140,200,280,360,440,520,620,740,860,980,1100],
+        borderColor:'#4F6BFF', backgroundColor:'rgba(79,107,255,0.12)', fill:true, tension:.4}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:C.grid},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text}}}}
+  });
+  new Chart(document.getElementById('chart-session'),{
+    type:'bar',
+    data:{labels:['0-5','5-10','10-20','20-30','30-45','45-60','>60'],
+      datasets:[{label:'Số lượt học', data:[42,89,210,168,95,48,22],
+        backgroundColor:'rgba(6,182,212,0.7)', borderRadius:5, maxBarThickness:32}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text}}}}
+  });
+}
+
+function renderFunnel(){
+  const steps = [['Đăng nhập',90,90],['Học bài',70,78],['Làm Quiz',55,79],['Vào Lab',31,56],['Hoàn thành',26,84]];
+  const colors = ['#4F6BFF','#06B6D4','#10B981','#F59E0B','#EC4899'];
+  let html = '<div style="padding:8px 0;">';
+  steps.forEach(([label,n,ret],i)=>{
+    const w = Math.round((n/90)*100);
+    html += `<div style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700; color:var(--fg); margin-bottom:5px;">
+        <span>${label}</span><span style="color:${colors[i]};">${n} học sinh (${n}%)</span>
+      </div>
+      <div style="background:var(--surface-2); border-radius:99px; height:14px; overflow:hidden;">
+        <div style="height:100%; width:${w}%; background:${colors[i]}; border-radius:99px; transition:width .8s ease;"></div>
+      </div>
+      ${i<steps.length-1?`<div style="font-size:0.73rem; color:var(--fg-mute); margin-top:3px; text-align:right;">Drop-off: ${100-steps[i+1][2]}% rời đi</div>`:''}
+    </div>`;
+  });
+  html += '<div class="mod-note" style="margin-top:12px;">Drop-off lớn nhất: từ Quiz sang Lab (55→31 học sinh, mất 44%).</div></div>';
+  document.getElementById('funnel-chart').innerHTML = html;
+}
+
+function renderLAHeatmap(){
+  const hours = ['8h','9h','10h','11h','12h','13h','14h','15h','16h','17h','18h','19h','20h','21h'];
+  const days = ['T2','T3','T4','T5','T6','T7','CN'];
+  const data = days.map(() => hours.map(() => Math.random()));
+  const colors = (v) => v < .2 ? 'var(--surface-2)' : v < .4 ? 'var(--cyan-l)' : v < .6 ? '#7ED8E8' : v < .8 ? 'var(--cyan)' : 'var(--cyan-d)';
+  let html = '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:separate; border-spacing:3px; font-size:0.72rem;">';
+  html += '<tr><th style="color:var(--fg-mute); font-weight:600;"></th>' + hours.map(h=>`<th style="color:var(--fg-mute); font-weight:600; text-align:center;">${h}</th>`).join('') + '</tr>';
+  days.forEach((d,di) => {
+    html += `<tr><td style="font-weight:700; color:var(--fg-soft); padding:3px 6px; white-space:nowrap;">${d}</td>`;
+    data[di].forEach(v => { html += `<td style="background:${colors(v)}; height:20px; border-radius:4px;" title="${Math.round(v*100)}% hoạt động"></td>`; });
+    html += '</tr>';
+  });
+  html += '</table></div><div style="font-size:0.72rem; color:var(--fg-mute); margin-top:8px; font-weight:500;">20h tối là giờ cao điểm học. Thứ 7 và CN hoạt động cao.</div>';
+  document.getElementById('la-heatmap').innerHTML = html;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: PHÂN TÍCH LAB 3D
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['lab-analytics'] = { title:'Phân tích Lab 3D', sub:'Drop-off, bước sai, tỉ lệ hoàn thành', render: renderLabAnalytics };
+
+function renderLabAnalytics(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">Phân tích Lab 3D</div>
+      <div class="a-page-desc">Theo dõi từng bước thí nghiệm — phát hiện điểm yếu trong quy trình thực hành.</div></div>
+    </div>
+
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      ${[['Tổng lượt vào Lab','1,248','fa-vial','var(--cyan)',''],
+         ['Tỉ lệ hoàn thành','72%','fa-circle-check','var(--green)',''],
+         ['Bỏ giữa chừng','18%','fa-person-running','var(--red)',''],
+         ['Quan sát sai HT','10%','fa-eye-slash','var(--orange)','']
+       ].map(([l,v,ic,co])=>`
+        <div class="kpi-card">
+          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div></div>
+          <div class="kpi-value" style="font-size:1.4rem;">${v}</div><div class="kpi-label">${l}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="panel-grid" style="margin-bottom:16px;">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Thí nghiệm KMnO₄ — Kết quả 100 học sinh</div></div>
+        <div class="chart-wrap"><canvas id="chart-lab-result"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Bước gây lỗi nhiều nhất</div></div>
+        <div id="lab-steps-list"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head"><div class="panel-title">Tỉ lệ hoàn thành theo thí nghiệm</div><div class="panel-tag">Bar chart</div></div>
+      <div class="chart-wrap sm"><canvas id="chart-lab-exp"></canvas></div>
+    </div>
+  `;
+
+  const C = chartColors();
+  Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+  new Chart(document.getElementById('chart-lab-result'),{
+    type:'doughnut',
+    data:{labels:['Hoàn thành (72)','Thoát giữa chừng (18)','Quan sát sai HT (10)'],
+      datasets:[{data:[72,18,10], backgroundColor:['#10B981','#EF4444','#F59E0B'], borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'65%', plugins:{legend:{position:'bottom', labels:{color:C.text, padding:12}}}}
+  });
+
+  new Chart(document.getElementById('chart-lab-exp'),{
+    type:'bar',
+    data:{labels:['KMnO₄','Cu(OH)₂','HCl + Zn','Na + H₂O','AgNO₃','CaCO₃ + HCl'],
+      datasets:[{label:'Tỉ lệ hoàn thành (%)', data:[72,68,81,60,77,55], backgroundColor:'#06B6D4', borderRadius:6, maxBarThickness:36}]},
+    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text},max:100}}}
+  });
+
+  const steps = [
+    ['Quan sát hiện tượng màu','63%','Ghi chú chưa đủ chi tiết → Hệ thống tự chấm F'],
+    ['Thêm thuốc thử đúng tỉ lệ','41%','Học sinh nhầm thứ tự thêm hóa chất'],
+    ['Đọc màu kết tủa đúng','35%','Thiếu hướng dẫn phân biệt màu kết tủa'],
+    ['Ghi kết luận phản ứng','28%','Không nêu được phương trình thu gọn'],
+  ];
+  document.getElementById('lab-steps-list').innerHTML = `<div style="padding:6px 0;">`+
+    steps.map(([step,pct,note]) => `
+      <div style="padding:12px 0; border-bottom:1px solid var(--line);">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <div style="font-size:0.87rem; font-weight:700; color:var(--fg);">${escapeHtml(step)}</div>
+          <div style="font-size:0.82rem; font-weight:800; color:var(--red);">${pct} sai</div>
+        </div>
+        <div style="font-size:0.77rem; color:var(--fg-mute); font-weight:500; margin-bottom:7px;">${escapeHtml(note)}</div>
+        <div style="background:var(--surface-2); border-radius:99px; height:8px; overflow:hidden;">
+          <div style="width:${pct}; height:100%; background:linear-gradient(90deg,var(--orange),var(--red)); border-radius:99px;"></div>
+        </div>
+      </div>`).join('') +
+    '<div class="mod-note" style="margin-top:12px;">Bước <strong>Quan sát hiện tượng màu</strong> gây ra lỗi nhiều nhất (63%). Cần cải thiện hướng dẫn tại bước này.</div></div>';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: XẾPHẠNG
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['leaderboard'] = { title:'Xếp hạng học sinh', sub:'Leaderboard theo điểm TB & bài hoàn thành', render: renderLeaderboard };
+
+function renderLeaderboard(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">Bảng xếp hạng học sinh</div>
+      <div class="a-page-desc">Kết hợp điểm trung bình và số bài hoàn thành. Hỗ trợ giáo viên nhận diện học sinh nổi bật hoặc cần hỗ trợ.</div></div>
+    </div>
+    <div class="a-table-wrap">
+      <table class="a-table">
+        <thead><tr><th>Hạng</th><th>Học sinh</th><th>Điểm TB</th><th>Bài hoàn thành</th><th>Điểm tổng hợp</th><th>Nhận xét</th></tr></thead>
+        <tbody id="lb-body"></tbody>
+      </table>
+    </div>
+    <div class="mod-note" style="margin-top:14px;">Dữ liệu minh họa. Điểm tổng hợp = điểm TB × 0.6 + (bài hoàn thành / max_bài) × 40.</div>
+  `;
+  const mock = [
+    ['Nguyễn Minh Anh',9.4,24],['Trần Bảo Châu',8.8,22],['Lê Hoàng Nam',8.7,21],
+    ['Phạm Thị Lan',8.5,23],['Đỗ Quang Huy',8.2,20],['Vũ Thu Hà',8.0,19],
+    ['Hoàng Văn Đức',7.8,18],['Ngô Minh Khoa',7.5,17],['Bùi Thị Mai',7.2,15],
+    ['Phan Gia Bảo',6.9,12],['Lý Ngọc Bích',6.5,10],['Trương Văn Tài',5.8,8],
+  ];
+  const maxBai = 24;
+  const rankIcons = ['🥇','🥈','🥉'];
+  const rows = mock.map(([name,score,done],i) => {
+    const composite = (score * 0.6 + (done/maxBai)*40).toFixed(1);
+    const note = score >= 8.5 ? '<span class="badge ok">Xuất sắc</span>' : score >= 7 ? '<span class="badge" style="background:var(--indigo-l);color:var(--indigo-d)">Khá</span>' : score >= 6 ? '<span class="badge warn">Trung bình</span>' : '<span class="badge off">Cần hỗ trợ</span>';
+    return `<tr>
+      <td style="font-size:1.2rem; text-align:center;">${rankIcons[i]||`<span style="font-weight:800; color:var(--fg-mute);">${i+1}</span>`}</td>
+      <td><div class="row-user"><div class="row-avatar" style="background:${avatarGrad(name)}">${name.slice(0,1)}</div><span style="font-weight:700;">${escapeHtml(name)}</span></div></td>
+      <td><span style="font-weight:800; font-size:1.02rem; color:var(--fg);">${score}</span></td>
+      <td>${done} / ${maxBai}</td>
+      <td><span style="font-weight:800; color:var(--cyan-d);">${composite}</span></td>
+      <td>${note}</td>
+    </tr>`;
+  });
+  document.getElementById('lb-body').innerHTML = rows.join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SHARED STYLES (inject into <head>)
+   ═══════════════════════════════════════════════════════════════ */
+const extraCSS = document.createElement('style');
+extraCSS.textContent = `
+/* ── Shared module styles ─────────────────── */
+.mod-btn { display:inline-flex; align-items:center; gap:7px; padding:10px 20px; border-radius:var(--r-pill); font-weight:700; font-size:0.86rem; cursor:pointer; border:none; transition:all .18s; font-family:inherit; }
+.mod-btn-primary { background:linear-gradient(135deg,var(--cyan),var(--indigo)); color:#fff; box-shadow:var(--sh-cyan); }
+.mod-btn-primary:hover { transform:translateY(-2px); filter:brightness(1.05); }
+.mod-btn-ghost { background:var(--surface); border:1px solid var(--line); color:var(--fg); }
+.mod-btn-ghost:hover { border-color:var(--cyan); color:var(--cyan); }
+.mod-overlay { position:fixed; inset:0; background:rgba(11,18,32,0.55); z-index:1000; display:none; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(4px); }
+.mod-overlay.open { display:flex; }
+.mod-panel { background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--sh-4); width:100%; max-width:520px; max-height:90vh; overflow-y:auto; animation:cardIn .3s cubic-bezier(.16,1,.3,1); }
+.mod-head { display:flex; align-items:center; justify-content:space-between; padding:20px 22px 14px; border-bottom:1px solid var(--line); }
+.mod-title { font-size:1.02rem; font-weight:800; color:var(--fg); display:flex; align-items:center; gap:9px; }
+.mod-close { width:32px; height:32px; border-radius:50%; border:1px solid var(--line); background:var(--surface-2); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--fg-mute); }
+.mod-close:hover { color:var(--red); border-color:var(--red); }
+.mod-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+.mod-field { display:flex; flex-direction:column; gap:6px; }
+.mod-field label { font-size:0.76rem; font-weight:700; color:var(--fg-soft); text-transform:uppercase; letter-spacing:0.04em; }
+.mod-field input, .mod-field select, .mod-field textarea { border:1.5px solid var(--line); border-radius:var(--r-md); padding:11px 14px; font-family:inherit; font-size:0.92rem; color:var(--fg); background:var(--bg-2); outline:none; transition:border-color .2s; }
+.mod-field input:focus, .mod-field select:focus { border-color:var(--cyan); }
+.mod-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid var(--line); }
+.mod-note { font-size:0.8rem; color:var(--fg-mute); font-weight:500; background:var(--surface-2); border-radius:var(--r-md); padding:10px 14px; border-left:3px solid var(--cyan); }
+/* Toolbar */
+.u-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.u-search-wrap { position:relative; flex:1; min-width:200px; }
+.u-search-wrap i { position:absolute; left:13px; top:50%; transform:translateY(-50%); color:var(--fg-mute); font-size:0.85rem; }
+.u-search-wrap input { width:100%; padding:10px 14px 10px 36px; border:1.5px solid var(--line); border-radius:var(--r-pill); font-family:inherit; font-size:0.9rem; color:var(--fg); background:var(--surface); outline:none; transition:border-color .2s; }
+.u-search-wrap input:focus { border-color:var(--cyan); }
+.u-select { padding:10px 14px; border:1.5px solid var(--line); border-radius:var(--r-pill); font-family:inherit; font-size:0.86rem; color:var(--fg); background:var(--surface); cursor:pointer; outline:none; }
+.u-count { font-size:0.82rem; font-weight:700; color:var(--fg-mute); white-space:nowrap; }
+/* Table actions */
+.tbl-act-btn { width:30px; height:30px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--fg-soft); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:0.78rem; transition:all .15s; }
+.tbl-act-btn:hover { border-color:var(--cyan); color:var(--cyan); }
+.tbl-act-btn.danger:hover { border-color:var(--red); color:var(--red); }
+/* Pagination */
+.u-pagination { margin-top:14px; }
+.pg-wrap { display:flex; align-items:center; justify-content:center; gap:5px; flex-wrap:wrap; }
+.pg-btn { min-width:36px; height:36px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--fg-soft); cursor:pointer; font-weight:700; font-size:0.84rem; display:flex; align-items:center; justify-content:center; padding:0 6px; transition:all .15s; }
+.pg-btn:hover { border-color:var(--cyan); color:var(--cyan); }
+.pg-btn.active { background:var(--cyan); color:#fff; border-color:var(--cyan); }
+.pg-btn:disabled { opacity:.4; cursor:not-allowed; }
+.pg-ellipsis { color:var(--fg-mute); font-size:0.84rem; padding:0 4px; }
+/* Loading */
+.tbl-loading { display:flex; align-items:center; gap:10px; justify-content:center; padding:30px; color:var(--fg-mute); font-size:0.9rem; font-weight:600; }
+.tbl-loading .spin { width:22px; height:22px; border-radius:50%; border:2px solid rgba(6,182,212,0.25); border-top-color:var(--cyan); animation:spin .8s linear infinite; flex-shrink:0; }
+/* Profile hero */
+.profile-hero { display:flex; align-items:center; gap:18px; padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-xl); margin-bottom:20px; box-shadow:var(--sh-1); }
+.p-avatar { width:60px; height:60px; border-radius:18px; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.6rem; color:#fff; flex-shrink:0; }
+`;
+document.head.appendChild(extraCSS);
+
+/* ── Modal helpers ─────────────────────────────── */
+function openModal(id){ document.getElementById(id).classList.add('open'); document.body.style.overflow='hidden'; }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); document.body.style.overflow=''; }
+</script>
