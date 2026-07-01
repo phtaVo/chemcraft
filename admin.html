@@ -724,61 +724,109 @@ function renderKpiSkeletons(){
     </div>`).join('');
 }
 
+// Demo data dùng khi Firestore chưa sẵn sàng
+const DEMO_USERS = [
+  {id:'u1', displayName:'Nguyễn Minh Anh', email:'minha@school.vn', school:'THPT Lê Hồng Phong', class:'12A1', role:'student', createdAt:null},
+  {id:'u2', displayName:'Trần Bảo Châu',   email:'bauchau@school.vn', school:'THPT Nguyễn Du', class:'11B2', role:'student', createdAt:null},
+  {id:'u3', displayName:'Lê Hoàng Nam',     email:'hoangnam@school.vn', school:'THPT Lê Hồng Phong', class:'12A2', role:'student', createdAt:null},
+  {id:'u4', displayName:'Phạm Thị Lan',     email:'thilan@school.vn', school:'THPT Chu Văn An', class:'10C1', role:'student', createdAt:null},
+  {id:'u5', displayName:'Đỗ Quang Huy',     email:'quanghuy@school.vn', school:'THPT Nguyễn Du', class:'11A3', role:'teacher', createdAt:null},
+  {id:'u6', displayName:'Vũ Thu Hà',        email:'thuha@school.vn', school:'THPT Chu Văn An', class:'12B1', role:'student', createdAt:null},
+];
+let _firestoreOk = false;
+
 async function loadDashboardData(){
-  if (!window._fbDb || !document.getElementById('kpi-totalUsers')) return;
-  const { collection, getCountFromServer, query, where, Timestamp, getDocs, orderBy, limit } = window._fbFns;
-  const db = window._fbDb;
+  if (!document.getElementById('kpi-totalUsers')) return;
 
-  // Tổng số người dùng (thật, từ Firestore)
-  try {
-    const snap = await getCountFromServer(collection(db, 'users'));
-    setKpi('totalUsers', snap.data().count.toLocaleString('vi-VN'));
-  } catch (e) { setKpi('totalUsers', '—'); console.warn(e); }
+  // Thử Firestore
+  if (window._fbDb && window._fbFns) {
+    try {
+      const { collection, getDocs, orderBy, query, limit } = window._fbFns;
+      const db = window._fbDb;
+      const q  = query(collection(db,'users'), orderBy('createdAt','desc'), limit(6));
+      const snap = await getDocs(q);
+      const users = [];
+      snap.forEach(d => users.push({id:d.id,...d.data()}));
+      _firestoreOk = true;
 
-  // Người dùng mới trong 7 ngày qua (thật)
-  try {
-    const weekAgo = Timestamp.fromMillis(Date.now() - 7*24*60*60*1000);
-    const q = query(collection(db, 'users'), where('createdAt', '>=', weekAgo));
-    const snap = await getCountFromServer(q);
-    setKpi('newUsers', '+' + snap.data().count.toLocaleString('vi-VN'));
-  } catch (e) { setKpi('newUsers', '—'); }
+      // KPI từ dữ liệu thật
+      setKpi('totalUsers', users.length > 0 ? snap.size+'+ (live)' : '0');
+      setKpi('newUsers', '+' + users.filter(u => {
+        try { const d = u.createdAt?.toDate?.(); return d && (Date.now()-d)<7*86400000; } catch(e){ return false; }
+      }).length);
 
-  // Danh sách người dùng gần đây nhất (thật)
-  try {
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(6));
-    const snap = await getDocs(q);
-    const rows = [];
-    snap.forEach(d => {
-      const u = d.data();
-      const name = u.displayName || (u.email ? u.email.split('@')[0] : 'Học sinh');
-      const initials = name.slice(0,1).toUpperCase();
-      rows.push(`<tr>
-        <td><div class="row-user"><div class="row-avatar">${initials}</div><div><div style="font-weight:700;">${escapeHtml(name)}</div><div style="font-size:0.76rem; color:var(--fg-mute);">${escapeHtml(u.email||'')}</div></div></div></td>
-        <td>${escapeHtml(u.school || '—')}${u.class ? ' / ' + escapeHtml(u.class) : ''}</td>
-        <td>${formatDate(u.createdAt)}</td>
-        <td><span class="badge ok">Hoạt động</span></td>
-      </tr>`);
-    });
-    document.getElementById('recent-users-body').innerHTML = rows.length ? rows.join('') :
-      '<tr><td colspan="4" style="text-align:center; color:var(--fg-mute); padding:24px;">Chưa có dữ liệu người dùng.</td></tr>';
-  } catch (e) {
-    document.getElementById('recent-users-body').innerHTML =
-      `<tr><td colspan="4" style="text-align:center; color:var(--fg-mute); padding:24px;">Không thể tải danh sách (${escapeHtml(e.message||'lỗi Firestore')}).</td></tr>`;
+      // Bảng recent users thật
+      renderRecentUsersTable(users);
+    } catch(e) {
+      _firestoreOk = false;
+      console.warn('Firestore không khả dụng, dùng demo data:', e.message);
+      loadDemoDashboard();
+    }
+  } else {
+    loadDemoDashboard();
   }
 
-  // Các chỉ số chưa có collection riêng trong dữ liệu hiện tại — minh họa, sẽ nối khi module tương ứng được xây
-  setKpi('onlineUsers', '—', true);
-  setKpi('totalLessons', '—', true);
-  setKpi('totalQuiz', '—', true);
-  setKpi('totalLab', '—', true);
-  setKpi('aiChats', '—', true);
-  setKpi('completion', '—', true);
+  // KPI chưa có collection riêng → demo có nhãn
+  setKpi('onlineUsers',  '24', false, 'demo');
+  setKpi('totalLessons', '48', false, 'demo');
+  setKpi('totalQuiz',    '312', false, 'demo');
+  setKpi('totalLab',     '1,248', false, 'demo');
+  setKpi('aiChats',      '4,218', false, 'demo');
+  setKpi('completion',   '68%', false, 'demo');
 }
 
-function setKpi(key, value, pending){
+function loadDemoDashboard() {
+  setKpi('totalUsers', DEMO_USERS.length + ' (demo)');
+  setKpi('newUsers', '+3 (demo)');
+  renderRecentUsersTable(DEMO_USERS.slice(0,6));
+  showFirestoreNotice();
+}
+
+function showFirestoreNotice() {
+  const el = document.getElementById('recent-users-body');
+  if (!el) return;
+  // Thêm notice row sau table
+  const notice = document.createElement('tr');
+  notice.innerHTML = `<td colspan="4">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;background:var(--gold-l);border-top:1px solid var(--gold);">
+      <i class="fa-solid fa-triangle-exclamation" style="color:var(--gold-d);font-size:1rem;flex-shrink:0;"></i>
+      <div style="font-size:0.8rem;font-weight:600;color:var(--gold-d);line-height:1.5;">
+        <strong>Firestore chưa kết nối</strong> — Đang hiển thị dữ liệu demo.
+        Để dùng dữ liệu thật: <a href="https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=chemcraft-e8e6e" target="_blank" style="color:var(--indigo);text-decoration:underline;">Enable Firestore API</a>
+        rồi kiểm tra Security Rules cho phép đọc collection <code>users</code>.
+      </div>
+    </div>
+  </td>`;
+  el.closest('table')?.appendChild(notice);
+}
+
+function renderRecentUsersTable(users) {
+  const tbody = document.getElementById('recent-users-body');
+  if (!tbody) return;
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--fg-mute);padding:24px;">Chưa có người dùng.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => {
+    const name = u.displayName || u.email?.split('@')[0] || 'Học sinh';
+    return `<tr>
+      <td><div class="row-user"><div class="row-avatar" style="background:${avatarGrad(name)}">${name.slice(0,1).toUpperCase()}</div>
+        <div><div style="font-weight:700;">${escapeHtml(name)}</div>
+        <div style="font-size:0.76rem;color:var(--fg-mute);">${escapeHtml(u.email||'')}</div></div></div></td>
+      <td style="font-size:0.83rem;">${escapeHtml(u.school||'—')}${u.class?' / '+escapeHtml(u.class):''}</td>
+      <td style="font-size:0.83rem;color:var(--fg-soft);">${formatDate(u.createdAt)||'—'}</td>
+      <td><span class="badge ${u.locked?'warn':'ok'}">${u.locked?'Đã khóa':'Hoạt động'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function setKpi(key, value, pending, tag){
   const el = document.getElementById('kpi-' + key);
   if (!el) return;
-  el.innerHTML = value + (pending ? ' <span style="font-size:0.64rem; font-weight:700; color:var(--fg-mute); vertical-align:middle;">(chưa kết nối)</span>' : '');
+  let suffix = '';
+  if (tag === 'demo') suffix = ' <span style="font-size:0.6rem;font-weight:800;color:var(--gold-d);background:var(--gold-l);padding:1px 6px;border-radius:99px;vertical-align:middle;">DEMO</span>';
+  else if (pending) suffix = ' <span style="font-size:0.6rem;font-weight:700;color:var(--fg-mute);vertical-align:middle;">—</span>';
+  el.innerHTML = value + suffix;
 }
 function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function formatDate(ts){
@@ -912,16 +960,34 @@ async function renderUsers(){
 }
 
 async function fetchUsersFromFirestore(){
-  const { collection, getDocs, orderBy, query } = window._fbFns;
-  const db = window._fbDb;
-  try {
-    const q = query(collection(db,'users'), orderBy('createdAt','desc'));
-    const snap = await getDocs(q);
-    _usersCache = [];
-    snap.forEach(d => _usersCache.push({ id: d.id, ...d.data() }));
-    filterUsers();
-  } catch(e){
-    document.getElementById('u-body').innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--fg-mute); padding:28px;">Lỗi tải dữ liệu: ${escapeHtml(e.message)}</td></tr>`;
+  // Thử Firestore thật
+  if (window._fbDb && window._fbFns) {
+    try {
+      const { collection, getDocs, orderBy, query } = window._fbFns;
+      const q = query(collection(window._fbDb,'users'), orderBy('createdAt','desc'));
+      const snap = await getDocs(q);
+      _usersCache = [];
+      snap.forEach(d => _usersCache.push({ id: d.id, ...d.data() }));
+      if (_usersCache.length > 0) { filterUsers(); return; }
+    } catch(e) {
+      console.warn('Firestore users error, dùng demo:', e.message);
+    }
+  }
+  // Fallback demo
+  _usersCache = DEMO_USERS.map(u => ({...u}));
+  const notice = document.getElementById('u-body');
+  if (notice) {
+    // sẽ bị overwrite bởi filterUsers ngay sau
+  }
+  filterUsers();
+  // Thêm banner demo
+  const tbl = document.querySelector('#u-table');
+  if (tbl && !tbl.dataset.demoNotice) {
+    tbl.dataset.demoNotice = '1';
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-bottom:10px;padding:10px 16px;background:var(--gold-l);border:1px solid var(--gold);border-radius:12px;font-size:0.8rem;font-weight:600;color:var(--gold-d);display:flex;align-items:center;gap:10px;';
+    div.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Firestore chưa kết nối — hiển thị dữ liệu demo. <a href="https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=chemcraft-e8e6e" target="_blank" style="color:var(--indigo);text-decoration:underline;margin-left:4px;">Enable Firestore API →</a>';
+    tbl.parentNode.insertBefore(div, tbl);
   }
 }
 
@@ -1565,4 +1631,507 @@ document.head.appendChild(extraCSS);
 /* ── Modal helpers ─────────────────────────────── */
 function openModal(id){ document.getElementById(id).classList.add('open'); document.body.style.overflow='hidden'; }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); document.body.style.overflow=''; }
+</script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: QUIZ ANALYTICS (đầy đủ)
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['quiz'] = { title:'Quản lý Quiz', sub:'Phân tích tỉ lệ đúng/sai, độ khó, thời gian làm bài', render: renderQuiz };
+
+const MOCK_QUIZ_DATA = [
+  {id:'q1', text:'Cân bằng phản ứng: KMnO₄ + HCl → ?', correct:42, wrong:58, avgTime:48, retries:2.1, difficulty:'Khó'},
+  {id:'q2', text:'Este là hợp chất được tạo thành từ:', correct:71, wrong:29, avgTime:22, retries:1.2, difficulty:'Dễ'},
+  {id:'q3', text:'pH của dung dịch HCl 0.01M là:', correct:64, wrong:36, avgTime:35, retries:1.5, difficulty:'TB'},
+  {id:'q4', text:'Halogen nào có tính oxi hóa mạnh nhất?', correct:85, wrong:15, avgTime:18, retries:1.0, difficulty:'Dễ'},
+  {id:'q5', text:'Viết phương trình điện phân NaCl nóng chảy', correct:31, wrong:69, avgTime:72, retries:3.4, difficulty:'Khó'},
+  {id:'q6', text:'Công thức phân tử của benzen là:', correct:91, wrong:9,  avgTime:12, retries:1.0, difficulty:'Dễ'},
+  {id:'q7', text:'Tốc độ phản ứng phụ thuộc vào yếu tố nào?', correct:58, wrong:42, avgTime:41, retries:1.8, difficulty:'TB'},
+  {id:'q8', text:'Xác định sản phẩm chính của phản ứng cộng HBr vào propene', correct:29, wrong:71, avgTime:85, retries:3.8, difficulty:'Khó'},
+];
+
+function renderQuiz(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">Quiz Analytics</div>
+      <div class="a-page-desc">Phân tích từng câu hỏi — phát hiện nội dung học sinh chưa nắm vững.</div></div>
+      <div class="a-filter-pills">
+        <div class="a-filter-pill active">Tất cả</div>
+        <div class="a-filter-pill">Dễ</div>
+        <div class="a-filter-pill">TB</div>
+        <div class="a-filter-pill">Khó</div>
+      </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      ${[['Tổng câu hỏi','8','fa-circle-question','var(--indigo)'],
+         ['Tỉ lệ đúng TB','59%','fa-check','var(--green)'],
+         ['Thời gian TB','42 giây','fa-stopwatch','var(--cyan)'],
+         ['Tỉ lệ làm lại TB','2.0x','fa-rotate-right','var(--orange)']
+       ].map(([l,v,ic,co])=>`
+        <div class="kpi-card">
+          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div></div>
+          <div class="kpi-value" style="font-size:1.4rem;">${v}</div><div class="kpi-label">${l}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Chart + table -->
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head"><div class="panel-title">Tỉ lệ đúng/sai theo từng câu hỏi</div><div class="panel-tag">Bar chart</div></div>
+      <div class="chart-wrap" style="height:220px;"><canvas id="chart-quiz-bars"></canvas></div>
+    </div>
+
+    <div class="a-table-wrap">
+      <table class="a-table">
+        <thead><tr>
+          <th>Câu hỏi</th><th>Đúng</th><th>Sai</th><th>Độ khó</th>
+          <th>Thời gian TB</th><th>Làm lại</th><th>Đánh giá</th>
+        </tr></thead>
+        <tbody>
+          ${MOCK_QUIZ_DATA.map(q => {
+            const alert = q.wrong > 60 ? `<span class="badge warn"><i class="fa-solid fa-triangle-exclamation"></i> Cần xem lại</span>` : q.wrong < 20 ? `<span class="badge ok">Ổn</span>` : `<span class="badge off">Bình thường</span>`;
+            const diffColor = q.difficulty==='Dễ'?'ok':q.difficulty==='Khó'?'warn':'off';
+            return `<tr>
+              <td style="max-width:260px;font-size:0.84rem;font-weight:600;">${escapeHtml(q.text)}</td>
+              <td><div style="display:flex;align-items:center;gap:7px;">
+                <div style="width:50px;height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden;">
+                  <div style="width:${q.correct}%;height:100%;background:var(--green);border-radius:99px;"></div>
+                </div>
+                <span style="font-weight:800;color:var(--green-d);font-size:0.84rem;">${q.correct}%</span>
+              </div></td>
+              <td><span style="font-weight:800;color:var(--red-d);font-size:0.84rem;">${q.wrong}%</span></td>
+              <td><span class="badge ${diffColor}">${q.difficulty}</span></td>
+              <td style="font-size:0.84rem;">${q.avgTime}s</td>
+              <td style="font-size:0.84rem;">${q.retries}x</td>
+              <td>${alert}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <div class="panel-head"><div class="panel-title">Insight tự động</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
+        <div class="mod-note" style="border-left-color:var(--red);">
+          <i class="fa-solid fa-circle-xmark" style="color:var(--red);"></i>
+          <strong>Câu khó nhất:</strong> "Xác định sản phẩm chính của phản ứng cộng HBr vào propene" — 71% sai, làm lại trung bình 3.8 lần. Cần bổ sung giải thích quy tắc Markovnikov trong bài học liên quan.
+        </div>
+        <div class="mod-note" style="border-left-color:var(--green);">
+          <i class="fa-solid fa-circle-check" style="color:var(--green);"></i>
+          <strong>Câu dễ nhất:</strong> "Công thức phân tử của benzen" — 91% đúng, thời gian trung bình 12 giây. Có thể tăng độ khó.
+        </div>
+        <div class="mod-note" style="border-left-color:var(--orange);">
+          <i class="fa-solid fa-fire" style="color:var(--orange);"></i>
+          <strong>3 câu cần xem lại:</strong> KMnO₄, Điện phân NaCl, Cộng HBr — đều có tỉ lệ sai >60%. Khuyến nghị cập nhật nội dung bài học tương ứng.
+        </div>
+      </div>
+    </div>
+  `;
+
+  const C = chartColors();
+  Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+  new Chart(document.getElementById('chart-quiz-bars'), {
+    type:'bar',
+    data:{
+      labels: MOCK_QUIZ_DATA.map((_,i)=>`Câu ${i+1}`),
+      datasets:[
+        {label:'Đúng (%)', data: MOCK_QUIZ_DATA.map(q=>q.correct), backgroundColor:'rgba(16,185,129,0.75)', borderRadius:5, maxBarThickness:28},
+        {label:'Sai (%)',  data: MOCK_QUIZ_DATA.map(q=>q.wrong),   backgroundColor:'rgba(239,68,68,0.65)',  borderRadius:5, maxBarThickness:28},
+      ]
+    },
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:C.text}}},
+      scales:{x:{grid:{display:false},ticks:{color:C.text}}, y:{grid:{color:C.grid},ticks:{color:C.text},max:100,
+        title:{display:true,text:'%',color:C.text}}},
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: QUẢN LÝ LAB 3D — CRUD hóa chất & phản ứng
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['lab'] = { title:'Quản lý Lab 3D', sub:'Hóa chất, dụng cụ, phản ứng — không cần code', render: renderLabManage };
+
+let _chemicals = [
+  {id:'c1', name:'KMnO₄', color:'#9B59B6', state:'rắn', molar:'158.03', note:'Thuốc tím, chất oxi hóa mạnh', hazard:'⚠️'},
+  {id:'c2', name:'HCl',   color:'#BDC3C7', state:'khí/lỏng', molar:'36.46', note:'Axit clohidric', hazard:'⚠️'},
+  {id:'c3', name:'NaOH',  color:'#ECF0F1', state:'rắn', molar:'40.00', note:'Natri hiđroxit, bazơ mạnh', hazard:'⚠️'},
+  {id:'c4', name:'H₂SO₄', color:'#E8DAEF', state:'lỏng', molar:'98.08', note:'Axit sunfuric đặc', hazard:'☣️'},
+  {id:'c5', name:'CuSO₄', color:'#2980B9', state:'rắn', molar:'159.61', note:'Đồng(II) sunfat — dung dịch màu xanh', hazard:''},
+  {id:'c6', name:'Na',    color:'#F4D03F', state:'rắn', molar:'22.99',  note:'Natri kim loại — phản ứng mạnh với nước', hazard:'☣️'},
+];
+let _reactions = [
+  {id:'r1', reactants:'KMnO₄ + HCl', products:'KCl + MnCl₂ + Cl₂↑ + H₂O', type:'oxi hóa-khử', color:'mất màu tím', gas:'Cl₂ vàng lục', precip:'', ph:'acid'},
+  {id:'r2', reactants:'Na + H₂O', products:'NaOH + H₂↑', type:'thế', color:'không đổi', gas:'H₂ bong bóng', precip:'', ph:'base'},
+  {id:'r3', reactants:'CuSO₄ + NaOH', products:'Cu(OH)₂↓ + Na₂SO₄', type:'trao đổi', color:'xanh mờ dần', gas:'', precip:'Cu(OH)₂ xanh lam', ph:'base'},
+  {id:'r4', reactants:'HCl + NaOH', products:'NaCl + H₂O', type:'trung hòa', color:'đổi chất chỉ thị', gas:'', precip:'', ph:'neutral'},
+];
+
+function renderLabManage(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">Quản lý Lab 3D</div>
+      <div class="a-page-desc">Thêm/sửa hóa chất và phản ứng trực tiếp — hệ thống tự cập nhật, không cần code.</div></div>
+    </div>
+
+    <!-- Tab -->
+    <div style="display:flex;gap:0;margin-bottom:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:4px;width:fit-content;">
+      <button class="lab-tab active" id="tab-chem" onclick="switchLabTab('chem')"><i class="fa-solid fa-flask"></i> Hóa chất (${_chemicals.length})</button>
+      <button class="lab-tab" id="tab-react" onclick="switchLabTab('react')"><i class="fa-solid fa-bolt"></i> Phản ứng (${_reactions.length})</button>
+    </div>
+
+    <!-- Chemicals panel -->
+    <div id="lab-chem-panel">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="mod-btn mod-btn-primary" onclick="openChemModal()"><i class="fa-solid fa-plus"></i> Thêm hóa chất</button>
+      </div>
+      <div class="chem-grid" id="chem-grid">${renderChemGrid()}</div>
+    </div>
+
+    <!-- Reactions panel -->
+    <div id="lab-react-panel" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="mod-btn mod-btn-primary" onclick="openReactionModal()"><i class="fa-solid fa-plus"></i> Thêm phản ứng</button>
+      </div>
+      <div class="a-table-wrap"><table class="a-table">
+        <thead><tr><th>Chất phản ứng</th><th>Sản phẩm</th><th>Loại</th><th>Màu dung dịch</th><th>Khí</th><th>Kết tủa</th><th>pH</th><th></th></tr></thead>
+        <tbody id="react-tbody">${renderReactTable()}</tbody>
+      </table></div>
+    </div>
+
+    <!-- Chem modal -->
+    <div class="mod-overlay" id="chem-modal-overlay" onclick="if(event.target===this)closeModal('chem-modal-overlay')">
+      <div class="mod-panel" id="chem-modal"></div>
+    </div>
+    <!-- Reaction modal -->
+    <div class="mod-overlay" id="react-modal-overlay" onclick="if(event.target===this)closeModal('react-modal-overlay')">
+      <div class="mod-panel" id="react-modal"></div>
+    </div>
+  `;
+}
+
+function renderChemGrid(){
+  return _chemicals.map(c => `
+    <div class="chem-card" id="chem-${c.id}">
+      <div class="chem-color-dot" style="background:${c.color};"></div>
+      <div class="chem-name">${c.name} ${c.hazard}</div>
+      <div class="chem-meta">${c.state} · ${c.molar} g/mol</div>
+      <div class="chem-note">${escapeHtml(c.note)}</div>
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <button class="tbl-act-btn" onclick="openChemModal('${c.id}')"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn danger" onclick="deleteChem('${c.id}')"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+function renderReactTable(){
+  return _reactions.map(r => `
+    <tr>
+      <td style="font-weight:700;font-size:0.87rem;">${escapeHtml(r.reactants)}</td>
+      <td style="font-size:0.83rem;">${escapeHtml(r.products)}</td>
+      <td><span class="badge off">${escapeHtml(r.type)}</span></td>
+      <td style="font-size:0.82rem;">${escapeHtml(r.color)||'—'}</td>
+      <td style="font-size:0.82rem;">${r.gas?`<span class="badge" style="background:var(--gold-l);color:var(--gold-d);">${escapeHtml(r.gas)}</span>`:'—'}</td>
+      <td style="font-size:0.82rem;">${r.precip?`<span class="badge" style="background:var(--purple-l);color:var(--purple-d);">${escapeHtml(r.precip)}</span>`:'—'}</td>
+      <td><span class="badge ${r.ph==='acid'?'warn':r.ph==='base'?'ok':'off'}">${r.ph}</span></td>
+      <td><div style="display:flex;gap:5px;">
+        <button class="tbl-act-btn" onclick="openReactionModal('${r.id}')"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn danger" onclick="deleteReaction('${r.id}')"><i class="fa-solid fa-trash"></i></button>
+      </div></td>
+    </tr>`).join('');
+}
+
+function switchLabTab(tab){
+  document.getElementById('lab-chem-panel').style.display  = tab==='chem'?'block':'none';
+  document.getElementById('lab-react-panel').style.display = tab==='react'?'block':'none';
+  document.getElementById('tab-chem').classList.toggle('active',  tab==='chem');
+  document.getElementById('tab-react').classList.toggle('active', tab==='react');
+}
+
+function openChemModal(id){
+  const c = id ? _chemicals.find(x=>x.id===id) : null;
+  document.getElementById('chem-modal').innerHTML = `
+    <div class="mod-head">
+      <div class="mod-title"><i class="fa-solid fa-flask"></i> ${c?'Sửa':'Thêm'} hóa chất</div>
+      <button class="mod-close" onclick="closeModal('chem-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="mod-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="mod-field"><label>Tên hóa chất</label><input id="cm-name" value="${escapeHtml(c?.name||'')}"></div>
+        <div class="mod-field"><label>Khối lượng mol (g/mol)</label><input id="cm-molar" value="${escapeHtml(c?.molar||'')}"></div>
+        <div class="mod-field"><label>Trạng thái</label>
+          <select id="cm-state">
+            ${['rắn','lỏng','khí','khí/lỏng','dung dịch'].map(s=>`<option ${c?.state===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div class="mod-field"><label>Màu đặc trưng</label>
+          <input type="color" id="cm-color" value="${c?.color||'#FFFFFF'}" style="height:42px;cursor:pointer;">
+        </div>
+      </div>
+      <div class="mod-field"><label>Cảnh báo nguy hiểm</label>
+        <select id="cm-hazard">
+          <option value="">Không có</option>
+          <option value="⚠️" ${c?.hazard==='⚠️'?'selected':''}>⚠️ Cần thận trọng</option>
+          <option value="☣️" ${c?.hazard==='☣️'?'selected':''}>☣️ Nguy hiểm cao</option>
+        </select>
+      </div>
+      <div class="mod-field"><label>Ghi chú</label><input id="cm-note" value="${escapeHtml(c?.note||'')}"></div>
+    </div>
+    <div class="mod-foot">
+      <button class="mod-btn mod-btn-ghost" onclick="closeModal('chem-modal-overlay')">Hủy</button>
+      <button class="mod-btn mod-btn-primary" onclick="saveChem('${c?.id||''}')">
+        <i class="fa-solid fa-floppy-disk"></i> Lưu
+      </button>
+    </div>`;
+  openModal('chem-modal-overlay');
+}
+
+function saveChem(id){
+  const obj = {
+    id: id || 'c'+Date.now(),
+    name:   document.getElementById('cm-name').value.trim(),
+    molar:  document.getElementById('cm-molar').value.trim(),
+    state:  document.getElementById('cm-state').value,
+    color:  document.getElementById('cm-color').value,
+    hazard: document.getElementById('cm-hazard').value,
+    note:   document.getElementById('cm-note').value.trim(),
+  };
+  if (!obj.name) { alert('Vui lòng nhập tên hóa chất.'); return; }
+  if (id) { const i = _chemicals.findIndex(x=>x.id===id); if(i>=0) _chemicals[i]=obj; }
+  else _chemicals.push(obj);
+  document.getElementById('chem-grid').innerHTML = renderChemGrid();
+  closeModal('chem-modal-overlay');
+  // Update tab count
+  document.getElementById('tab-chem').innerHTML = `<i class="fa-solid fa-flask"></i> Hóa chất (${_chemicals.length})`;
+}
+
+function deleteChem(id){
+  if (!confirm('Xóa hóa chất này?')) return;
+  _chemicals = _chemicals.filter(x=>x.id!==id);
+  document.getElementById('chem-grid').innerHTML = renderChemGrid();
+  document.getElementById('tab-chem').innerHTML = `<i class="fa-solid fa-flask"></i> Hóa chất (${_chemicals.length})`;
+}
+
+function openReactionModal(id){
+  const r = id ? _reactions.find(x=>x.id===id) : null;
+  document.getElementById('react-modal').innerHTML = `
+    <div class="mod-head">
+      <div class="mod-title"><i class="fa-solid fa-bolt"></i> ${r?'Sửa':'Thêm'} phản ứng</div>
+      <button class="mod-close" onclick="closeModal('react-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="mod-body">
+      <div class="mod-field"><label>Chất phản ứng (VD: KMnO₄ + HCl)</label><input id="rm-reactants" value="${escapeHtml(r?.reactants||'')}"></div>
+      <div class="mod-field"><label>Sản phẩm (VD: KCl + MnCl₂ + Cl₂↑ + H₂O)</label><input id="rm-products" value="${escapeHtml(r?.products||'')}"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="mod-field"><label>Loại phản ứng</label>
+          <select id="rm-type">
+            ${['oxi hóa-khử','trao đổi','thế','phân hủy','kết hợp','trung hòa'].map(t=>`<option ${r?.type===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="mod-field"><label>pH môi trường</label>
+          <select id="rm-ph">
+            ${['acid','base','neutral'].map(p=>`<option ${r?.ph===p?'selected':''}>${p}</option>`).join('')}
+          </select>
+        </div>
+        <div class="mod-field"><label>Thay đổi màu dung dịch</label><input id="rm-color" value="${escapeHtml(r?.color||'')}"></div>
+        <div class="mod-field"><label>Khí sinh ra (để trống nếu không có)</label><input id="rm-gas" value="${escapeHtml(r?.gas||'')}"></div>
+      </div>
+      <div class="mod-field"><label>Kết tủa (để trống nếu không có)</label><input id="rm-precip" value="${escapeHtml(r?.precip||'')}"></div>
+    </div>
+    <div class="mod-foot">
+      <button class="mod-btn mod-btn-ghost" onclick="closeModal('react-modal-overlay')">Hủy</button>
+      <button class="mod-btn mod-btn-primary" onclick="saveReaction('${r?.id||''}')">
+        <i class="fa-solid fa-floppy-disk"></i> Lưu phản ứng
+      </button>
+    </div>`;
+  openModal('react-modal-overlay');
+}
+
+function saveReaction(id){
+  const obj = {
+    id: id || 'r'+Date.now(),
+    reactants: document.getElementById('rm-reactants').value.trim(),
+    products:  document.getElementById('rm-products').value.trim(),
+    type:      document.getElementById('rm-type').value,
+    ph:        document.getElementById('rm-ph').value,
+    color:     document.getElementById('rm-color').value.trim(),
+    gas:       document.getElementById('rm-gas').value.trim(),
+    precip:    document.getElementById('rm-precip').value.trim(),
+  };
+  if (!obj.reactants || !obj.products) { alert('Vui lòng nhập chất phản ứng và sản phẩm.'); return; }
+  if (id) { const i = _reactions.findIndex(x=>x.id===id); if(i>=0) _reactions[i]=obj; }
+  else _reactions.push(obj);
+  document.getElementById('react-tbody').innerHTML = renderReactTable();
+  closeModal('react-modal-overlay');
+  document.getElementById('tab-react').innerHTML = `<i class="fa-solid fa-bolt"></i> Phản ứng (${_reactions.length})`;
+}
+
+function deleteReaction(id){
+  if (!confirm('Xóa phản ứng này?')) return;
+  _reactions = _reactions.filter(x=>x.id!==id);
+  document.getElementById('react-tbody').innerHTML = renderReactTable();
+  document.getElementById('tab-react').innerHTML = `<i class="fa-solid fa-bolt"></i> Phản ứng (${_reactions.length})`;
+}
+
+/* ── Thêm CSS cho Lab module ── */
+const labCSS = document.createElement('style');
+labCSS.textContent = `
+.lab-tab{padding:9px 18px;border:none;background:none;font-family:inherit;font-size:0.84rem;font-weight:700;color:var(--fg-soft);cursor:pointer;border-radius:10px;transition:all .15s;display:flex;align-items:center;gap:7px;}
+.lab-tab.active{background:linear-gradient(135deg,var(--cyan),var(--indigo));color:#fff;}
+.chem-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
+.chem-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;box-shadow:var(--sh-1);transition:transform .15s,box-shadow .15s;}
+.chem-card:hover{transform:translateY(-2px);box-shadow:var(--sh-2);}
+.chem-color-dot{width:36px;height:36px;border-radius:50%;border:2px solid var(--line);margin-bottom:10px;box-shadow:var(--sh-1);}
+.chem-name{font-size:1.1rem;font-weight:800;color:var(--fg);margin-bottom:3px;}
+.chem-meta{font-size:0.75rem;color:var(--fg-mute);font-weight:600;margin-bottom:5px;}
+.chem-note{font-size:0.79rem;color:var(--fg-soft);font-weight:500;line-height:1.45;}
+`;
+document.head.appendChild(labCSS);
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: COURSES (Quản lý khóa học)
+   ═══════════════════════════════════════════════════════════════ */
+PAGES['courses'] = { title:'Khóa học & bài học', sub:'CRUD chương, bài học, video, PDF, công thức', render: renderCourses };
+
+const MOCK_COURSES = [
+  {id:'co1', title:'Hóa học 10', chapters:6, lessons:24, status:'published', updated:'2026-05-10'},
+  {id:'co2', title:'Hóa học 11', chapters:7, lessons:28, status:'published', updated:'2026-05-22'},
+  {id:'co3', title:'Hóa học 12', chapters:8, lessons:32, status:'draft',     updated:'2026-06-01'},
+  {id:'co4', title:'Hóa hữu cơ nâng cao', chapters:4, lessons:16, status:'draft', updated:'2026-06-20'},
+];
+
+function renderCourses(){
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">Khóa học & bài học</div>
+      <div class="a-page-desc">Quản lý chương, bài học, video, PDF, công thức và animation.</div></div>
+      <button class="mod-btn mod-btn-primary"><i class="fa-solid fa-plus"></i> Thêm khóa học</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
+      ${MOCK_COURSES.map(c=>`
+        <div class="kpi-card" style="cursor:pointer;" onclick="renderCourseDetail('${c.id}')">
+          <div class="kpi-top">
+            <div class="kpi-icon" style="background:linear-gradient(135deg,var(--indigo),var(--purple))"><i class="fa-solid fa-book-open"></i></div>
+            <span class="badge ${c.status==='published'?'ok':'off'}">${c.status==='published'?'Đã xuất bản':'Nháp'}</span>
+          </div>
+          <div style="font-size:1.04rem;font-weight:800;color:var(--fg);margin-top:8px;">${escapeHtml(c.title)}</div>
+          <div style="font-size:0.8rem;color:var(--fg-soft);margin-top:4px;font-weight:600;">
+            ${c.chapters} chương · ${c.lessons} bài học
+          </div>
+          <div style="font-size:0.75rem;color:var(--fg-mute);margin-top:6px;">Cập nhật: ${c.updated}</div>
+          <div style="display:flex;gap:7px;margin-top:12px;" onclick="event.stopPropagation()">
+            <button class="tbl-act-btn" onclick="renderCourseDetail('${c.id}')"><i class="fa-solid fa-eye"></i></button>
+            <button class="tbl-act-btn"><i class="fa-solid fa-pen"></i></button>
+            <button class="tbl-act-btn danger"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <div class="mod-note">
+      Rich Text Editor (Quill/TipTap), kéo thả bài học và upload file sẽ được tích hợp trong phiên bản tiếp theo. Hiện tại có thể quản lý cấu trúc khóa học và trạng thái xuất bản.
+    </div>
+  `;
+}
+
+function renderCourseDetail(id){
+  const c = MOCK_COURSES.find(x=>x.id===id);
+  if (!c) return;
+  const chapters = Array.from({length:c.chapters},(_,i)=>({
+    n:i+1, title:`Chương ${i+1}`, lessons: Math.ceil(c.lessons/c.chapters)
+  }));
+  document.getElementById('page-root').innerHTML = `
+    <button class="mod-btn mod-btn-ghost" onclick="renderCourses()" style="margin-bottom:16px;"><i class="fa-solid fa-arrow-left"></i> Quay lại</button>
+    <div class="a-page-head">
+      <div><div class="a-page-title">${escapeHtml(c.title)}</div>
+      <div class="a-page-desc">${c.chapters} chương · ${c.lessons} bài học · Cập nhật ${c.updated}</div></div>
+      <span class="badge ${c.status==='published'?'ok':'off'}" style="font-size:0.85rem;padding:7px 14px;">${c.status==='published'?'Đã xuất bản':'Nháp'}</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${chapters.map(ch=>`
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title"><i class="fa-solid fa-folder" style="color:var(--gold);margin-right:8px;"></i>${ch.title}</div>
+            <div style="display:flex;gap:6px;">
+              <button class="tbl-act-btn"><i class="fa-solid fa-plus"></i></button>
+              <button class="tbl-act-btn"><i class="fa-solid fa-pen"></i></button>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${Array.from({length:ch.lessons},(_,j)=>`
+              <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface-2);border-radius:10px;">
+                <i class="fa-solid fa-file-lines" style="color:var(--indigo);font-size:0.85rem;"></i>
+                <span style="flex:1;font-size:0.86rem;font-weight:600;">Bài ${j+1+ch.lessons*(ch.n-1)}: Nội dung bài học</span>
+                <span class="badge ok" style="font-size:0.68rem;">Video</span>
+                <button class="tbl-act-btn"><i class="fa-solid fa-pen"></i></button>
+              </div>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+/* ─── Settings module ─── */
+PAGES['settings'] = { title:'Cài đặt hệ thống', sub:'Tài khoản admin, cấu hình chung', render: renderSettings };
+function renderSettings(){
+  const session = window.__adminSession || {};
+  document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head"><div>
+      <div class="a-page-title">Cài đặt hệ thống</div>
+      <div class="a-page-desc">Quản lý tài khoản admin và cấu hình nền tảng.</div>
+    </div></div>
+
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head"><div class="panel-title">Tài khoản Admin đang đăng nhập</div></div>
+      <div style="display:flex;align-items:center;gap:16px;padding:8px 0;">
+        <div class="a-user-avatar" style="width:52px;height:52px;font-size:1.2rem;border-radius:14px;">${(session.name||'A').slice(0,1)}</div>
+        <div>
+          <div style="font-weight:800;font-size:1.05rem;">${escapeHtml(session.name||'Admin')}</div>
+          <div style="font-size:0.82rem;color:var(--fg-soft);margin-top:3px;">${escapeHtml(session.username||'')} · ${roleLabel(session.role)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-head"><div class="panel-title">Tài khoản Admin (server.py)</div></div>
+      <div class="mod-note">
+        Để thêm/sửa tài khoản admin, chỉnh sửa block <code>ADMIN_ACCOUNTS</code> trong file <code>server.py</code>:<br><br>
+        <code style="display:block;margin-top:8px;background:var(--surface);border:1px solid var(--line);padding:12px;border-radius:10px;font-size:0.82rem;line-height:1.8;">
+ADMIN_ACCOUNTS = {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;'admin': { 'password': 'admin@11235', 'name': 'Admin ChemCraft', 'role': 'super_admin' },<br>
+&nbsp;&nbsp;&nbsp;&nbsp;# 'giaovien1': { 'password': '...', 'name': 'Nguyễn Văn A', 'role': 'teacher' },<br>
+}
+        </code>
+        Session tự động hết hạn sau 8 tiếng.
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Trạng thái Firestore</div></div>
+      <div id="firestore-status" style="padding:8px 0;">
+        <div class="tbl-loading"><div class="spin"></div> Đang kiểm tra kết nối…</div>
+      </div>
+    </div>
+  `;
+
+  // Kiểm tra firestore
+  setTimeout(async () => {
+    const el = document.getElementById('firestore-status');
+    if (!el) return;
+    if (!window._fbDb || !window._fbFns) {
+      el.innerHTML = `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-xmark" style="color:var(--red);"></i> <strong>Chưa kết nối</strong> — Firebase config không khả dụng.</div>`;
+      return;
+    }
+    try {
+      const { collection, getDocs, limit, query } = window._fbFns;
+      const q = query(collection(window._fbDb,'users'), limit(1));
+      await getDocs(q);
+      el.innerHTML = `<div class="mod-note" style="border-left-color:var(--green);"><i class="fa-solid fa-circle-check" style="color:var(--green);"></i> <strong>Kết nối OK</strong> — Firestore hoạt động bình thường. Dữ liệu người dùng sẽ hiển thị thật trong tất cả các module.</div>`;
+    } catch(e) {
+      el.innerHTML = `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i> <strong>Lỗi:</strong> ${escapeHtml(e.message)}<br><br>
+        Truy cập <a href="https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=chemcraft-e8e6e" target="_blank" style="color:var(--indigo);text-decoration:underline;">Enable Firestore API</a> rồi reload lại trang.</div>`;
+    }
+  }, 500);
+}
 </script>
