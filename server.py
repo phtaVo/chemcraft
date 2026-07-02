@@ -1,10 +1,8 @@
 import os
+import re
 import time
-import json
-import secrets
-import threading
-from collections import defaultdict, Counter, deque
-from datetime import datetime, timedelta
+from collections import Counter
+from datetime import datetime
 from threading import Lock
 
 import requests
@@ -12,11 +10,20 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
+import database as db
+import admin_auth
+
 load_dotenv()
 
 app = Flask(__name__, static_folder='.')
 CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+
+db.init_db()
+admin_auth.bootstrap_default_admin()
+_migrated = db.migrate_jsonl_events(os.getenv('EVENT_LOG_PATH', 'events.jsonl'))
+if _migrated:
+    print(f'📦 Migrated {_migrated} legacy events from events.jsonl into SQLite.')
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
@@ -35,91 +42,23 @@ FIREBASE_CONFIG = {
     'measurementId':     os.getenv('FIREBASE_MEASUREMENT_ID', ''),
 }
 
-# ── Rate limiting ─────────────────────────────────────────────────────────────
+# ── Rate limiting (unchanged from original) ─────────────────────────────────
 RATE_WINDOW = 60
 RATE_MAX    = 20
 COOLDOWN    = 3
 
+from collections import defaultdict
 ip_requests: dict[str, list[float]] = defaultdict(list)
 ip_last_req:  dict[str, float]       = {}
 rate_lock = Lock()
 
-# ── Admin accounts ────────────────────────────────────────────────────────────
-ADMIN_ACCOUNTS = {
-    'admin': {
-        'password': 'admin@11235',
-        'name':     'Admin ChemCraft',
-        'role':     'super_admin',
-    },
+_server_started_at = time.time()
+_runtime_lock = Lock()
+_runtime = {
+    'chat_total': 0, 'chat_ok': 0, 'chat_errors': 0,
+    'gemini_errors': 0, 'rate_limit_hits': 0,
+    'active_ips': {},
 }
-_admin_sessions: dict[str, dict] = {}
-_SESSION_TTL = 8 * 3600
-
-# ── Metrics / Event log ───────────────────────────────────────────────────────
-# Ghi sự kiện thật vào file JSONL (mỗi dòng 1 JSON) — bền vững sau restart.
-EVENT_LOG_PATH = os.getenv('EVENT_LOG_PATH', 'events.jsonl')
-EVENT_MEM_MAX  = 20000   # giữ tối đa 20k event gần nhất trong RAM để tổng hợp nhanh
-_events_mem: deque = deque(maxlen=EVENT_MEM_MAX)
-_event_lock = Lock()
-
-# Metrics runtime (reset khi server restart, dùng cho health/live counters)
-_metrics = {
-    'chat_total':      0,
-    'chat_ok':         0,
-    'chat_errors':     0,
-    'gemini_errors':   0,
-    'rate_limit_hits': 0,
-    'started_at':      time.time(),
-    # request log ring buffer (dùng cho biểu đồ 7 ngày)
-    'chat_log':        deque(maxlen=5000),   # (timestamp, ip, ok/err)
-    'error_log':       deque(maxlen=500),    # (timestamp, code, msg)
-    'active_ips':      {},                    # ip -> last_seen_ts
-}
-_metrics_lock = Lock()
-
-
-def _load_events_from_disk():
-    if not os.path.exists(EVENT_LOG_PATH):
-        return
-    try:
-        with open(EVENT_LOG_PATH, 'r', encoding='utf-8') as f:
-            # đọc tối đa EVENT_MEM_MAX dòng cuối
-            lines = f.readlines()[-EVENT_MEM_MAX:]
-            for line in lines:
-                try:
-                    _events_mem.append(json.loads(line))
-                except Exception:
-                    pass
-    except Exception as e:
-        app.logger.warning('Load events failed: %s', e)
-
-
-_load_events_from_disk()
-
-
-def _persist_event(ev: dict):
-    try:
-        with open(EVENT_LOG_PATH, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(ev, ensure_ascii=False) + '\n')
-    except Exception as e:
-        app.logger.warning('Persist event failed: %s', e)
-
-
-def _record_event(ev_type: str, payload: dict, user_id: str = '', ip: str = ''):
-    ev = {
-        'ts':      time.time(),
-        'type':    ev_type,
-        'user_id': user_id or '',
-        'ip':      ip or '',
-        **(payload or {}),
-    }
-    with _event_lock:
-        _events_mem.append(ev)
-    _persist_event(ev)
-    with _metrics_lock:
-        if ip:
-            _metrics['active_ips'][ip] = ev['ts']
-    return ev
 
 
 def _get_client_ip() -> str:
@@ -128,11 +67,7 @@ def _get_client_ip() -> str:
 
 def _require_admin() -> dict | None:
     token = request.headers.get('X-Admin-Token', '')
-    session = _admin_sessions.get(token)
-    if not session or (time.time() - session['created_at'] > _SESSION_TTL):
-        return None
-    session['created_at'] = time.time()
-    return session
+    return admin_auth.verify(token)
 
 
 def check_rate_limit(ip: str) -> str | None:
@@ -140,21 +75,21 @@ def check_rate_limit(ip: str) -> str | None:
     with rate_lock:
         last = ip_last_req.get(ip, 0)
         if now - last < COOLDOWN:
-            with _metrics_lock:
-                _metrics['rate_limit_hits'] += 1
+            with _runtime_lock:
+                _runtime['rate_limit_hits'] += 1
             return 'Bạn đang gửi yêu cầu quá nhanh. Vui lòng chờ vài giây.'
         window_start = now - RATE_WINDOW
         ip_requests[ip] = [t for t in ip_requests[ip] if t > window_start]
         if len(ip_requests[ip]) >= RATE_MAX:
-            with _metrics_lock:
-                _metrics['rate_limit_hits'] += 1
+            with _runtime_lock:
+                _runtime['rate_limit_hits'] += 1
             return 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.'
         ip_requests[ip].append(now)
         ip_last_req[ip] = now
     return None
 
 
-# ── Helper: Gemini call ───────────────────────────────────────────────────────
+# ── Gemini call (unchanged logic from original server.py) ──────────────────
 def _call_gemini_once(contents, system_prompt: str, max_tokens: int = 65536):
     payload = {
         'contents': contents,
@@ -182,19 +117,19 @@ def _call_gemini_once(contents, system_prompt: str, max_tokens: int = 65536):
     return text, candidate.get('finishReason', '')
 
 
-# ── /api/chat ─────────────────────────────────────────────────────────────────
+# ── /api/chat — now also records structured ai_conversations/ai_messages ───
 @app.route('/api/chat', methods=['POST'])
 def chat():
     ip = _get_client_ip()
-    with _metrics_lock:
-        _metrics['chat_total'] += 1
-        _metrics['active_ips'][ip] = time.time()
+    t0 = time.time()
+    with _runtime_lock:
+        _runtime['chat_total'] += 1
+        _runtime['active_ips'][ip] = time.time()
 
     rate_err = check_rate_limit(ip)
     if rate_err:
-        with _metrics_lock:
-            _metrics['chat_errors'] += 1
-            _metrics['chat_log'].append((time.time(), ip, 'rate_limit'))
+        with _runtime_lock:
+            _runtime['chat_errors'] += 1
         return jsonify({'error': rate_err}), 429
 
     body = request.get_json(silent=True) or {}
@@ -202,17 +137,33 @@ def chat():
     system_prompt = body.get('systemPrompt', '')
     user_id       = body.get('userId', '')
     topic         = body.get('topic', '')
+    conversation_id = body.get('conversationId')  # frontend should persist & resend this per thread
 
     if not messages:
         return jsonify({'error': 'Thiếu nội dung tin nhắn.'}), 400
     if not GEMINI_API_KEY:
         return jsonify({'error': 'Server chưa cấu hình API key.'}), 500
 
+    # Ensure a conversation row exists so multi-turn chats are threaded,
+    # not just isolated question/answer events like before.
+    with db.tx() as conn:
+        if conversation_id:
+            row = conn.execute('SELECT id FROM ai_conversations WHERE id = ?', (conversation_id,)).fetchone()
+        else:
+            row = None
+        if not row:
+            cur = conn.execute(
+                'INSERT INTO ai_conversations (user_id, ip, started_at, topic) VALUES (?, ?, ?, ?)',
+                (user_id, ip, time.time(), topic)
+            )
+            conversation_id = cur.lastrowid
+
     try:
         last_msg = messages[-1]
         user_content = last_msg.get('content', '')
         parts = []
         question_text = ''
+        has_image = False
         if isinstance(user_content, str):
             parts.append({'text': user_content})
             question_text = user_content
@@ -222,13 +173,20 @@ def chat():
                     parts.append({'text': item['text']})
                     question_text += ' ' + item['text']
                 elif item.get('type') == 'image_url':
+                    has_image = True
                     data_url = item.get('image_url', {}).get('url', '')
                     if data_url.startswith('data:'):
-                        import re
                         m = re.match(r'data:([^;]+);base64,', data_url)
                         mime_type = m.group(1) if m else 'image/jpeg'
                         b64 = data_url.split(',', 1)[1]
                         parts.append({'inlineData': {'mimeType': mime_type, 'data': b64}})
+
+        with db.tx() as conn:
+            conn.execute(
+                'INSERT INTO ai_messages (conversation_id, role, content, has_image, ok, ts) '
+                'VALUES (?, ?, ?, ?, 1, ?)',
+                (conversation_id, 'user', question_text.strip()[:2000], int(has_image), time.time())
+            )
 
         contents = [{'role': 'user', 'parts': parts}]
         full_text, finish_reason = _call_gemini_once(contents, system_prompt)
@@ -244,57 +202,65 @@ def chat():
             extra_text, finish_reason = _call_gemini_once(cont_contents, system_prompt)
             full_text += extra_text
 
-        with _metrics_lock:
-            _metrics['chat_ok'] += 1
-            _metrics['chat_log'].append((time.time(), ip, 'ok'))
+        latency_ms = int((time.time() - t0) * 1000)
+        with _runtime_lock:
+            _runtime['chat_ok'] += 1
 
-        _record_event('ai_chat', {
+        with db.tx() as conn:
+            conn.execute(
+                'INSERT INTO ai_messages (conversation_id, role, content, latency_ms, ok, ts) '
+                'VALUES (?, ?, ?, ?, 1, ?)',
+                (conversation_id, 'model', full_text[:4000], latency_ms, time.time())
+            )
+
+        db.record_event('ai_chat', {
             'question': question_text.strip()[:500],
-            'topic':    topic,
-            'ok':       True,
+            'topic': topic,
+            'ok': True,
+            'latency_ms': latency_ms,
+            'conversation_id': conversation_id,
         }, user_id=user_id, ip=ip)
 
-        return jsonify({'text': full_text})
+        return jsonify({'text': full_text, 'conversationId': conversation_id})
 
     except ValueError as e:
         msg = str(e)
-        with _metrics_lock:
-            _metrics['chat_errors'] += 1
-            _metrics['gemini_errors'] += 1
-            _metrics['error_log'].append((time.time(), 'gemini', msg))
-            _metrics['chat_log'].append((time.time(), ip, 'err'))
+        with _runtime_lock:
+            _runtime['chat_errors'] += 1
+            _runtime['gemini_errors'] += 1
+        with db.tx() as conn:
+            conn.execute(
+                'INSERT INTO ai_messages (conversation_id, role, ok, error_msg, ts) VALUES (?, ?, 0, ?, ?)',
+                (conversation_id, 'model', msg, time.time())
+            )
+        db.record_event('ai_error', {'error': msg, 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
         if msg == 'RATE_LIMIT':
             return jsonify({'error': 'Hệ thống AI đang bận. Vui lòng thử lại sau vài giây.'}), 429
         return jsonify({'error': msg}), 500
     except requests.exceptions.Timeout:
-        with _metrics_lock:
-            _metrics['chat_errors'] += 1
-            _metrics['error_log'].append((time.time(), 'timeout', 'gemini timeout'))
+        with _runtime_lock:
+            _runtime['chat_errors'] += 1
+        db.record_event('ai_error', {'error': 'timeout', 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
         return jsonify({'error': 'Yêu cầu mất quá nhiều thời gian. Vui lòng thử lại.'}), 504
     except Exception as e:
         app.logger.error('Chat error: %s', e)
-        with _metrics_lock:
-            _metrics['chat_errors'] += 1
-            _metrics['error_log'].append((time.time(), 'server', str(e)))
+        with _runtime_lock:
+            _runtime['chat_errors'] += 1
+        db.record_event('ai_error', {'error': str(e), 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
         return jsonify({'error': 'Đã xảy ra lỗi. Vui lòng thử lại.'}), 500
 
 
-# ── Admin login/verify/logout ────────────────────────────────────────────────
+# ── Admin login/verify/logout — now hashed + persisted ──────────────────────
 @app.route('/api/admin-login', methods=['POST'])
 def admin_login():
     body     = request.get_json(silent=True) or {}
-    username = body.get('username', '').strip().lower()
+    username = body.get('username', '')
     password = body.get('password', '')
-    account  = ADMIN_ACCOUNTS.get(username)
-    if not account or account['password'] != password:
+    result = admin_auth.login(username, password, _get_client_ip())
+    if not result:
         time.sleep(0.5)
         return jsonify({'error': 'Sai tên đăng nhập hoặc mật khẩu.'}), 401
-    token = secrets.token_hex(32)
-    _admin_sessions[token] = {
-        'username': username, 'name': account['name'],
-        'role': account['role'], 'created_at': time.time(),
-    }
-    return jsonify({'token': token, 'name': account['name'], 'role': account['role']})
+    return jsonify(result)
 
 
 @app.route('/api/admin-verify', methods=['GET'])
@@ -307,8 +273,7 @@ def admin_verify():
 
 @app.route('/api/admin-logout', methods=['POST'])
 def admin_logout():
-    token = request.headers.get('X-Admin-Token', '')
-    _admin_sessions.pop(token, None)
+    admin_auth.logout(request.headers.get('X-Admin-Token', ''))
     return jsonify({'ok': True})
 
 
@@ -317,15 +282,23 @@ def firebase_config():
     return jsonify(FIREBASE_CONFIG)
 
 
-# ── /api/log-event : client ghi sự kiện thật ─────────────────────────────────
-# Không yêu cầu admin token (vì mọi client gọi), nhưng có rate-limit theo IP.
+# ── /api/log-event — expanded contract: quiz + lab now real ────────────────
+# NOTE: the frontend (lesson.html, lab.html) must be instrumented to actually
+# call ccTrack(...) with these types at the right moments — see the
+# INTEGRATION_NOTES.md shipped alongside this file for exact call sites.
 ALLOWED_EVENT_TYPES = {
-    'session_start', 'heartbeat',
+    'session_start', 'heartbeat', 'page_view',
     'lesson_open', 'lesson_complete',
-    'quiz_start', 'quiz_complete',
-    'lab_open', 'lab_step', 'lab_complete', 'lab_error',
-    'page_view',
+    'quiz_start', 'quiz_answer', 'quiz_complete',
+    'lab_open', 'lab_close', 'lab_step',
+    'lab_reaction_attempt', 'lab_reaction_result',
+    'lab_complete', 'lab_error',
+    'search', 'feature_use', 'feedback_submit', 'bug_report',
 }
+
+_last_log_by_ip: dict[str, float] = {}
+_last_log_lock = Lock()
+
 
 @app.route('/api/log-event', methods=['POST'])
 def log_event():
@@ -334,157 +307,164 @@ def log_event():
     ev_type = (body.get('type') or '').strip()
     if ev_type not in ALLOWED_EVENT_TYPES:
         return jsonify({'error': 'Loại sự kiện không hợp lệ.'}), 400
-    # Chống spam log
+
     now = time.time()
-    with _metrics_lock:
-        last = _metrics.get('_last_log_' + ip, 0)
-        if now - last < 0.2:   # tối đa 5 event/giây/ip
+    with _last_log_lock:
+        last = _last_log_by_ip.get(ip, 0)
+        if now - last < 0.2:
             return jsonify({'ok': False, 'error': 'too_fast'}), 429
-        _metrics['_last_log_' + ip] = now
+        _last_log_by_ip[ip] = now
+
+    user_id = body.get('userId', '')
     payload = {k: v for k, v in body.items() if k not in ('type', 'userId')}
-    _record_event(ev_type, payload, user_id=body.get('userId', ''), ip=ip)
-    return jsonify({'ok': True})
+    db.record_event(ev_type, payload, user_id=user_id, ip=ip)
+
+    # Structured side-tables for the event types that feed dedicated analytics.
+    # Returns the new row id for session/attempt-opening events so the client
+    # can thread subsequent events (lab_reaction_result, quiz_answer, ...)
+    # back to the right session/attempt — see tracker.js ccLab / ccQuiz.
+    new_id = _fanout_structured_tables(ev_type, payload, user_id)
+
+    resp = {'ok': True}
+    if ev_type == 'lab_open':
+        resp['sessionId'] = new_id
+    elif ev_type == 'quiz_start':
+        resp['attemptId'] = new_id
+    return jsonify(resp)
 
 
-# ── /api/admin-metrics : tổng hợp KPI cho dashboard ──────────────────────────
-def _bucket_by_day(events, days: int, key_filter=None):
-    """Trả về [count/ngày] cho `days` ngày gần nhất (cũ → mới)."""
-    now = time.time()
-    buckets = [0] * days
-    day_sec = 86400
-    for ev in events:
-        if key_filter and not key_filter(ev):
-            continue
-        age = now - ev['ts']
-        if age < 0 or age > days * day_sec:
-            continue
-        idx = days - 1 - int(age // day_sec)
-        if 0 <= idx < days:
-            buckets[idx] += 1
-    return buckets
+def _fanout_structured_tables(ev_type: str, payload: dict, user_id: str):
+    """Write into the typed tables (quiz_attempts, lab_sessions, ...) so
+    analytics queries are simple SQL instead of scanning the generic event
+    log every time. Called synchronously — cheap, single-row inserts.
+    Returns the new row id when the event type opens a session/attempt."""
+    ts = time.time()
+    with db.tx() as conn:
+        if ev_type == 'quiz_start':
+            cur = conn.execute(
+                'INSERT INTO quiz_attempts (user_id, started_at, total_q) VALUES (?, ?, ?)',
+                (user_id, ts, payload.get('totalQuestions'))
+            )
+            return cur.lastrowid
+        elif ev_type == 'quiz_answer':
+            attempt_id = payload.get('attemptId')
+            if attempt_id:
+                conn.execute(
+                    'INSERT INTO quiz_answers (attempt_id, question_id, question_text, is_correct, '
+                    'retry_count, answered_at) VALUES (?, ?, ?, ?, ?, ?)',
+                    (attempt_id, payload.get('questionId', ''), payload.get('questionText', ''),
+                     int(bool(payload.get('correct'))), payload.get('retryCount', 0), ts)
+                )
+        elif ev_type == 'quiz_complete':
+            attempt_id = payload.get('attemptId')
+            if attempt_id:
+                conn.execute(
+                    'UPDATE quiz_attempts SET finished_at = ?, correct_q = ?, duration_sec = ? WHERE id = ?',
+                    (ts, payload.get('correctCount'), payload.get('durationSec'), attempt_id)
+                )
+        elif ev_type == 'lab_open':
+            cur = conn.execute(
+                'INSERT INTO lab_sessions (user_id, started_at) VALUES (?, ?)', (user_id, ts)
+            )
+            return cur.lastrowid
+        elif ev_type == 'lab_close':
+            session_id = payload.get('sessionId')
+            if session_id:
+                conn.execute(
+                    'UPDATE lab_sessions SET ended_at = ?, duration_sec = ? WHERE id = ?',
+                    (ts, payload.get('durationSec'), session_id)
+                )
+        elif ev_type == 'lab_reaction_result':
+            conn.execute(
+                'INSERT INTO lab_reaction_runs (session_id, user_id, reaction_eq, chemicals, equipment, '
+                'outcome, error_reason, duration_sec, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (payload.get('sessionId', 0), user_id, payload.get('reactionEq', ''),
+                 payload.get('chemicals', '[]'), payload.get('equipment', '[]'),
+                 payload.get('outcome', 'unknown'), payload.get('errorReason'),
+                 payload.get('durationSec'), ts)
+            )
+    return None
 
 
-def _bucket_by_hour_dow(events, key_filter=None):
-    """Ma trận 7 ngày x 24 giờ cho 4 tuần gần nhất."""
-    now = time.time()
-    matrix = [[0] * 24 for _ in range(7)]
-    for ev in events:
-        if key_filter and not key_filter(ev):
-            continue
-        if now - ev['ts'] > 28 * 86400:
-            continue
-        d = datetime.fromtimestamp(ev['ts'])
-        matrix[d.weekday()][d.hour] += 1
-    return matrix
-
-
+# ── /api/admin-metrics — real SQL aggregation, no mock fallback ────────────
 @app.route('/api/admin-metrics', methods=['GET'])
 def admin_metrics():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
+    conn = db.get_conn()
     now = time.time()
-    with _event_lock:
-        events = list(_events_mem)
-    with _metrics_lock:
-        active_ips = {ip: t for ip, t in _metrics['active_ips'].items() if now - t < 300}
-        chat_total      = _metrics['chat_total']
-        chat_ok         = _metrics['chat_ok']
-        chat_errors     = _metrics['chat_errors']
-        gemini_errors   = _metrics['gemini_errors']
-        rate_limit_hits = _metrics['rate_limit_hits']
-        started_at      = _metrics['started_at']
-        recent_errors   = list(_metrics['error_log'])[-20:]
 
-    ai_events     = [e for e in events if e['type'] == 'ai_chat']
-    lesson_done   = [e for e in events if e['type'] == 'lesson_complete']
-    quiz_done     = [e for e in events if e['type'] == 'quiz_complete']
-    lab_open      = [e for e in events if e['type'] == 'lab_open']
-    lab_done      = [e for e in events if e['type'] == 'lab_complete']
+    with _runtime_lock:
+        active_ips = len({ip for ip, t in _runtime['active_ips'].items() if now - t < 300})
+        chat_total, chat_ok, chat_errors = _runtime['chat_total'], _runtime['chat_ok'], _runtime['chat_errors']
+        gemini_errors, rate_limit_hits = _runtime['gemini_errors'], _runtime['rate_limit_hits']
 
-    # Growth 7 ngày (mọi hoạt động)
-    daily_activity = _bucket_by_day(events, 7)
-    daily_ai       = _bucket_by_day(ai_events, 7)
-    daily_lab      = _bucket_by_day(lab_open, 7)
-    daily_lesson   = _bucket_by_day(lesson_done, 7)
+    ai_chats      = db.count_events('ai_chat')
+    lessons_done  = db.count_events('lesson_complete')
+    quiz_done     = db.count_events('quiz_complete')
+    lab_open      = db.count_events('lab_open')
+    lab_completed = db.count_events('lab_complete')
+    lab_completion = round(100 * lab_completed / max(1, lab_open)) if lab_open else 0
+    events_total  = conn.execute('SELECT COUNT(*) c FROM events').fetchone()['c']
 
-    # Bar chart theo tuần (4 tuần)
-    weekly_labs = [0, 0, 0, 0]
-    for e in lab_open:
-        age_days = (now - e['ts']) / 86400
-        if age_days < 28:
-            wi = 3 - int(age_days // 7)
-            if 0 <= wi < 4:
-                weekly_labs[wi] += 1
+    daily_activity = db.bucket_by_day('page_view', 7)
+    daily_ai       = db.bucket_by_day('ai_chat', 7)
+    daily_lab      = db.bucket_by_day('lab_open', 7)
+    daily_lesson   = db.bucket_by_day('lesson_complete', 7)
 
-    # Tỉ lệ hoàn thành lab
-    lab_completion = round(100 * len(lab_done) / max(1, len(lab_open))) if lab_open else 0
+    donut = {'Bài học': lessons_done, 'Quiz': quiz_done, 'Lab 3D': lab_open, 'AI': ai_chats}
 
-    # Donut: phân bổ hoạt động
-    donut = {
-        'Bài học': len(lesson_done),
-        'Quiz':    len(quiz_done),
-        'Lab 3D':  len(lab_open),
-        'AI':      len(ai_events),
-    }
+    # Top AI questions — real query against ai_messages, not the old
+    # event-payload scan.
+    q_rows = conn.execute(
+        "SELECT content, COUNT(*) c FROM ai_messages WHERE role='user' AND length(content) > 8 "
+        "GROUP BY content ORDER BY c DESC LIMIT 10"
+    ).fetchall()
+    top_questions = [(r['content'][:120], r['c']) for r in q_rows]
 
-    # Top câu hỏi AI (top 10 theo tần suất câu ngắn)
-    q_counter = Counter()
-    for e in ai_events:
-        q = (e.get('question') or '').strip()
-        if len(q) > 8:
-            q_counter[q[:120]] += 1
-    top_questions = q_counter.most_common(10)
-
-    # Word cloud từ câu hỏi AI
-    stop = set('và của là ở có cho một các những này đó khi được với thì để làm như từ trong về hay hoặc thế nào tại sao gì bao nhiêu the a an of is are and or to in on for how why what which'.split())
+    stop = set('và của là ở có cho một các những này đó khi được với thì để làm như từ trong về hay hoặc '
+               'thế nào tại sao gì bao nhiêu the a an of is are and or to in on for how why what which'.split())
     words = Counter()
-    for e in ai_events:
-        for w in (e.get('question') or '').split():
+    for r in conn.execute("SELECT content FROM ai_messages WHERE role='user'").fetchall():
+        for w in (r['content'] or '').split():
             w = w.strip('.,?!:;()[]"\'').lower()
             if len(w) >= 3 and w not in stop:
                 words[w] += 1
     word_cloud = words.most_common(30)
 
-    # Heatmap giờ x ngày (mọi hoạt động 4 tuần)
-    heatmap = _bucket_by_hour_dow(events)
+    # Heatmap hour x weekday, last 28 days — real SQL over `events`
+    heat_rows = conn.execute(
+        "SELECT ts FROM events WHERE ts >= ?", (now - 28 * 86400,)
+    ).fetchall()
+    heatmap = [[0] * 24 for _ in range(7)]
+    for r in heat_rows:
+        d = datetime.fromtimestamp(r['ts'])
+        heatmap[d.weekday()][d.hour] += 1
 
     return jsonify({
         'server': {
-            'uptime_sec':      int(now - started_at),
-            'active_ips':      len(active_ips),
-            'chat_total':      chat_total,
-            'chat_ok':         chat_ok,
-            'chat_errors':     chat_errors,
-            'gemini_errors':   gemini_errors,
-            'rate_limit_hits': rate_limit_hits,
+            'uptime_sec': int(now - _server_started_at),
+            'active_ips': active_ips,
+            'chat_total': chat_total, 'chat_ok': chat_ok, 'chat_errors': chat_errors,
+            'gemini_errors': gemini_errors, 'rate_limit_hits': rate_limit_hits,
         },
         'counts': {
-            'ai_chats':        len(ai_events),
-            'lessons_done':    len(lesson_done),
-            'quiz_done':       len(quiz_done),
-            'lab_open':        len(lab_open),
-            'lab_completed':   len(lab_done),
-            'lab_completion':  lab_completion,
-            'events_total':    len(events),
+            'ai_chats': ai_chats, 'lessons_done': lessons_done, 'quiz_done': quiz_done,
+            'lab_open': lab_open, 'lab_completed': lab_completed,
+            'lab_completion': lab_completion, 'events_total': events_total,
         },
         'daily': {
-            'activity_7d': daily_activity,
-            'ai_7d':       daily_ai,
-            'lab_7d':      daily_lab,
-            'lesson_7d':   daily_lesson,
+            'activity_7d': daily_activity, 'ai_7d': daily_ai,
+            'lab_7d': daily_lab, 'lesson_7d': daily_lesson,
         },
-        'weekly_labs':   weekly_labs,
-        'donut':         donut,
+        'donut': donut,
         'top_questions': top_questions,
-        'word_cloud':    word_cloud,
-        'heatmap':       heatmap,
-        'recent_errors': [
-            {'ts': t, 'code': c, 'msg': m} for (t, c, m) in recent_errors
-        ],
+        'word_cloud': word_cloud,
+        'heatmap': heatmap,
     })
 
 
-# ── /api/admin-events : truy vấn event log thô ───────────────────────────────
+# ── /api/admin-events — raw event query (now backed by SQL, not a deque) ───
 @app.route('/api/admin-events', methods=['GET'])
 def admin_events():
     if not _require_admin():
@@ -492,17 +472,83 @@ def admin_events():
     ev_type = request.args.get('type', '')
     limit   = min(int(request.args.get('limit', 200)), 2000)
     since   = float(request.args.get('since', 0))
-    with _event_lock:
-        events = list(_events_mem)
-    if ev_type:
-        events = [e for e in events if e['type'] == ev_type]
-    if since:
-        events = [e for e in events if e['ts'] >= since]
-    events = events[-limit:]
+    events = db.query_events(ev_type, since, limit)
     return jsonify({'events': events, 'total': len(events)})
 
 
-# ── Static file serving ───────────────────────────────────────────────────────
+# ── NEW: dedicated analytics endpoints (previously impossible — no data) ───
+@app.route('/api/admin-analytics/quiz', methods=['GET'])
+def analytics_quiz():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    conn = db.get_conn()
+    total_attempts = conn.execute('SELECT COUNT(*) c FROM quiz_attempts').fetchone()['c']
+    avg_score = conn.execute(
+        'SELECT AVG(1.0 * correct_q / NULLIF(total_q, 0)) a FROM quiz_attempts WHERE finished_at IS NOT NULL'
+    ).fetchone()['a']
+    hardest_questions = conn.execute(
+        "SELECT question_id, question_text, "
+        "SUM(CASE WHEN is_correct=0 THEN 1 ELSE 0 END) wrong, COUNT(*) total "
+        "FROM quiz_answers GROUP BY question_id ORDER BY (1.0*wrong/total) DESC LIMIT 15"
+    ).fetchall()
+    return jsonify({
+        'total_attempts': total_attempts,
+        'avg_score_pct': round((avg_score or 0) * 100, 1),
+        'hardest_questions': [dict(r) for r in hardest_questions],
+    })
+
+
+@app.route('/api/admin-analytics/lab', methods=['GET'])
+def analytics_lab():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    conn = db.get_conn()
+    popular = conn.execute(
+        'SELECT reaction_eq, COUNT(*) runs, '
+        'SUM(CASE WHEN outcome="success" THEN 1 ELSE 0 END) successes, '
+        'SUM(CASE WHEN outcome="failure" OR outcome="error" THEN 1 ELSE 0 END) failures, '
+        'AVG(duration_sec) avg_duration '
+        'FROM lab_reaction_runs GROUP BY reaction_eq ORDER BY runs DESC LIMIT 20'
+    ).fetchall()
+    most_failed = conn.execute(
+        'SELECT reaction_eq, COUNT(*) failures FROM lab_reaction_runs '
+        'WHERE outcome IN ("failure","error") GROUP BY reaction_eq ORDER BY failures DESC LIMIT 15'
+    ).fetchall()
+    avg_session = conn.execute(
+        'SELECT AVG(duration_sec) a FROM lab_sessions WHERE duration_sec IS NOT NULL'
+    ).fetchone()['a']
+    return jsonify({
+        'popular_reactions': [dict(r) for r in popular],
+        'most_failed_reactions': [dict(r) for r in most_failed],
+        'avg_session_duration_sec': round(avg_session or 0, 1),
+    })
+
+
+@app.route('/api/admin-analytics/ai', methods=['GET'])
+def analytics_ai():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    conn = db.get_conn()
+    total_conversations = conn.execute('SELECT COUNT(*) c FROM ai_conversations').fetchone()['c']
+    avg_latency = conn.execute(
+        "SELECT AVG(latency_ms) a FROM ai_messages WHERE role='model' AND ok=1"
+    ).fetchone()['a']
+    error_rate = conn.execute(
+        "SELECT 1.0 * SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) / COUNT(*) r FROM ai_messages WHERE role='model'"
+    ).fetchone()['r']
+    by_topic = conn.execute(
+        "SELECT COALESCE(NULLIF(topic,''),'(chưa gắn chủ đề)') topic, COUNT(*) c "
+        "FROM ai_conversations GROUP BY topic ORDER BY c DESC LIMIT 15"
+    ).fetchall()
+    return jsonify({
+        'total_conversations': total_conversations,
+        'avg_latency_ms': round(avg_latency or 0),
+        'error_rate_pct': round((error_rate or 0) * 100, 2),
+        'by_topic': [dict(r) for r in by_topic],
+    })
+
+
+# ── Static file serving (unchanged) ─────────────────────────────────────────
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
@@ -514,7 +560,6 @@ def serve_admin():
 
 @app.route('/lab')
 @app.route('/lab.html')
-@app.route('/lab__28_.html')
 def serve_lab():
     return send_from_directory('.', 'lab.html')
 
@@ -527,5 +572,5 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     print(f'🚀 ChemCraft backend đang chạy tại http://localhost:{port}')
-    print(f'   → Event log: {EVENT_LOG_PATH}')
+    print(f'   → Database: {db.DB_PATH}')
     app.run(host='0.0.0.0', port=port, debug=debug)
