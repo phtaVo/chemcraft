@@ -44,8 +44,20 @@ function _resolveAuth(session) {
 (async function initFirestoreOnly() {
   try {
     const { initializeApp }  = await import('https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js');
-    const { getFirestore, doc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp, serverTimestamp }
-      = await import('https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js');
+    const { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc,
+        collection, query, where, orderBy, limit, getDocs,
+        getCountFromServer, Timestamp, serverTimestamp }
+  = await import('https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js');
+
+    const { getAuth, sendPasswordResetEmail }
+      = await import('https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js');
+    
+    // Sau khi initializeApp(cfg):
+    window._fbAuth = getAuth(app);
+    Object.assign(window._fbFns, {
+      updateDoc, deleteDoc, addDoc, sendPasswordResetEmail
+    });
+
 
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 3000);
@@ -574,12 +586,16 @@ function roleLabel(role){
    ════════════════════════════════════════════════════════════ */
 const PAGES = {
   dashboard:  { title:'Dashboard', sub:'Tổng quan toàn hệ thống ChemCraft', render: renderDashboard },
-  users:      { title:'Quản lý người dùng', sub:'Danh sách tài khoản, phân quyền, trạng thái', render: () => renderStub('fa-users','Quản lý người dùng',
-      'Danh sách toàn bộ tài khoản với avatar, họ tên, email, vai trò, trường/lớp, ngày đăng ký, lần đăng nhập cuối. Hỗ trợ tìm kiếm, lọc, khóa/mở khóa, reset mật khẩu, chỉnh sửa, xóa và phân quyền.',
-      ['Tìm kiếm & bộ lọc','Khóa / mở khóa','Reset mật khẩu','Phân quyền']) },
-  profile:    { title:'Hồ sơ học sinh', sub:'Chi tiết tiến độ học & hành vi từng học sinh', render: () => renderStub('fa-id-card','Hồ sơ chi tiết học sinh',
-      'Khi nhấn vào một học sinh: tiến độ học, điểm Quiz, điểm trung bình, bài đã học, Lab đã thực hiện, lịch sử AI, thời gian học, heatmap hoạt động, hành trình học, lỗi thường mắc — tất cả hiển thị bằng biểu đồ.',
-      ['Heatmap hoạt động','Hành trình học','Lịch sử AI','Lỗi thường gặp']) },
+  users: {
+  title: 'Quản lý người dùng',
+  sub:   'Danh sách tài khoản, phân quyền, trạng thái',
+  render: () => window.CC_Users.render(),
+  },
+  profile: {
+    title: 'Hồ sơ học sinh',
+    sub:   'Chi tiết tiến độ học & hành vi từng học sinh',
+    render: () => window.CC_Profile.render(window._ccProfileUid),
+  },
   leaderboard:{ title:'Xếp hạng học sinh', sub:'Bảng xếp hạng theo điểm trung bình & số bài hoàn thành', render: () => renderStub('fa-ranking-star','Bảng xếp hạng',
       'Kết hợp điểm trung bình và số bài học đã hoàn thành thành một leaderboard tổng, hỗ trợ giáo viên nhận diện học sinh nổi bật hoặc cần hỗ trợ thêm.', ['Điểm trung bình','Bài hoàn thành','Top học sinh']) },
   courses:    { title:'Khóa học & bài học', sub:'CRUD chương, bài học, video, PDF, công thức, animation', render: () => renderStub('fa-book-open','Quản lý khóa học',
@@ -1246,6 +1262,7 @@ function refreshChartsTheme(){
 })();
 
 </script>
+<script src="admin_users_module.js" defer></script>
 </body>
 </html>
 
