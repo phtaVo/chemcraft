@@ -567,6 +567,330 @@ def serve_lab():
 def serve_static(path):
     return send_from_directory('.', path)
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CHEMCRAFT ADMIN — PATCH cho server.py
+# ---------------------------------------------------------------------------
+# Dán TOÀN BỘ nội dung file này vào CUỐI file server.py (trước khối
+# `if __name__ == '__main__':`). Không cần thay đổi phần trên.
+#
+# Thêm:
+#   • Mở rộng ALLOWED_EVENT_TYPES: 'login', 'logout', 'lesson_start',
+#     'quiz_answer', 'ai_followup' (tracker.js hiện tại vẫn hợp lệ).
+#   • GET  /api/admin-online-uids     → danh sách UID online trong 5 phút
+#   • POST /api/admin-user-activity   → bulk activity theo danh sách UID
+#                                       (last_seen, sessions, total_time,
+#                                        days_used, page_views, online)
+#   • GET  /api/admin-user-profile?uid=…&days=30
+#         → tổng hợp toàn bộ dữ liệu cho trang Hồ sơ học sinh
+#           (KPI học tập, Lab, AI, heatmap, timeline, per-day, top errors…)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Bổ sung event types mới (thêm vào set hiện có, không phá thứ đã có).
+ALLOWED_EVENT_TYPES = ALLOWED_EVENT_TYPES | {
+    'login', 'logout',
+    'lesson_start',
+    'quiz_answer',
+    'ai_followup',
+}
+
+
+def _events_snapshot():
+    """Copy sang list trong lock, dùng cho các hàm tổng hợp."""
+    with _event_lock:
+        return list(_events_mem)
+
+
+def _uid_of(ev):
+    return ev.get('user_id') or ev.get('userId') or ''
+
+
+# ── /api/admin-online-uids ────────────────────────────────────────────────
+@app.route('/api/admin-online-uids', methods=['GET'])
+def admin_online_uids():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    now = time.time()
+    window = float(request.args.get('window', 300))  # 5 phút
+    events = _events_snapshot()
+    seen = {}
+    for ev in events:
+        uid = _uid_of(ev)
+        if not uid:
+            continue
+        if now - ev['ts'] > window:
+            continue
+        prev = seen.get(uid, 0)
+        if ev['ts'] > prev:
+            seen[uid] = ev['ts']
+    return jsonify({
+        'window_sec': window,
+        'online': [{'uid': uid, 'last_seen': ts} for uid, ts in seen.items()],
+    })
+
+
+# ── /api/admin-user-activity ──────────────────────────────────────────────
+def _activity_for_uid(events, uid, now):
+    """Tính activity tóm tắt cho 1 UID từ mảng events."""
+    user_evs = [e for e in events if _uid_of(e) == uid]
+    if not user_evs:
+        return {
+            'uid': uid,
+            'last_seen': None,
+            'first_seen': None,
+            'online': False,
+            'sessions': 0,
+            'total_time_sec': 0,
+            'days_used': 0,
+            'page_views': 0,
+            'ip': '',
+            'events': 0,
+        }
+    user_evs.sort(key=lambda e: e['ts'])
+    last_ts  = user_evs[-1]['ts']
+    first_ts = user_evs[0]['ts']
+
+    # sessions: chia theo gap > 30 phút giữa 2 event liên tiếp
+    GAP = 30 * 60
+    sessions = 1
+    total_time = 0
+    prev_ts = user_evs[0]['ts']
+    session_start = prev_ts
+    for e in user_evs[1:]:
+        if e['ts'] - prev_ts > GAP:
+            total_time += prev_ts - session_start
+            sessions += 1
+            session_start = e['ts']
+        prev_ts = e['ts']
+    total_time += prev_ts - session_start
+
+    days = {datetime.fromtimestamp(e['ts']).strftime('%Y-%m-%d') for e in user_evs}
+
+    page_views = sum(1 for e in user_evs if e['type'] == 'page_view')
+
+    return {
+        'uid': uid,
+        'last_seen': last_ts,
+        'first_seen': first_ts,
+        'online': (now - last_ts) < 300,
+        'sessions': sessions,
+        'total_time_sec': int(total_time),
+        'days_used': len(days),
+        'page_views': page_views,
+        'ip': user_evs[-1].get('ip', ''),
+        'events': len(user_evs),
+    }
+
+
+@app.route('/api/admin-user-activity', methods=['POST'])
+def admin_user_activity():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    body = request.get_json(silent=True) or {}
+    uids = body.get('uids') or []
+    if not isinstance(uids, list):
+        return jsonify({'error': 'uids phải là mảng'}), 400
+    uids = [str(u) for u in uids if u][:500]  # giới hạn 500 uid/request
+    now = time.time()
+    events = _events_snapshot()
+
+    # index events theo uid để tránh O(N*M)
+    per_uid = defaultdict(list)
+    for ev in events:
+        uid = _uid_of(ev)
+        if uid:
+            per_uid[uid].append(ev)
+
+    result = {}
+    for uid in uids:
+        subset = per_uid.get(uid, [])
+        # tận dụng lại _activity_for_uid nhưng truyền subset đã filter sẵn
+        result[uid] = _activity_for_uid(subset, uid, now) if subset else \
+            _activity_for_uid([], uid, now)
+    return jsonify({'activity': result, 'ts': now})
+
+
+# ── /api/admin-user-profile ───────────────────────────────────────────────
+def _daily_series(events, days, key_filter=None):
+    """[{date, count}] cho `days` ngày gần nhất."""
+    now = time.time()
+    day_sec = 86400
+    buckets = [0] * days
+    labels  = []
+    for i in range(days):
+        d = datetime.fromtimestamp(now - (days - 1 - i) * day_sec)
+        labels.append(d.strftime('%Y-%m-%d'))
+    for ev in events:
+        if key_filter and not key_filter(ev):
+            continue
+        age = now - ev['ts']
+        if age < 0 or age > days * day_sec:
+            continue
+        idx = days - 1 - int(age // day_sec)
+        if 0 <= idx < days:
+            buckets[idx] += 1
+    return [{'date': labels[i], 'count': buckets[i]} for i in range(days)]
+
+
+def _heatmap_hour_dow(events):
+    """[7][24] — 4 tuần gần nhất."""
+    now = time.time()
+    m = [[0] * 24 for _ in range(7)]
+    for ev in events:
+        if now - ev['ts'] > 28 * 86400:
+            continue
+        d = datetime.fromtimestamp(ev['ts'])
+        m[d.weekday()][d.hour] += 1
+    return m
+
+
+@app.route('/api/admin-user-profile', methods=['GET'])
+def admin_user_profile():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    uid = (request.args.get('uid') or '').strip()
+    if not uid:
+        return jsonify({'error': 'thiếu uid'}), 400
+    days = max(7, min(int(request.args.get('days', 30)), 180))
+    now = time.time()
+
+    events = _events_snapshot()
+    user_evs = [e for e in events if _uid_of(e) == uid]
+    user_evs.sort(key=lambda e: e['ts'])
+
+    if not user_evs:
+        return jsonify({
+            'uid': uid,
+            'empty': True,
+            'summary': {},
+            'lesson': {}, 'lab': {}, 'ai': {},
+            'sessions': {},
+            'daily': [], 'heatmap': [[0]*24]*7,
+            'timeline': [],
+        })
+
+    # ── Activity chung ─────────────────────────────────────
+    act = _activity_for_uid(user_evs, uid, now)
+
+    # ── Lesson stats ───────────────────────────────────────
+    lesson_starts = [e for e in user_evs if e['type'] in ('lesson_open', 'lesson_start')]
+    lesson_done   = [e for e in user_evs if e['type'] == 'lesson_complete']
+    scores = [e.get('score') for e in lesson_done if isinstance(e.get('score'), (int, float))]
+    lesson_avg_score = round(sum(scores) / len(scores), 1) if scores else None
+    lesson_titles = Counter()
+    for e in lesson_done:
+        t = e.get('title') or e.get('lessonId') or ''
+        if t:
+            lesson_titles[t] += 1
+
+    # ── Quiz stats ─────────────────────────────────────────
+    quiz_done   = [e for e in user_evs if e['type'] == 'quiz_complete']
+    quiz_retry  = sum(1 for e in user_evs if e['type'] == 'quiz_start') - len(quiz_done)
+    quiz_scores = [e.get('score') for e in quiz_done if isinstance(e.get('score'), (int, float))]
+    quiz_avg    = round(sum(quiz_scores) / len(quiz_scores), 1) if quiz_scores else None
+
+    # ── Lab stats ──────────────────────────────────────────
+    lab_open  = [e for e in user_evs if e['type'] == 'lab_open']
+    lab_done  = [e for e in user_evs if e['type'] == 'lab_complete']
+    lab_steps = [e for e in user_evs if e['type'] == 'lab_step']
+    lab_err   = [e for e in user_evs if e['type'] == 'lab_error']
+
+    lab_by_name = Counter()
+    for e in lab_open:
+        n = e.get('lab') or e.get('experiment') or e.get('name') or 'Thí nghiệm'
+        lab_by_name[n] += 1
+    lab_completion = round(100 * len(lab_done) / max(1, len(lab_open))) if lab_open else 0
+    lab_time = 0
+    for e in lab_done:
+        d = e.get('duration')
+        if isinstance(d, (int, float)):
+            lab_time += d
+
+    # Bước sai (lab_error) hay xảy ra
+    err_steps = Counter()
+    for e in lab_err:
+        s = e.get('step') or e.get('reason') or 'unknown'
+        err_steps[s] += 1
+
+    # ── AI stats ───────────────────────────────────────────
+    ai_evs   = [e for e in user_evs if e['type'] == 'ai_chat']
+    ai_topics = Counter()
+    for e in ai_evs:
+        t = (e.get('topic') or '').strip()
+        if t:
+            ai_topics[t] += 1
+    followups = sum(1 for e in user_evs if e['type'] == 'ai_followup')
+
+    # ── Timeline (200 event gần nhất) ──────────────────────
+    TL_TYPES = {
+        'login': ('Đăng nhập hệ thống', 'fa-right-to-bracket', 'green'),
+        'logout': ('Đăng xuất', 'fa-right-from-bracket', 'text-m'),
+        'session_start': ('Bắt đầu phiên', 'fa-play', 'cyan'),
+        'page_view': ('Xem trang', 'fa-eye', 'text-m'),
+        'lesson_start': ('Bắt đầu bài học', 'fa-book-open', 'indigo'),
+        'lesson_open': ('Mở bài học', 'fa-book-open', 'indigo'),
+        'lesson_complete': ('Hoàn thành bài học', 'fa-book-bookmark', 'green'),
+        'quiz_start': ('Bắt đầu Quiz', 'fa-list-check', 'gold'),
+        'quiz_complete': ('Hoàn thành Quiz', 'fa-square-check', 'green'),
+        'quiz_answer': ('Trả lời câu hỏi', 'fa-pen', 'text-m'),
+        'lab_open': ('Vào Lab 3D', 'fa-flask', 'purple'),
+        'lab_step': ('Thao tác Lab', 'fa-hand-pointer', 'text-m'),
+        'lab_complete': ('Hoàn thành Lab', 'fa-vial-circle-check', 'green'),
+        'lab_error': ('Sai bước Lab', 'fa-triangle-exclamation', 'red'),
+        'ai_chat': ('Hỏi AI', 'fa-robot', 'cyan'),
+        'ai_followup': ('Hỏi tiếp AI', 'fa-comments', 'cyan'),
+    }
+    timeline = []
+    for ev in user_evs[-200:][::-1]:
+        meta = TL_TYPES.get(ev['type'], (ev['type'], 'fa-circle-dot', 'text-m'))
+        timeline.append({
+            'ts':    ev['ts'],
+            'type':  ev['type'],
+            'label': meta[0],
+            'icon':  meta[1],
+            'color': meta[2],
+            'extra': {k: v for k, v in ev.items()
+                      if k not in ('ts', 'type', 'user_id', 'ip')},
+            'ip':    ev.get('ip', ''),
+        })
+
+    return jsonify({
+        'uid': uid,
+        'empty': False,
+        'summary': act,
+        'lesson': {
+            'started':   len(lesson_starts),
+            'completed': len(lesson_done),
+            'in_progress': max(0, len(lesson_starts) - len(lesson_done)),
+            'avg_score': lesson_avg_score,
+            'top':       lesson_titles.most_common(10),
+            'completion_rate':
+                round(100 * len(lesson_done) / max(1, len(lesson_starts))) if lesson_starts else 0,
+        },
+        'quiz': {
+            'done':    len(quiz_done),
+            'retries': max(0, quiz_retry),
+            'avg':     quiz_avg,
+        },
+        'lab': {
+            'opened':      len(lab_open),
+            'completed':   len(lab_done),
+            'unfinished':  max(0, len(lab_open) - len(lab_done)),
+            'steps':       len(lab_steps),
+            'errors':      len(lab_err),
+            'total_time':  int(lab_time),
+            'completion':  lab_completion,
+            'by_name':     lab_by_name.most_common(10),
+            'error_steps': err_steps.most_common(10),
+        },
+        'ai': {
+            'count':     len(ai_evs),
+            'topics':    ai_topics.most_common(10),
+            'followups': followups,
+        },
+        'daily':   _daily_series(user_evs, days),
+        'heatmap': _heatmap_hour_dow(user_evs),
+        'timeline': timeline,
+    })
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
