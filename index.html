@@ -3584,5 +3584,194 @@ updateNavForLoggedOut();
 })();
 </script>
 <script src="/tracker.js"></script>
+  <!-- ══════════════════════════════════════════════════════════════════════
+  CHEMCRAFT · Snippet "Báo cáo lỗi" cho index.html (và có thể lab.html)
+  ------------------------------------------------------------------------
+  Cách dùng:
+    1) Đảm bảo tracker.js đã được nạp (đã có sẵn window.ccTrack).
+    2) Dán TOÀN BỘ block dưới đây vào TRƯỚC </body> của index.html.
+    3) Nút nổi (FAB) sẽ hiện ở góc dưới bên phải, mở modal cho user
+       nhập tiêu đề, chi tiết, mức độ. Khi gửi, gọi:
+           window.ccTrack('bug_report', {...})
+       → server ghi vào events.jsonl, hiển thị trong tab Xếp hạng.
+  ══════════════════════════════════════════════════════════════════════ -->
+
+<!-- ①  Nút nổi -->
+<button id="cc-bug-fab" title="Báo cáo lỗi phòng thí nghiệm">
+  <i class="fa-solid fa-bug"></i>
+  <span>Báo lỗi</span>
+</button>
+
+<!-- ②  Modal -->
+<div id="cc-bug-modal" class="cc-bug-hidden" role="dialog" aria-modal="true">
+  <div class="cc-bug-backdrop"></div>
+  <div class="cc-bug-dialog">
+    <button class="cc-bug-close" aria-label="Đóng">&times;</button>
+    <h3><i class="fa-solid fa-triangle-exclamation"></i> Báo cáo lỗi</h3>
+    <p class="cc-bug-sub">Giúp ChemCraft cải thiện — mô tả càng chi tiết càng tốt.</p>
+
+    <label>Tiêu đề <span class="req">*</span></label>
+    <input id="cc-bug-title" type="text" maxlength="120"
+           placeholder="Ví dụ: Không thể thêm HCl vào ống nghiệm" />
+
+    <label>Khu vực gặp lỗi</label>
+    <select id="cc-bug-area">
+      <option value="lab">Phòng thí nghiệm 3D</option>
+      <option value="lesson">Bài học</option>
+      <option value="quiz">Quiz</option>
+      <option value="ai">Trợ lý AI</option>
+      <option value="ui">Giao diện chung</option>
+      <option value="other">Khác</option>
+    </select>
+
+    <label>Mức độ</label>
+    <div class="cc-bug-sev">
+      <label><input type="radio" name="ccsev" value="low"><span>Nhẹ</span></label>
+      <label><input type="radio" name="ccsev" value="normal" checked><span>Bình thường</span></label>
+      <label><input type="radio" name="ccsev" value="high"><span>Nghiêm trọng</span></label>
+      <label><input type="radio" name="ccsev" value="critical"><span>Không dùng được</span></label>
+    </div>
+
+    <label>Chi tiết</label>
+    <textarea id="cc-bug-detail" rows="4" maxlength="1500"
+              placeholder="Các bước để tái hiện lỗi, thông báo lỗi, thiết bị/trình duyệt…"></textarea>
+
+    <div class="cc-bug-footer">
+      <span id="cc-bug-msg" class="cc-bug-msg"></span>
+      <button id="cc-bug-cancel" class="btn-ghost">Huỷ</button>
+      <button id="cc-bug-send"   class="btn-primary">
+        <i class="fa-solid fa-paper-plane"></i> Gửi báo cáo
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  #cc-bug-fab{
+    position:fixed; right:22px; bottom:22px; z-index:9998;
+    background:linear-gradient(135deg,#ef4444,#dc2626);
+    color:#fff; border:0; border-radius:99px; padding:12px 18px;
+    font-weight:700; font-size:.9rem; cursor:pointer;
+    box-shadow:0 8px 24px rgba(220,38,38,.35);
+    display:inline-flex; align-items:center; gap:8px;
+    transition:transform .15s, box-shadow .15s;
+  }
+  #cc-bug-fab:hover{transform:translateY(-2px); box-shadow:0 12px 28px rgba(220,38,38,.45)}
+  #cc-bug-fab i{font-size:1rem}
+  @media (max-width:640px){ #cc-bug-fab span{display:none} #cc-bug-fab{padding:14px} }
+
+  #cc-bug-modal{position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px}
+  #cc-bug-modal.cc-bug-hidden{display:none}
+  .cc-bug-backdrop{position:absolute; inset:0; background:rgba(15,23,42,.55); backdrop-filter:blur(4px)}
+  .cc-bug-dialog{
+    position:relative; background:#fff; border-radius:16px;
+    padding:24px 24px 18px; width:100%; max-width:480px;
+    max-height:90vh; overflow-y:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,.25);
+    font-family:inherit; color:#0f172a;
+  }
+  .cc-bug-dialog h3{margin:0 0 6px; font-size:1.15rem; display:flex; align-items:center; gap:8px; color:#dc2626}
+  .cc-bug-sub{margin:0 0 16px; font-size:.83rem; color:#64748b}
+  .cc-bug-dialog label{display:block; font-size:.78rem; font-weight:700; color:#475569; margin:12px 0 5px; text-transform:uppercase; letter-spacing:.03em}
+  .cc-bug-dialog label .req{color:#dc2626}
+  .cc-bug-dialog input[type=text],
+  .cc-bug-dialog textarea,
+  .cc-bug-dialog select{
+    width:100%; padding:10px 12px; border:1px solid #e2e8f0; border-radius:9px;
+    font-size:.9rem; font-family:inherit; color:#0f172a; background:#fff;
+    transition:border-color .15s;
+  }
+  .cc-bug-dialog input:focus,
+  .cc-bug-dialog textarea:focus,
+  .cc-bug-dialog select:focus{border-color:#4f6bff; outline:0; box-shadow:0 0 0 3px rgba(79,107,255,.15)}
+  .cc-bug-dialog textarea{resize:vertical; min-height:80px}
+  .cc-bug-sev{display:flex; gap:6px; flex-wrap:wrap}
+  .cc-bug-sev label{margin:0; text-transform:none; letter-spacing:0; font-weight:500; font-size:.83rem; cursor:pointer}
+  .cc-bug-sev input{display:none}
+  .cc-bug-sev span{display:inline-block; padding:6px 12px; border:1px solid #e2e8f0; border-radius:99px; color:#475569; transition:all .15s}
+  .cc-bug-sev input:checked + span{background:#4f6bff; color:#fff; border-color:#4f6bff}
+  .cc-bug-close{position:absolute; top:12px; right:14px; background:transparent; border:0; font-size:1.6rem; color:#94a3b8; cursor:pointer; line-height:1}
+  .cc-bug-close:hover{color:#0f172a}
+  .cc-bug-footer{display:flex; align-items:center; gap:8px; margin-top:18px; justify-content:flex-end}
+  .cc-bug-footer .btn-primary{background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; border:0; padding:9px 16px; border-radius:9px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px}
+  .cc-bug-footer .btn-ghost{background:transparent; border:1px solid #e2e8f0; padding:9px 14px; border-radius:9px; color:#475569; font-weight:600; cursor:pointer}
+  .cc-bug-footer .btn-primary:hover{opacity:.92}
+  .cc-bug-msg{flex:1; font-size:.8rem}
+  .cc-bug-msg.ok{color:#16a34a}
+  .cc-bug-msg.err{color:#dc2626}
+</style>
+
+<script>
+(function () {
+  const fab    = document.getElementById('cc-bug-fab');
+  const modal  = document.getElementById('cc-bug-modal');
+  const close  = modal.querySelector('.cc-bug-close');
+  const cancel = document.getElementById('cc-bug-cancel');
+  const send   = document.getElementById('cc-bug-send');
+  const bd     = modal.querySelector('.cc-bug-backdrop');
+  const msg    = document.getElementById('cc-bug-msg');
+
+  const open  = () => { modal.classList.remove('cc-bug-hidden'); msg.textContent = ''; };
+  const hide  = () => { modal.classList.add('cc-bug-hidden'); };
+
+  fab.addEventListener('click', open);
+  close.addEventListener('click', hide);
+  cancel.addEventListener('click', hide);
+  bd.addEventListener('click', hide);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !modal.classList.contains('cc-bug-hidden')) hide();
+  });
+
+  send.addEventListener('click', async () => {
+    const title = document.getElementById('cc-bug-title').value.trim();
+    const area  = document.getElementById('cc-bug-area').value;
+    const sev   = document.querySelector('input[name=ccsev]:checked')?.value || 'normal';
+    const detail= document.getElementById('cc-bug-detail').value.trim();
+
+    if (!title) {
+      msg.className = 'cc-bug-msg err';
+      msg.textContent = 'Vui lòng nhập tiêu đề.';
+      return;
+    }
+
+    send.disabled = true;
+    msg.className = 'cc-bug-msg';
+    msg.textContent = 'Đang gửi…';
+
+    try {
+      // Ưu tiên gửi qua tracker (ghi events.jsonl)
+      if (typeof window.ccTrack === 'function') {
+        await window.ccTrack('bug_report', {
+          title, area, severity: sev, message: detail,
+          path: location.pathname,
+          ua:   navigator.userAgent.slice(0, 200),
+        });
+      } else {
+        // Fallback: gọi trực tiếp
+        await fetch('/api/log-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'bug_report',
+            userId: window._currentUser?.uid || '',
+            title, area, severity: sev, message: detail,
+            path: location.pathname,
+          }),
+        });
+      }
+      msg.className = 'cc-bug-msg ok';
+      msg.textContent = '✔ Đã gửi. Cảm ơn bạn!';
+      document.getElementById('cc-bug-title').value = '';
+      document.getElementById('cc-bug-detail').value = '';
+      setTimeout(hide, 1200);
+    } catch (e) {
+      msg.className = 'cc-bug-msg err';
+      msg.textContent = 'Không gửi được. Thử lại sau.';
+    } finally {
+      send.disabled = false;
+    }
+  });
+})();
+</script>
 </body>
 </html>
