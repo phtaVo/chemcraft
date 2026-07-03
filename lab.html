@@ -4139,6 +4139,17 @@
                 // Bắt đầu âm thanh nền phản ứng — phủ MỌI loại phản ứng để không bị mất tiếng
                 try { SoundEngine.startReactionAmbience(res.type); } catch(e) { console.warn('Reaction ambience:', e); }
                 try { SessionLog.record(res); } catch(e) { console.warn('SessionLog error', e); }
+                // Ghi log "hoàn thành thí nghiệm" (chỉ khi thực sự có phản ứng) — dùng cho Xếp hạng
+                try {
+                    if (res && res.hasReaction && typeof window.ccTrack === 'function') {
+                        const params = new URLSearchParams(location.search);
+                        window.ccTrack('lab_completed', {
+                            labId: params.get('mission') || params.get('lesson') || 'freeplay',
+                            reactionType: res.type || '',
+                            eq: res.eq || '',
+                        });
+                    }
+                } catch(e) { console.warn('[ccTrack] lab_completed error:', e); }
                 const targetH = Math.max(0.05, (currentTotalVolume / MAX_VOLUME)); 
                 reactionBeakerLiquid.scale.y = targetH;
                 
@@ -7522,6 +7533,16 @@ JSON: {"equation":"...","products":["..."],"coefficients":[...],"conditions":{"c
                 try { MultiStep.install(); } catch(e){ console.error(e); }
                 try { ReactionIntel.install(); } catch(e){ console.error(e); }
             }, 700);
+            // Ghi log "mở lab" để phục vụ bảng Xếp hạng (tab Thí nghiệm nhiều nhất)
+            try {
+                if (typeof window.ccTrack === 'function') {
+                    const params = new URLSearchParams(location.search);
+                    window.ccTrack('lab_opened', {
+                        labId: params.get('mission') || params.get('lesson') || 'freeplay',
+                        path: location.pathname,
+                    });
+                }
+            } catch(e) { console.warn('[ccTrack] lab_opened error:', e); }
         };
         window.onload = window.init;
     </script>
