@@ -2041,7 +2041,7 @@ const Rankings = {
     const wrap = document.getElementById('ccr-table-wrap');
     if (wrap) wrap.innerHTML = `<div class="ccr-loading"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải…</div>`;
     try {
-      const token = sessionStorage.getItem('adminToken') || sessionStorage.getItem('admin_token') || '';
+      const token = window.__adminToken || sessionStorage.getItem('cc_admin_token') || '';
       const r = await fetch(`/api/admin-rankings?days=${this._days}&limit=100`, { headers: { 'X-Admin-Token': token } });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       this._data = await r.json();
