@@ -52,13 +52,6 @@ function _resolveAuth(session) {
     const { getAuth, sendPasswordResetEmail }
       = await import('https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js');
     
-    // Sau khi initializeApp(cfg):
-    window._fbAuth = getAuth(app);
-    Object.assign(window._fbFns, {
-      updateDoc, deleteDoc, addDoc, sendPasswordResetEmail
-    });
-
-
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 3000);
     let cfg = {};
@@ -71,6 +64,13 @@ function _resolveAuth(session) {
     const app = initializeApp(cfg);
     window._fbDb   = getFirestore(app);
     window._fbFns  = { doc, getDoc, setDoc, collection, query, where, orderBy, limit, getDocs, getCountFromServer, Timestamp, serverTimestamp };
+
+    // Sau khi initializeApp(cfg): app và window._fbFns đã tồn tại, giờ mới dùng được
+    window._fbAuth = getAuth(app);
+    Object.assign(window._fbFns, {
+      updateDoc, deleteDoc, addDoc, sendPasswordResetEmail
+    });
+
     window._fbReady = true;
   } catch(e) {
     console.warn('Firestore init failed:', e.message);
