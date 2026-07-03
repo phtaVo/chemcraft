@@ -596,8 +596,11 @@ const PAGES = {
     sub:   'Chi tiết tiến độ học & hành vi từng học sinh',
     render: () => window.CC_Profile.render(window._ccProfileUid),
   },
-  leaderboard:{ title:'Xếp hạng học sinh', sub:'Bảng xếp hạng theo điểm trung bình & số bài hoàn thành', render: () => renderStub('fa-ranking-star','Bảng xếp hạng',
-      'Kết hợp điểm trung bình và số bài học đã hoàn thành thành một leaderboard tổng, hỗ trợ giáo viên nhận diện học sinh nổi bật hoặc cần hỗ trợ thêm.', ['Điểm trung bình','Bài hoàn thành','Top học sinh']) },
+  leaderboard: {
+  title: 'Xếp hạng',
+  sub:   'Top thí nghiệm • Top Quiz • Top báo cáo lỗi',
+  render: () => window.CC_Rankings.render(),
+  },
   courses:    { title:'Khóa học & bài học', sub:'CRUD chương, bài học, video, PDF, công thức, animation', render: () => renderStub('fa-book-open','Quản lý khóa học',
       'CRUD đầy đủ cho chương, bài học, video, hình ảnh, file PDF, công thức, animation — kèm trình soạn thảo Rich Text hỗ trợ kéo thả.', ['Rich Text Editor','Kéo thả nội dung','Quản lý chương/bài']) },
   quiz:       { title:'Quản lý Quiz', sub:'Tạo câu hỏi & phân tích kết quả theo từng câu', render: () => renderStub('fa-list-check','Quản lý Quiz',
@@ -1919,7 +1922,6 @@ function renderLabAnalytics(){
 /* ═══════════════════════════════════════════════════════════════
    MODULE: XẾPHẠNG
    ═══════════════════════════════════════════════════════════════ */
-PAGES['leaderboard'] = { title:'Xếp hạng học sinh', sub:'Leaderboard theo điểm TB & bài hoàn thành', render: renderLeaderboard };
 
 function renderLeaderboard(){
   document.getElementById('page-root').innerHTML = `
