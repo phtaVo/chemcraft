@@ -4139,17 +4139,27 @@
                 // Bắt đầu âm thanh nền phản ứng — phủ MỌI loại phản ứng để không bị mất tiếng
                 try { SoundEngine.startReactionAmbience(res.type); } catch(e) { console.warn('Reaction ambience:', e); }
                 try { SessionLog.record(res); } catch(e) { console.warn('SessionLog error', e); }
-                // Ghi log "hoàn thành thí nghiệm" (chỉ khi thực sự có phản ứng) — dùng cho Xếp hạng
+                // Ghi log kết quả thí nghiệm cho Xếp hạng — đúng event type backend:
+                // 'lab_complete' khi có phản ứng thật, 'lab_error' khi không có hiện tượng gì (thử sai)
                 try {
-                    if (res && res.hasReaction && typeof window.ccTrack === 'function') {
-                        const params = new URLSearchParams(location.search);
-                        window.ccTrack('lab_completed', {
-                            labId: params.get('mission') || params.get('lesson') || 'freeplay',
-                            reactionType: res.type || '',
-                            eq: res.eq || '',
-                        });
+                    if (typeof window.ccTrack === 'function') {
+                        const labId = window._ccLabId || 'freeplay';
+                        if (res && res.hasReaction) {
+                            window.ccTrack('lab_complete', {
+                                lab: labId,
+                                sessionId: window._ccLabSessionId,
+                                reactionType: res.type || '',
+                                eq: res.eq || '',
+                            });
+                        } else {
+                            window.ccTrack('lab_error', {
+                                lab: labId,
+                                sessionId: window._ccLabSessionId,
+                                reason: 'no_reaction',
+                            });
+                        }
                     }
-                } catch(e) { console.warn('[ccTrack] lab_completed error:', e); }
+                } catch(e) { console.warn('[ccTrack] lab_complete/lab_error error:', e); }
                 const targetH = Math.max(0.05, (currentTotalVolume / MAX_VOLUME)); 
                 reactionBeakerLiquid.scale.y = targetH;
                 
@@ -7534,15 +7544,19 @@ JSON: {"equation":"...","products":["..."],"coefficients":[...],"conditions":{"c
                 try { ReactionIntel.install(); } catch(e){ console.error(e); }
             }, 700);
             // Ghi log "mở lab" để phục vụ bảng Xếp hạng (tab Thí nghiệm nhiều nhất)
+            // Đúng event type theo backend: 'lab_open' (không phải 'lab_opened')
             try {
                 if (typeof window.ccTrack === 'function') {
                     const params = new URLSearchParams(location.search);
-                    window.ccTrack('lab_opened', {
-                        labId: params.get('mission') || params.get('lesson') || 'freeplay',
+                    const labId = params.get('mission') || params.get('lesson') || 'freeplay';
+                    window._ccLabId = labId;
+                    Promise.resolve(window.ccTrack('lab_open', {
+                        lab: labId,
                         path: location.pathname,
-                    });
+                    })).then(r => { try { window._ccLabSessionId = r && r.sessionId; } catch(e){} })
+                       .catch(e => console.warn('[ccTrack] lab_open error:', e));
                 }
-            } catch(e) { console.warn('[ccTrack] lab_opened error:', e); }
+            } catch(e) { console.warn('[ccTrack] lab_open error:', e); }
         };
         window.onload = window.init;
     </script>
