@@ -983,8 +983,15 @@ function refreshChartsTheme(){
   }
 
   function safeDestroy() {
-    if (window._charts) Object.values(window._charts).forEach(c => { try { c.destroy(); } catch (e) {} });
-    window._charts = window._charts || {};
+    // Dùng chung registry `_charts` (khai báo ở script mock phía trên) thay vì
+    // window._charts riêng — trước đây 2 biến khác nhau khiến chart mock
+    // (renderMockCharts) không bao giờ bị destroy trước khi _renderReal vẽ
+    // chart mới lên cùng canvas -> lỗi "Canvas is already in use".
+    if (typeof _charts !== 'undefined') {
+      Object.keys(_charts).forEach(k => { try { _charts[k] && _charts[k].destroy(); } catch (e) {} delete _charts[k]; });
+    } else {
+      window._charts = window._charts || {};
+    }
   }
 
   /* ═══════════════ OVERRIDE: renderMockCharts ═══════════════ */
@@ -1000,7 +1007,7 @@ function refreshChartsTheme(){
     // Growth chart — hoạt động 7 ngày
     const g = document.getElementById('chart-growth');
     if (g) {
-      window._charts.growth = new Chart(g, {
+      _charts.growth = new Chart(g, {
         type: 'line',
         data: {
           labels: last7Labels(),
@@ -1027,7 +1034,7 @@ function refreshChartsTheme(){
     const dn = document.getElementById('chart-donut');
     if (dn) {
       const d = m.donut || {};
-      window._charts.donut = new Chart(dn, {
+      _charts.donut = new Chart(dn, {
         type: 'doughnut',
         data: {
           labels: Object.keys(d),
@@ -1047,7 +1054,7 @@ function refreshChartsTheme(){
     // Bar — 4 tuần lab
     const bar = document.getElementById('chart-bar');
     if (bar) {
-      window._charts.bar = new Chart(bar, {
+      _charts.bar = new Chart(bar, {
         type: 'bar',
         data: {
           labels: ['Tuần -3', 'Tuần -2', 'Tuần -1', 'Tuần này'],
@@ -1071,7 +1078,7 @@ function refreshChartsTheme(){
     // Area — tỉ lệ hoàn thành theo tuần (đơn giản: dùng daily lesson 7d)
     const area = document.getElementById('chart-area');
     if (area) {
-      window._charts.area = new Chart(area, {
+      _charts.area = new Chart(area, {
         type: 'line',
         data: {
           labels: last7Labels(),
