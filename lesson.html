@@ -1056,6 +1056,16 @@
             document.getElementById('res-message').innerText = msg;
             playSuccess();
             recordLessonVisit(8, `Điểm: ${totalCorrect}/${quizData.length}`, true);
+            // Ghi log điểm quiz để phục vụ bảng Xếp hạng (tab Điểm Quiz cao nhất)
+            try {
+                if (typeof window.ccTrack === 'function') {
+                    window.ccTrack('quiz_attempt', {
+                        quizId: 'lesson8',
+                        score: totalCorrect,
+                        total: quizData.length,
+                    });
+                }
+            } catch(e) { console.warn('[ccTrack] quiz_attempt error:', e); }
         }
 
         function reviewQuiz() {
