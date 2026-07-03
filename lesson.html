@@ -918,6 +918,16 @@
             currentQIndex = 0;
             userAnswers = new Array(quizData.length).fill(null);
             isReviewMode = false;
+            window._ccQuizStartTs = Date.now();
+            // Ghi log bắt đầu quiz để lấy attemptId (dùng cho quiz_complete) — event type: 'quiz_start'
+            try {
+                if (typeof window.ccTrack === 'function') {
+                    Promise.resolve(window.ccTrack('quiz_start', {
+                        totalQuestions: quizData.length,
+                    })).then(r => { try { window._ccQuizAttemptId = r && r.attemptId; } catch(e){} })
+                       .catch(e => console.warn('[ccTrack] quiz_start error:', e));
+                }
+            } catch(e) { console.warn('[ccTrack] quiz_start error:', e); }
             renderQuizQuestion();
         }
 
@@ -1056,16 +1066,20 @@
             document.getElementById('res-message').innerText = msg;
             playSuccess();
             recordLessonVisit(8, `Điểm: ${totalCorrect}/${quizData.length}`, true);
-            // Ghi log điểm quiz để phục vụ bảng Xếp hạng (tab Điểm Quiz cao nhất)
+            // Ghi log điểm quiz cho Xếp hạng — đúng event type backend: 'quiz_complete'
+            // (không phải 'quiz_attempt'); ranking đọc field `score` ở đây.
             try {
                 if (typeof window.ccTrack === 'function') {
-                    window.ccTrack('quiz_attempt', {
-                        quizId: 'lesson8',
+                    const durationSec = window._ccQuizStartTs ? Math.round((Date.now() - window._ccQuizStartTs) / 1000) : undefined;
+                    window.ccTrack('quiz_complete', {
+                        attemptId: window._ccQuizAttemptId,
                         score: totalCorrect,
+                        correctCount: totalCorrect,
                         total: quizData.length,
+                        durationSec,
                     });
                 }
-            } catch(e) { console.warn('[ccTrack] quiz_attempt error:', e); }
+            } catch(e) { console.warn('[ccTrack] quiz_complete error:', e); }
         }
 
         function reviewQuiz() {
