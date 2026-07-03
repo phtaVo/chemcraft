@@ -1125,4 +1125,330 @@ hs01@example.com,Nguyễn Văn A,student,THPT Nguyễn Trãi,10A1"></textarea>
     window._ccProfileUid = key === 'profile' ? (uid || window._ccProfileUid) : window._ccProfileUid;
     if (_origNav) _origNav(key);
   };
+
+  /* ═══════════════════════════════════════════════════════════════════
+     MODULE 3 · Xếp hạng (Rankings)
+     3 tab: Thí nghiệm | Quiz | Báo cáo lỗi
+     ─────────────────────────────────────────────────────────────────── */
+  const CC_Rankings = {
+    _tab: 'lab',
+    _days: 30,
+    _data: null,
+    _userCache: {},   // uid -> {name, email}
+
+    async render() {
+      const root = document.getElementById('page-content') || document.body;
+      root.innerHTML = `
+        <div class="ccr-wrap">
+          <div class="ccr-toolbar">
+            <div class="ccr-tabs">
+              <button class="ccr-tab active" data-tab="lab">
+                <i class="fa-solid fa-flask"></i> Thí nghiệm nhiều nhất
+              </button>
+              <button class="ccr-tab" data-tab="quiz">
+                <i class="fa-solid fa-medal"></i> Điểm Quiz cao nhất
+              </button>
+              <button class="ccr-tab" data-tab="bugs">
+                <i class="fa-solid fa-bug"></i> Báo cáo lỗi nhiều nhất
+              </button>
+            </div>
+            <div class="ccr-actions">
+              <select id="ccr-days" class="ccr-select">
+                <option value="7">7 ngày</option>
+                <option value="30" selected>30 ngày</option>
+                <option value="90">90 ngày</option>
+                <option value="0">Toàn thời gian</option>
+              </select>
+              <button id="ccr-refresh" class="ccr-btn">
+                <i class="fa-solid fa-rotate"></i> Làm mới
+              </button>
+              <button id="ccr-export" class="ccr-btn ccr-btn-ghost">
+                <i class="fa-solid fa-download"></i> CSV
+              </button>
+            </div>
+          </div>
+          <div id="ccr-summary" class="ccr-summary"></div>
+          <div id="ccr-table-wrap" class="ccr-card">
+            <div class="ccr-loading"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải…</div>
+          </div>
+        </div>`;
+
+      root.querySelectorAll('.ccr-tab').forEach(b => {
+        b.onclick = () => {
+          root.querySelectorAll('.ccr-tab').forEach(x => x.classList.remove('active'));
+          b.classList.add('active');
+          this._tab = b.dataset.tab;
+          this._renderTable();
+        };
+      });
+      root.querySelector('#ccr-days').onchange = e => {
+        this._days = parseInt(e.target.value, 10);
+        this._fetch();
+      };
+      root.querySelector('#ccr-refresh').onclick = () => this._fetch();
+      root.querySelector('#ccr-export').onclick = () => this._exportCsv();
+
+      await this._fetch();
+    },
+
+    async _fetch() {
+      const wrap = document.getElementById('ccr-table-wrap');
+      if (wrap) wrap.innerHTML = `<div class="ccr-loading"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải…</div>`;
+      try {
+        const token = sessionStorage.getItem('adminToken') || sessionStorage.getItem('admin_token') || '';
+        const r = await fetch(`/api/admin-rankings?days=${this._days}&limit=100`, {
+          headers: { 'X-Admin-Token': token },
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        this._data = await r.json();
+        // resolve tên/email từ Firestore (cache)
+        await this._resolveUserNames();
+        this._renderSummary();
+        this._renderTable();
+      } catch (e) {
+        if (wrap) wrap.innerHTML = `<div class="ccr-empty">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          Không tải được dữ liệu xếp hạng: ${esc(e.message)}
+        </div>`;
+      }
+    },
+
+    async _resolveUserNames() {
+      if (!this._data) return;
+      const uids = new Set();
+      ['lab','quiz','bugs'].forEach(k => (this._data[k] || []).forEach(r => uids.add(r.uid)));
+      const need = [...uids].filter(u => !(u in this._userCache));
+      if (!need.length) return;
+      const db = window._fbDb, fns = window._fbFns;
+      if (!db || !fns?.doc || !fns?.getDoc) {
+        need.forEach(u => this._userCache[u] = { name: '', email: '' });
+        return;
+      }
+      await Promise.all(need.map(async u => {
+        try {
+          const snap = await fns.getDoc(fns.doc(db, 'users', u));
+          if (snap.exists()) {
+            const d = snap.data();
+            this._userCache[u] = {
+              name:  d.displayName || d.name || d.fullName || '',
+              email: d.email || '',
+            };
+          } else {
+            this._userCache[u] = { name: '', email: '' };
+          }
+        } catch (e) {
+          this._userCache[u] = { name: '', email: '' };
+        }
+      }));
+    },
+
+    _renderSummary() {
+      const el = document.getElementById('ccr-summary');
+      if (!el || !this._data) return;
+      const t = this._data.totals || {};
+      el.innerHTML = `
+        <div class="ccr-kpi"><div class="ccr-kpi-ic ic-lab"><i class="fa-solid fa-flask"></i></div>
+          <div><div class="ccr-kpi-n">${t.lab_users || 0}</div><div class="ccr-kpi-l">Học sinh làm Lab</div></div></div>
+        <div class="ccr-kpi"><div class="ccr-kpi-ic ic-quiz"><i class="fa-solid fa-medal"></i></div>
+          <div><div class="ccr-kpi-n">${t.quiz_users || 0}</div><div class="ccr-kpi-l">Học sinh làm Quiz</div></div></div>
+        <div class="ccr-kpi"><div class="ccr-kpi-ic ic-bug"><i class="fa-solid fa-bug"></i></div>
+          <div><div class="ccr-kpi-n">${t.bug_users || 0}</div><div class="ccr-kpi-l">Người báo cáo lỗi</div></div></div>`;
+    },
+
+    _renderTable() {
+      const wrap = document.getElementById('ccr-table-wrap');
+      if (!wrap || !this._data) return;
+      const rows = this._data[this._tab] || [];
+      if (!rows.length) {
+        wrap.innerHTML = `<div class="ccr-empty"><i class="fa-solid fa-inbox"></i> Chưa có dữ liệu trong khoảng thời gian này.</div>`;
+        return;
+      }
+      wrap.innerHTML = this._tab === 'lab'   ? this._tblLab(rows)
+                     : this._tab === 'quiz' ? this._tblQuiz(rows)
+                     :                        this._tblBugs(rows);
+      wrap.querySelectorAll('[data-uid]').forEach(el => {
+        el.onclick = () => {
+          const uid = el.dataset.uid;
+          if (window.navigateTo) window.navigateTo('profile', uid);
+        };
+      });
+    },
+
+    _rankBadge(i) {
+      if (i === 0) return `<span class="ccr-rank gold">🥇 1</span>`;
+      if (i === 1) return `<span class="ccr-rank silver">🥈 2</span>`;
+      if (i === 2) return `<span class="ccr-rank bronze">🥉 3</span>`;
+      return `<span class="ccr-rank">#${i + 1}</span>`;
+    },
+
+    _userCell(uid) {
+      const u = this._userCache[uid] || {};
+      const name = u.name || u.email || uid;
+      const sub = u.email && u.name ? u.email : uid;
+      return `<div class="ccr-user" data-uid="${esc(uid)}">
+        <div class="ccr-avatar">${esc(initials(u.name, u.email))}</div>
+        <div class="ccr-user-meta">
+          <div class="ccr-user-name">${esc(name)}</div>
+          <div class="ccr-user-sub">${esc(sub)}</div>
+        </div>
+      </div>`;
+    },
+
+    _tblLab(rows) {
+      return `<table class="ccr-table"><thead><tr>
+        <th style="width:70px">Hạng</th><th>Học sinh</th>
+        <th class="num">Đã mở</th><th class="num">Hoàn thành</th>
+        <th class="num">Sai bước</th><th class="num">Thí nghiệm khác nhau</th>
+        <th class="num">% hoàn thành</th><th>Lần cuối</th>
+      </tr></thead><tbody>
+      ${rows.map((r, i) => `<tr>
+        <td>${this._rankBadge(i)}</td>
+        <td>${this._userCell(r.uid)}</td>
+        <td class="num"><b>${r.opened}</b></td>
+        <td class="num">${r.completed}</td>
+        <td class="num ${r.errors ? 'warn' : ''}">${r.errors}</td>
+        <td class="num">${r.unique_labs}</td>
+        <td class="num">
+          <div class="ccr-bar"><span style="width:${r.completion}%"></span></div>
+          <span class="ccr-bar-n">${r.completion}%</span>
+        </td>
+        <td>${relTime(r.last_ts)}</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+    },
+
+    _tblQuiz(rows) {
+      return `<table class="ccr-table"><thead><tr>
+        <th style="width:70px">Hạng</th><th>Học sinh</th>
+        <th class="num">Điểm cao nhất</th><th class="num">Điểm TB</th>
+        <th class="num">Số lần</th><th>Lần cuối</th>
+      </tr></thead><tbody>
+      ${rows.map((r, i) => `<tr>
+        <td>${this._rankBadge(i)}</td>
+        <td>${this._userCell(r.uid)}</td>
+        <td class="num"><b class="score">${r.best ?? '—'}</b></td>
+        <td class="num">${r.avg ?? '—'}</td>
+        <td class="num">${r.attempts}</td>
+        <td>${relTime(r.last_ts)}</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+    },
+
+    _tblBugs(rows) {
+      return `<table class="ccr-table"><thead><tr>
+        <th style="width:70px">Hạng</th><th>Học sinh</th>
+        <th class="num">Tổng báo cáo</th><th>Mức độ</th>
+        <th>Mẫu tiêu đề</th><th>Lần cuối</th>
+      </tr></thead><tbody>
+      ${rows.map((r, i) => {
+        const sev = r.severities || {};
+        const sevHtml = Object.keys(sev).map(k =>
+          `<span class="sev sev-${esc(k)}">${esc(k)}: ${sev[k]}</span>`).join(' ');
+        const samples = (r.samples || []).map(s => `<div class="ccr-sample">• ${esc(s)}</div>`).join('') || '<span class="dim">—</span>';
+        return `<tr>
+          <td>${this._rankBadge(i)}</td>
+          <td>${this._userCell(r.uid)}</td>
+          <td class="num"><b class="warn">${r.count}</b></td>
+          <td>${sevHtml || '<span class="dim">—</span>'}</td>
+          <td class="ccr-samples">${samples}</td>
+          <td>${relTime(r.last_ts)}</td>
+        </tr>`;
+      }).join('')}
+      </tbody></table>`;
+    },
+
+    _exportCsv() {
+      if (!this._data) return;
+      const rows = this._data[this._tab] || [];
+      if (!rows.length) return alert('Không có dữ liệu để xuất.');
+      let header, lines;
+      if (this._tab === 'lab') {
+        header = ['rank','uid','name','email','opened','completed','errors','unique_labs','completion_pct','last_seen'];
+        lines  = rows.map((r,i) => {
+          const u = this._userCache[r.uid] || {};
+          return [i+1, r.uid, u.name||'', u.email||'', r.opened, r.completed, r.errors, r.unique_labs, r.completion, new Date((r.last_ts||0)*1000).toISOString()];
+        });
+      } else if (this._tab === 'quiz') {
+        header = ['rank','uid','name','email','best','avg','attempts','last_seen'];
+        lines  = rows.map((r,i) => {
+          const u = this._userCache[r.uid] || {};
+          return [i+1, r.uid, u.name||'', u.email||'', r.best ?? '', r.avg ?? '', r.attempts, new Date((r.last_ts||0)*1000).toISOString()];
+        });
+      } else {
+        header = ['rank','uid','name','email','count','severities','samples','last_seen'];
+        lines  = rows.map((r,i) => {
+          const u = this._userCache[r.uid] || {};
+          return [i+1, r.uid, u.name||'', u.email||'', r.count,
+            Object.entries(r.severities||{}).map(([k,v])=>`${k}:${v}`).join('|'),
+            (r.samples||[]).join(' | '),
+            new Date((r.last_ts||0)*1000).toISOString()];
+        });
+      }
+      const csv = [header, ...lines].map(row =>
+        row.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `ranking_${this._tab}_${this._days}d_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    },
+  };
+  window.CC_Rankings = CC_Rankings;
+
+  // ── Inject CSS cho module Rankings ─────────────────────────────────
+  const rankStyle = document.createElement('style');
+  rankStyle.textContent = `
+    .ccr-wrap{padding:4px 2px 32px}
+    .ccr-toolbar{display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px}
+    .ccr-tabs{display:flex; gap:6px; background:#f1f5f9; padding:4px; border-radius:12px}
+    .ccr-tab{border:0; background:transparent; padding:8px 14px; font-size:.85rem; font-weight:600; color:#64748b; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; gap:8px}
+    .ccr-tab:hover{color:#0f172a}
+    .ccr-tab.active{background:#fff; color:#0f172a; box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    .ccr-tab.active i{color:#4f6bff}
+    .ccr-actions{display:flex; gap:8px; align-items:center}
+    .ccr-select,.ccr-btn{padding:8px 12px; font-size:.83rem; border-radius:9px; border:1px solid #e2e8f0; background:#fff; cursor:pointer; font-weight:600; color:#0f172a}
+    .ccr-btn:hover{border-color:#4f6bff; color:#4f6bff}
+    .ccr-btn-ghost{background:transparent}
+    .ccr-summary{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:16px}
+    .ccr-kpi{background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:14px 16px; display:flex; align-items:center; gap:12px}
+    .ccr-kpi-ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:1.05rem;color:#fff}
+    .ic-lab{background:linear-gradient(135deg,#8b5cf6,#6366f1)}
+    .ic-quiz{background:linear-gradient(135deg,#f59e0b,#d97706)}
+    .ic-bug{background:linear-gradient(135deg,#ef4444,#b91c1c)}
+    .ccr-kpi-n{font-size:1.5rem; font-weight:800; color:#0f172a; line-height:1}
+    .ccr-kpi-l{font-size:.75rem; color:#64748b; margin-top:2px}
+    .ccr-card{background:#fff; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden}
+    .ccr-loading,.ccr-empty{padding:60px 20px; text-align:center; color:#94a3b8; font-size:.9rem}
+    .ccr-empty i{font-size:2rem; display:block; margin-bottom:8px; color:#cbd5e1}
+    .ccr-table{width:100%; border-collapse:collapse; font-size:.85rem}
+    .ccr-table th{text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; background:#f8fafc; padding:11px 14px; border-bottom:1px solid #e2e8f0; font-weight:700}
+    .ccr-table td{padding:12px 14px; border-bottom:1px solid #f1f5f9; color:#0f172a; vertical-align:middle}
+    .ccr-table tr:last-child td{border-bottom:0}
+    .ccr-table tr:hover{background:#f8fafc}
+    .ccr-table th.num,.ccr-table td.num{text-align:right}
+    .ccr-table td.num.warn{color:#dc2626; font-weight:700}
+    .ccr-rank{display:inline-block; min-width:44px; padding:4px 10px; border-radius:8px; background:#f1f5f9; font-weight:700; font-size:.8rem; color:#64748b; text-align:center}
+    .ccr-rank.gold{background:linear-gradient(135deg,#fde68a,#f59e0b); color:#78350f}
+    .ccr-rank.silver{background:linear-gradient(135deg,#e2e8f0,#94a3b8); color:#1e293b}
+    .ccr-rank.bronze{background:linear-gradient(135deg,#fed7aa,#c2410c); color:#7c2d12}
+    .ccr-user{display:flex; align-items:center; gap:10px; cursor:pointer}
+    .ccr-user:hover .ccr-user-name{color:#4f6bff}
+    .ccr-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#4f6bff,#8b5cf6);color:#fff;display:grid;place-items:center;font-size:.75rem;font-weight:700;flex-shrink:0}
+    .ccr-user-name{font-weight:600; color:#0f172a; font-size:.87rem}
+    .ccr-user-sub{font-size:.7rem; color:#94a3b8; margin-top:1px}
+    .ccr-bar{display:inline-block; width:70px; height:6px; background:#f1f5f9; border-radius:99px; overflow:hidden; vertical-align:middle; margin-right:6px}
+    .ccr-bar span{display:block; height:100%; background:linear-gradient(90deg,#22c55e,#16a34a); border-radius:99px}
+    .ccr-bar-n{font-size:.75rem; color:#64748b; font-weight:600}
+    .score{color:#f59e0b; font-size:1rem}
+    .sev{display:inline-block; padding:2px 8px; border-radius:99px; font-size:.7rem; font-weight:700; margin-right:4px; background:#f1f5f9; color:#475569}
+    .sev-critical{background:#fee2e2; color:#991b1b}
+    .sev-high{background:#ffedd5; color:#9a3412}
+    .sev-normal{background:#dbeafe; color:#1e40af}
+    .sev-low{background:#dcfce7; color:#166534}
+    .ccr-sample{font-size:.78rem; color:#475569; line-height:1.35}
+    .dim{color:#cbd5e1}
+  `;
+  document.head.appendChild(rankStyle);
+
 })();
