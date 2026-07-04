@@ -2515,8 +2515,32 @@ const MOCK_QUIZ_DATA = [
   {id:'q8', text:'Xác định sản phẩm chính của phản ứng cộng HBr vào propene', correct:29, wrong:71, avgTime:85, retries:3.8, difficulty:'Khó'},
 ];
 
+let _quizPageTab = 'bank'; // Mở mặc định vào Ngân hàng câu hỏi — tính năng chính của tab Quiz
+
 function renderQuiz(){
   document.getElementById('page-root').innerHTML = `
+    <div class="a-page-head">
+      <div><div class="a-page-title">Quản lý Quiz</div>
+      <div class="a-page-desc">Thêm/xóa câu hỏi trắc nghiệm để hệ thống tự random đề, và xem phân tích kết quả làm bài.</div></div>
+    </div>
+    <div style="display:flex;gap:0;margin-bottom:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:4px;width:fit-content;">
+      <button class="lab-tab ${_quizPageTab==='bank'?'active':''}" id="qz-tab-bank" onclick="switchQuizPageTab('bank')"><i class="fa-solid fa-database"></i> Ngân hàng câu hỏi</button>
+      <button class="lab-tab ${_quizPageTab==='analytics'?'active':''}" id="qz-tab-analytics" onclick="switchQuizPageTab('analytics')"><i class="fa-solid fa-chart-column"></i> Phân tích</button>
+    </div>
+    <div id="quiz-page-body"></div>
+  `;
+  if (_quizPageTab === 'bank') renderQuizBank(); else renderQuizAnalytics();
+}
+
+function switchQuizPageTab(tab){
+  _quizPageTab = tab;
+  document.getElementById('qz-tab-bank').classList.toggle('active', tab==='bank');
+  document.getElementById('qz-tab-analytics').classList.toggle('active', tab==='analytics');
+  if (tab==='bank') renderQuizBank(); else renderQuizAnalytics();
+}
+
+function renderQuizAnalytics(){
+  document.getElementById('quiz-page-body').innerHTML = `
     <div class="a-page-head">
       <div><div class="a-page-title">Quiz Analytics</div>
       <div class="a-page-desc">Phân tích từng câu hỏi — phát hiện nội dung học sinh chưa nắm vững.</div></div>
@@ -2612,6 +2636,228 @@ function renderQuiz(){
         title:{display:true,text:'%',color:C.text}}},
     }
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE: NGÂN HÀNG CÂU HỎI QUIZ — CRUD thật, lưu SQLite qua API
+   Thêm/sửa/xóa câu hỏi trắc nghiệm; lesson.html gọi /api/quiz-questions
+   để lấy ngẫu nhiên 1 bộ đề từ chính ngân hàng này mỗi lượt thi.
+   Toàn bộ câu hỏi cũ (hardcode trước đây trong lesson.html) đã được
+   server tự động nạp sẵn vào đây (xem quiz_bank.py::seed_default_questions),
+   nên khi mở tab này lần đầu vẫn thấy đầy đủ các câu đã có từ trước.
+   ═══════════════════════════════════════════════════════════════ */
+function _qzToken(){ return window.__adminToken || sessionStorage.getItem('cc_admin_token') || ''; }
+
+let _quizBank = [];          // toàn bộ câu hỏi tải từ server
+let _quizBankLoaded = false;
+let _quizBankFilter = { search: '', difficulty: 'all' };
+
+async function _qzApi(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': _qzToken(), ...(opts.headers||{}) },
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error((data && data.error) || `Lỗi máy chủ (${res.status})`);
+  return data;
+}
+
+async function renderQuizBank(){
+  const body = document.getElementById('quiz-page-body');
+  body.innerHTML = `<div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải ngân hàng câu hỏi...</div>`;
+  try {
+    const data = await _qzApi('/api/admin/quiz-questions');
+    _quizBank = data.questions || [];
+    _quizBankLoaded = true;
+  } catch (e) {
+    body.innerHTML = `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i> Không tải được ngân hàng câu hỏi: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  _paintQuizBank();
+}
+
+function _qzFilteredQuestions(){
+  const s = _quizBankFilter.search.trim().toLowerCase();
+  return _quizBank.filter(q => {
+    if (_quizBankFilter.difficulty !== 'all' && q.difficulty !== _quizBankFilter.difficulty) return false;
+    if (s && !q.question.toLowerCase().includes(s)) return false;
+    return true;
+  });
+}
+
+function _paintQuizBank(){
+  const body = document.getElementById('quiz-page-body');
+  const total = _quizBank.length;
+  const activeCount = _quizBank.filter(q => q.active).length;
+  const list = _qzFilteredQuestions();
+
+  body.innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:20px;">
+      ${[['Tổng số câu hỏi', total, 'fa-database', 'var(--indigo)'],
+         ['Đang random (active)', activeCount, 'fa-shuffle', 'var(--green)'],
+         ['Đã ẩn (inactive)', total - activeCount, 'fa-eye-slash', 'var(--fg-mute)']]
+        .map(([l,v,ic,co])=>`
+        <div class="kpi-card">
+          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div></div>
+          <div class="kpi-value" style="font-size:1.4rem;">${v}</div><div class="kpi-label">${l}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="a-page-head">
+      <div style="display:flex;gap:10px;align-items:center;flex:1;flex-wrap:wrap;">
+        <input id="qz-search" placeholder="Tìm câu hỏi..." value="${escapeHtml(_quizBankFilter.search)}"
+          style="border:1.5px solid var(--line);border-radius:var(--r-md);padding:9px 14px;font-family:inherit;font-size:0.86rem;background:var(--bg-2);color:var(--fg);min-width:220px;outline:none;">
+        <div class="a-filter-pills" id="qz-diff-pills">
+          ${['all','Dễ','TB','Khó'].map(d=>`<div class="a-filter-pill ${_quizBankFilter.difficulty===d?'active':''}" data-diff="${d}">${d==='all'?'Tất cả':d}</div>`).join('')}
+        </div>
+      </div>
+      <button class="mod-btn mod-btn-primary" onclick="openQuizModal()"><i class="fa-solid fa-plus"></i> Thêm câu hỏi</button>
+    </div>
+
+    <div class="a-table-wrap">
+      <table class="a-table">
+        <thead><tr><th style="width:36px;">#</th><th>Câu hỏi</th><th>Phương án (đáp án đúng in đậm)</th><th>Độ khó</th><th>Trạng thái</th><th></th></tr></thead>
+        <tbody id="qz-tbody">${_renderQuizRows(list)}</tbody>
+      </table>
+      ${list.length===0 ? `<div class="mod-note" style="margin:16px;">Không có câu hỏi nào khớp bộ lọc.</div>` : ''}
+    </div>
+
+    <!-- Question modal -->
+    <div class="mod-overlay" id="qz-modal-overlay" onclick="if(event.target===this)closeModal('qz-modal-overlay')">
+      <div class="mod-panel" id="qz-modal" style="max-width:640px;"></div>
+    </div>
+  `;
+
+  document.getElementById('qz-search').addEventListener('input', (e) => {
+    _quizBankFilter.search = e.target.value;
+    document.getElementById('qz-tbody').innerHTML = _renderQuizRows(_qzFilteredQuestions());
+  });
+  document.querySelectorAll('#qz-diff-pills .a-filter-pill').forEach(p => p.addEventListener('click', () => {
+    _quizBankFilter.difficulty = p.dataset.diff;
+    _paintQuizBank();
+  }));
+}
+
+function _renderQuizRows(list){
+  if (!list.length) return '';
+  return list.map((q, idx) => {
+    const diffColor = q.difficulty==='Dễ' ? 'ok' : q.difficulty==='Khó' ? 'warn' : 'off';
+    const optsHtml = q.options.map((o, i) => i===q.answerIndex
+      ? `<div style="color:var(--green-d);font-weight:800;"><i class="fa-solid fa-check" style="font-size:0.7rem;"></i> ${escapeHtml(o)}</div>`
+      : `<div style="color:var(--fg-mute);">${escapeHtml(o)}</div>`
+    ).join('');
+    return `<tr>
+      <td style="color:var(--fg-mute);font-weight:700;">${idx+1}</td>
+      <td style="max-width:320px;font-size:0.86rem;font-weight:700;">${escapeHtml(q.question)}</td>
+      <td style="font-size:0.8rem;line-height:1.6;">${optsHtml}</td>
+      <td><span class="badge ${diffColor}">${escapeHtml(q.difficulty||'TB')}</span></td>
+      <td>
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:0.78rem;font-weight:700;color:${q.active?'var(--green-d)':'var(--fg-mute)'};">
+          <input type="checkbox" ${q.active?'checked':''} onchange="toggleQuizActive(${q.id}, this.checked)">
+          ${q.active ? 'Đang random' : 'Đã ẩn'}
+        </label>
+      </td>
+      <td><div style="display:flex;gap:5px;">
+        <button class="tbl-act-btn" onclick="openQuizModal(${q.id})"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn danger" onclick="deleteQuizQuestion(${q.id})"><i class="fa-solid fa-trash"></i></button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleQuizActive(id, active){
+  try {
+    await _qzApi(`/api/admin/quiz-questions/${id}`, { method:'PUT', body: JSON.stringify({ active }) });
+    const q = _quizBank.find(x=>x.id===id); if (q) q.active = active;
+    _paintQuizBank();
+  } catch (e) { alert('Lỗi: ' + e.message); _paintQuizBank(); }
+}
+
+function openQuizModal(id){
+  const q = id ? _quizBank.find(x=>x.id===id) : null;
+  const opts = q ? q.options.slice() : ['', '', '', ''];
+  const answerIndex = q ? q.answerIndex : 0;
+
+  document.getElementById('qz-modal').innerHTML = `
+    <div class="mod-head">
+      <div class="mod-title"><i class="fa-solid fa-circle-question"></i> ${q?'Sửa':'Thêm'} câu hỏi trắc nghiệm</div>
+      <button class="mod-close" onclick="closeModal('qz-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="mod-body">
+      <div class="mod-field"><label>Nội dung câu hỏi</label>
+        <textarea id="qm-question" rows="2" style="resize:vertical;">${escapeHtml(q?.question||'')}</textarea>
+      </div>
+      <div class="mod-field"><label>Phương án trả lời — chọn ô tròn cho đáp án đúng</label>
+        <div id="qm-options">${opts.map((o,i)=>_qzOptionRow(i,o,i===answerIndex)).join('')}</div>
+        <button type="button" class="mod-btn mod-btn-ghost" style="align-self:flex-start;margin-top:6px;" onclick="_qzAddOption()">
+          <i class="fa-solid fa-plus"></i> Thêm phương án
+        </button>
+      </div>
+      <div class="mod-field"><label>Độ khó</label>
+        <select id="qm-difficulty">
+          ${['Dễ','TB','Khó'].map(d=>`<option ${q?.difficulty===d?'selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="mod-foot">
+      <button class="mod-btn mod-btn-ghost" onclick="closeModal('qz-modal-overlay')">Hủy</button>
+      <button class="mod-btn mod-btn-primary" onclick="saveQuizQuestion(${q?q.id:'null'})">
+        <i class="fa-solid fa-floppy-disk"></i> Lưu câu hỏi
+      </button>
+    </div>`;
+  openModal('qz-modal-overlay');
+}
+
+let _qzOptCounter = 0;
+function _qzOptionRow(i, value, checked){
+  _qzOptCounter = Math.max(_qzOptCounter, i+1);
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;" data-opt-row="${i}">
+    <input type="radio" name="qm-answer" value="${i}" ${checked?'checked':''} style="width:18px;height:18px;flex:none;">
+    <input type="text" class="qm-opt-input" value="${escapeHtml(value)}" placeholder="Phương án ${i+1}" style="flex:1;">
+    <button type="button" class="tbl-act-btn danger" onclick="this.closest('[data-opt-row]').remove()"><i class="fa-solid fa-xmark"></i></button>
+  </div>`;
+}
+
+function _qzAddOption(){
+  const wrap = document.getElementById('qm-options');
+  wrap.insertAdjacentHTML('beforeend', _qzOptionRow(_qzOptCounter, '', false));
+}
+
+async function saveQuizQuestion(id){
+  const question = document.getElementById('qm-question').value.trim();
+  const rows = [...document.querySelectorAll('#qm-options [data-opt-row]')];
+  const options = rows.map(r => r.querySelector('.qm-opt-input').value.trim());
+  const checkedRadio = document.querySelector('#qm-options input[name="qm-answer"]:checked');
+  const difficulty = document.getElementById('qm-difficulty').value;
+
+  if (!question) { alert('Vui lòng nhập nội dung câu hỏi.'); return; }
+  if (options.length < 2 || options.some(o=>!o)) { alert('Cần ít nhất 2 phương án, không để trống.'); return; }
+  if (!checkedRadio) { alert('Vui lòng chọn đáp án đúng.'); return; }
+  const answerIndex = Number(checkedRadio.value);
+
+  try {
+    if (id) {
+      await _qzApi(`/api/admin/quiz-questions/${id}`, { method:'PUT', body: JSON.stringify({ question, options, answerIndex, difficulty }) });
+    } else {
+      await _qzApi('/api/admin/quiz-questions', { method:'POST', body: JSON.stringify({ question, options, answerIndex, difficulty }) });
+    }
+    closeModal('qz-modal-overlay');
+    await renderQuizBank();
+  } catch (e) {
+    alert('Lỗi: ' + e.message);
+  }
+}
+
+async function deleteQuizQuestion(id){
+  if (!confirm('Xóa câu hỏi này khỏi ngân hàng? Không thể hoàn tác.')) return;
+  try {
+    await _qzApi(`/api/admin/quiz-questions/${id}`, { method:'DELETE' });
+    _quizBank = _quizBank.filter(x=>x.id!==id);
+    _paintQuizBank();
+  } catch (e) {
+    alert('Lỗi: ' + e.message);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
