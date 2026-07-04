@@ -147,6 +147,23 @@ def init_db():
                     admin_id      INTEGER PRIMARY KEY,
                     last_seen_ts  REAL DEFAULT 0
                 );
+
+                -- ── Ngân hàng câu hỏi Quiz (quiz_bank.py) ──────────────
+                -- Thay thế mảng `quizData` hardcode trong lesson.html: admin
+                -- có thể thêm/sửa/xóa câu hỏi trắc nghiệm, hệ thống random
+                -- ra một bộ đề mỗi lần học sinh bấm "Bắt đầu thi".
+                CREATE TABLE IF NOT EXISTS quiz_questions (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    question     TEXT NOT NULL,
+                    options      TEXT NOT NULL DEFAULT '[]',   -- JSON array các phương án
+                    answer_index INTEGER NOT NULL DEFAULT 0,   -- vị trí đáp án đúng trong options
+                    difficulty   TEXT DEFAULT 'TB',            -- 'Dễ' | 'TB' | 'Khó'
+                    active       INTEGER DEFAULT 1,            -- 0 = ẩn khỏi random, không xóa hẳn
+                    created_by   TEXT DEFAULT '',
+                    created_at   REAL,
+                    updated_at   REAL
+                );
+                CREATE INDEX IF NOT EXISTS idx_quiz_questions_active ON quiz_questions(active);
             ''')
             conn.commit()
         finally:
