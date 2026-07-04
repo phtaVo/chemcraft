@@ -141,6 +141,12 @@ def init_db():
                     success  INTEGER DEFAULT 0,
                     ts       REAL
                 );
+
+                -- Trạng thái "đã xem thông báo" của từng admin (cho chuông 🔔)
+                CREATE TABLE IF NOT EXISTS admin_notif_state (
+                    admin_id      INTEGER PRIMARY KEY,
+                    last_seen_ts  REAL DEFAULT 0
+                );
             ''')
             conn.commit()
         finally:
