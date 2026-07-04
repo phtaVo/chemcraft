@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 import database as db
 import admin_auth
+import quiz_bank
 
 load_dotenv()
 
@@ -24,6 +25,9 @@ admin_auth.bootstrap_default_admin()
 _migrated = db.migrate_jsonl_events(os.getenv('EVENT_LOG_PATH', 'events.jsonl'))
 if _migrated:
     print(f'📦 Migrated {_migrated} legacy events from events.jsonl into SQLite.')
+_seeded_questions = quiz_bank.seed_default_questions()
+if _seeded_questions:
+    print(f'📦 Seeded {_seeded_questions} legacy quiz questions into quiz_questions table.')
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
@@ -496,6 +500,110 @@ def analytics_quiz():
         'avg_score_pct': round((avg_score or 0) * 100, 1),
         'hardest_questions': [dict(r) for r in hardest_questions],
     })
+
+
+## ── Ngân hàng câu hỏi Quiz (quiz_bank.py) ──────────────────────────────────
+# Public: lesson.html gọi để lấy 1 bộ đề random khi học sinh bấm "Bắt đầu thi".
+@app.route('/api/quiz-questions', methods=['GET'])
+def public_quiz_questions():
+    try:
+        count = int(request.args.get('count', 34))
+    except (TypeError, ValueError):
+        count = 34
+    count = max(1, min(count, 200))
+    return jsonify({'questions': quiz_bank.random_questions(count)})
+
+
+# Admin: CRUD toàn bộ ngân hàng câu hỏi cho tab "Ngân hàng câu hỏi" trong trang Quiz.
+@app.route('/api/admin/quiz-questions', methods=['GET'])
+def admin_list_quiz_questions():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    return jsonify({'questions': quiz_bank.list_questions(include_inactive=True)})
+
+
+@app.route('/api/admin/quiz-questions', methods=['POST'])
+def admin_create_quiz_question():
+    session = _require_admin()
+    if not session:
+        return jsonify({'error': 'unauthorized'}), 401
+    body = request.get_json(silent=True) or {}
+    question = (body.get('question') or '').strip()
+    options = body.get('options') or []
+    answer_index = body.get('answerIndex')
+    difficulty = (body.get('difficulty') or 'TB').strip() or 'TB'
+
+    if not question:
+        return jsonify({'error': 'Vui lòng nhập nội dung câu hỏi.'}), 400
+    if not isinstance(options, list) or len(options) < 2:
+        return jsonify({'error': 'Cần ít nhất 2 phương án trả lời.'}), 400
+    options = [str(o).strip() for o in options]
+    if any(not o for o in options):
+        return jsonify({'error': 'Các phương án trả lời không được để trống.'}), 400
+    try:
+        answer_index = int(answer_index)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Vui lòng chọn đáp án đúng.'}), 400
+    if not (0 <= answer_index < len(options)):
+        return jsonify({'error': 'Đáp án đúng không hợp lệ.'}), 400
+
+    qid = quiz_bank.create_question(
+        question, options, answer_index, difficulty, created_by=session['username']
+    )
+    return jsonify(quiz_bank.get_question(qid)), 201
+
+
+@app.route('/api/admin/quiz-questions/<int:qid>', methods=['PUT'])
+def admin_update_quiz_question(qid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    if not quiz_bank.get_question(qid):
+        return jsonify({'error': 'Không tìm thấy câu hỏi.'}), 404
+
+    body = request.get_json(silent=True) or {}
+    options = body.get('options')
+    if options is not None:
+        if not isinstance(options, list) or len(options) < 2:
+            return jsonify({'error': 'Cần ít nhất 2 phương án trả lời.'}), 400
+        options = [str(o).strip() for o in options]
+        if any(not o for o in options):
+            return jsonify({'error': 'Các phương án trả lời không được để trống.'}), 400
+
+    answer_index = body.get('answerIndex')
+    if answer_index is not None:
+        try:
+            answer_index = int(answer_index)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Đáp án đúng không hợp lệ.'}), 400
+        bound = len(options) if options is not None else len(quiz_bank.get_question(qid)['options'])
+        if not (0 <= answer_index < bound):
+            return jsonify({'error': 'Đáp án đúng không hợp lệ.'}), 400
+
+    question = body.get('question')
+    if question is not None:
+        question = question.strip()
+        if not question:
+            return jsonify({'error': 'Vui lòng nhập nội dung câu hỏi.'}), 400
+
+    quiz_bank.update_question(
+        qid,
+        question=question,
+        options=options,
+        answer_index=answer_index,
+        difficulty=body.get('difficulty'),
+        active=body.get('active'),
+    )
+    return jsonify(quiz_bank.get_question(qid))
+
+
+@app.route('/api/admin/quiz-questions/<int:qid>', methods=['DELETE'])
+def admin_delete_quiz_question(qid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    ok = quiz_bank.delete_question(qid)
+    if not ok:
+        return jsonify({'error': 'Không tìm thấy câu hỏi.'}), 404
+    return jsonify({'ok': True})
 
 
 @app.route('/api/admin-analytics/lab', methods=['GET'])
