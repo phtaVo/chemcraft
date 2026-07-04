@@ -690,8 +690,7 @@ const PAGES = {
   'lab-analytics': { title:'Phân tích Lab 3D', sub:'Sankey, Funnel, Drop-off — bước nào học sinh hay sai nhất', render: () => renderStub('fa-diagram-project','Phân tích Lab 3D',
       'Thu thập thí nghiệm đã thực hiện, bước sai, thời gian mỗi bước, bỏ giữa chừng, làm lại, quan sát sai hiện tượng. Hiển thị bằng Sankey Diagram, Funnel, Step Completion, Drop-off Analysis để biết chính xác bước nào khiến nhiều học sinh thất bại nhất.',
       ['Sankey Diagram','Drop-off Analysis','Step Completion']) },
-  notifications: { title:'Thông báo', sub:'Gửi thông báo toàn hệ thống, theo lớp/trường/người dùng', render: () => renderStub('fa-bell','Thông báo',
-      'Soạn và gửi thông báo toàn hệ thống, theo lớp, theo trường, hoặc theo từng người dùng cụ thể.', ['Toàn hệ thống','Theo lớp / trường','Theo người dùng']) },
+  notifications: { title:'Thông báo', sub:'Danh sách báo cáo lỗi từ học sinh (thời gian thực)', render: () => NotifPage.render() },
   roles:      { title:'Phân quyền', sub:'Super Admin, Admin, Teacher, Content/Lab Manager, Data Analyst', render: () => renderStub('fa-user-shield','Phân quyền',
       'Quản lý vai trò Super Admin, Admin, Teacher, Content Manager, Lab Manager, Data Analyst — mỗi quyền chỉ truy cập các module được cấp.', ['6 nhóm vai trò','Giới hạn module theo quyền']) },
   logs:       { title:'Nhật ký hệ thống', sub:'Audit log: ai sửa gì, khi nào, thiết bị, IP', render: () => renderStub('fa-clock-rotate-left','Nhật ký hệ thống',
@@ -2255,6 +2254,108 @@ const Rankings = {
   },
 };
 function renderLeaderboard(){ Rankings.render(); }
+
+/* ═══════════════════════════════════════════════════════════════
+   TRANG "THÔNG BÁO" (sidebar) — trang đầy đủ, dùng chung API với
+   chuông 🔔 ở topbar (/api/admin-notifications).
+   ═══════════════════════════════════════════════════════════════ */
+const NotifPage = {
+  _data: null,
+
+  esc(s) {
+    return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  },
+  relTime(ts) {
+    if (!ts) return '';
+    const d = Date.now()/1000 - ts;
+    if (d < 60) return 'vừa xong';
+    if (d < 3600) return Math.floor(d/60) + ' phút trước';
+    if (d < 86400) return Math.floor(d/3600) + ' giờ trước';
+    if (d < 604800) return Math.floor(d/86400) + ' ngày trước';
+    return new Date(ts*1000).toLocaleDateString('vi-VN');
+  },
+  adminToken() {
+    return window.__adminToken || sessionStorage.getItem('cc_admin_token') || '';
+  },
+
+  async render() {
+    const root = document.getElementById('page-root');
+    root.innerHTML = `
+      <div class="a-page-head">
+        <div><div class="a-page-title">Thông báo</div>
+        <div class="a-page-desc">Danh sách báo cáo lỗi từ học sinh — dữ liệu thật, cập nhật khi bấm "Làm mới".</div></div>
+      </div>
+      <div class="ccr-wrap">
+        <div class="ccr-toolbar">
+          <div></div>
+          <div class="ccr-actions">
+            <button id="notifpage-refresh" class="ccr-btn"><i class="fa-solid fa-rotate"></i> Làm mới</button>
+            <button id="notifpage-mark-read" class="ccr-btn ccr-btn-ghost"><i class="fa-solid fa-check-double"></i> Đánh dấu đã đọc</button>
+          </div>
+        </div>
+        <div id="notifpage-list" class="ccr-card">
+          <div class="ccr-loading"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải…</div>
+        </div>
+      </div>`;
+
+    document.getElementById('notifpage-refresh').onclick = () => this._fetch();
+    document.getElementById('notifpage-mark-read').onclick = () => this._markRead();
+    await this._fetch();
+  },
+
+  async _fetch() {
+    const list = document.getElementById('notifpage-list');
+    if (list) list.innerHTML = `<div class="ccr-loading"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải…</div>`;
+    const t = this.adminToken();
+    if (!t) {
+      if (list) list.innerHTML = `<div class="ccr-empty"><i class="fa-solid fa-triangle-exclamation"></i> Chưa đăng nhập admin.</div>`;
+      return;
+    }
+    try {
+      const r = await fetch('/api/admin-notifications?limit=100', { headers: { 'X-Admin-Token': t } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      this._data = await r.json();
+      this._renderList();
+    } catch (e) {
+      if (list) list.innerHTML = `<div class="ccr-empty"><i class="fa-solid fa-triangle-exclamation"></i> Không tải được thông báo: ${this.esc(e.message)}</div>`;
+    }
+  },
+
+  _renderList() {
+    const list = document.getElementById('notifpage-list');
+    if (!list || !this._data) return;
+    const items = this._data.items || [];
+    if (!items.length) {
+      list.innerHTML = `<div class="ccr-empty"><i class="fa-solid fa-inbox"></i> Chưa có báo cáo lỗi nào.</div>`;
+      return;
+    }
+    list.innerHTML = `<table class="ccr-table"><thead><tr>
+        <th>Học sinh</th><th>Tiêu đề</th><th>Mức độ</th><th>Khu vực</th><th>Nội dung</th><th>Thời gian</th>
+      </tr></thead><tbody>
+      ${items.map(it => `<tr style="${it.unread ? 'background:rgba(79,107,255,0.06)' : ''}">
+        <td><div class="ccr-user"><div class="ccr-avatar">${this.esc((it.name||it.email||'?').slice(0,2).toUpperCase())}</div>
+          <div class="ccr-user-meta"><div class="ccr-user-name">${this.esc(it.name) || 'Chưa rõ tên'}</div><div class="ccr-user-sub">${this.esc(it.email) || this.esc(it.uid) || 'Ẩn danh'}</div></div></div></td>
+        <td>${this.esc(it.title) || '<span class="ccr-dim">—</span>'}</td>
+        <td><span class="notif-sev notif-sev-${this.esc(it.severity)}">${this.esc(it.severity)}</span></td>
+        <td>${this.esc(it.area) || '<span class="ccr-dim">—</span>'}</td>
+        <td style="max-width:340px;">${this.esc(it.message)}</td>
+        <td>${this.relTime(it.ts)}</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+  },
+
+  async _markRead() {
+    const t = this.adminToken();
+    if (!t) return;
+    try {
+      await fetch('/api/admin-notifications/mark-read', { method: 'POST', headers: { 'X-Admin-Token': t } });
+      await this._fetch();
+      // Cập nhật luôn chấm đỏ ở chuông topbar nếu có
+      const dot = document.getElementById('notif-dot');
+      if (dot) dot.style.display = 'none';
+    } catch (e) { console.warn('[NotifPage] mark-read error:', e); }
+  },
+};
 
 /* ═══════════════════════════════════════════════════════════════
    CHUÔNG THÔNG BÁO (bug report) — poll /api/admin-notifications
