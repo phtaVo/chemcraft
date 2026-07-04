@@ -922,6 +922,12 @@
         let userAnswers = new Array(quizData.length).fill(null);
         let isReviewMode = false;
         let practicalInterval = null;
+        // Dữ liệu phục vụ tracking thật cho Quiz Analytics (xem _logQuizAnswer):
+        // thời điểm mỗi câu hỏi được hiển thị lần đầu, số lần đổi đáp án, và
+        // cờ đánh dấu câu đã được log để không log trùng khi lùi/tới lại.
+        let questionShownAt = {};
+        let questionRetryCount = {};
+        let _loggedAnswer = {};
 
         // Gọi server để rút ngẫu nhiên 1 bộ đề trắc nghiệm từ ngân hàng câu hỏi
         // (được admin quản lý). Trả về mảng dạng {q, opts, ans} giống hệt định
@@ -957,6 +963,9 @@
             currentQIndex = 0;
             userAnswers = new Array(quizData.length).fill(null);
             isReviewMode = false;
+            questionShownAt = {};
+            questionRetryCount = {};
+            _loggedAnswer = {};
             window._ccQuizStartTs = Date.now();
             // Ghi log bắt đầu quiz để lấy attemptId (dùng cho quiz_complete) — event type: 'quiz_start'
             try {
@@ -971,6 +980,10 @@
         }
 
         function renderQuizQuestion() {
+            if (questionShownAt[currentQIndex] === undefined) {
+                questionShownAt[currentQIndex] = Date.now();
+                questionRetryCount[currentQIndex] = 0;
+            }
             document.getElementById('q-current').innerText = currentQIndex + 1;
             document.getElementById('quiz-progress').style.width = ((currentQIndex + 1) / quizData.length * 100) + '%';
             let qData = quizData[currentQIndex];
@@ -1069,11 +1082,53 @@
         function selectQuizOption(optIdx) {
             if(isReviewMode) return;
             playClick();
+            if (userAnswers[currentQIndex] !== null && userAnswers[currentQIndex] !== undefined) {
+                // Học sinh đổi đáp án đã chọn trước đó -> tính là 1 lần làm lại.
+                questionRetryCount[currentQIndex] = (questionRetryCount[currentQIndex] || 0) + 1;
+            }
             userAnswers[currentQIndex] = optIdx;
             renderQuizQuestion();
         }
 
+        // Ghi log 'quiz_answer' thật cho câu hỏi tại `index` — gọi đúng 1 lần,
+        // ngay trước khi rời khỏi câu đó (nextQuestion), để Quiz Analytics
+        // trong trang admin có dữ liệu tỉ lệ đúng/sai, thời gian, số lần làm
+        // lại theo TỪNG câu (trước đây tracker.js có API nhưng không hề được
+        // gọi ở đây nên bảng quiz_answers luôn trống).
+        function _logQuizAnswer(index) {
+            if (isReviewMode || _loggedAnswer[index]) return;
+            const qData = quizData[index];
+            if (!qData) return;
+            const answered = userAnswers[index];
+            let correct;
+            if (qData.type === 'practical') {
+                correct = answered === true; // chỉ có thể Next khi đã làm đúng
+            } else {
+                if (answered === null || answered === undefined) {
+                    correct = false; // bỏ qua không chọn đáp án nào = sai
+                } else {
+                    correct = answered === qData.ans;
+                }
+            }
+            const shownAt = questionShownAt[index];
+            const durationSec = shownAt ? Math.round((Date.now() - shownAt) / 1000) : null;
+            _loggedAnswer[index] = true;
+            try {
+                if (typeof window.ccTrack === 'function') {
+                    window.ccTrack('quiz_answer', {
+                        attemptId: window._ccQuizAttemptId,
+                        questionId: (qData.id !== undefined && qData.id !== null) ? String(qData.id) : String(index),
+                        questionText: qData.q || '',
+                        correct: !!correct,
+                        retryCount: questionRetryCount[index] || 0,
+                        durationSec,
+                    });
+                }
+            } catch(e) { console.warn('[ccTrack] quiz_answer error:', e); }
+        }
+
         function nextQuestion() {
+            _logQuizAnswer(currentQIndex);
             if(currentQIndex < quizData.length - 1) {
                 currentQIndex++;
                 renderQuizQuestion();
