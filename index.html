@@ -1079,6 +1079,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     <span class="nav-username" id="nav-username"></span>
     <button class="nav-logout" onclick="doLogout()">Đăng xuất</button>
   </div>
+  <button id="cc-bug-fab" title="Báo cáo lỗi phòng thí nghiệm">
+    <i class="fa-solid fa-bug"></i>
+    <span>Báo lỗi</span>
+  </button>
 </nav>
 
 <section class="page active" id="home">
@@ -3596,11 +3600,7 @@ updateNavForLoggedOut();
        → server ghi vào events.jsonl, hiển thị trong tab Xếp hạng.
   ══════════════════════════════════════════════════════════════════════ -->
 
-<!-- ①  Nút nổi -->
-<button id="cc-bug-fab" title="Báo cáo lỗi phòng thí nghiệm">
-  <i class="fa-solid fa-bug"></i>
-  <span>Báo lỗi</span>
-</button>
+<!-- Nút Báo lỗi giờ nằm trong navbar (xem #navbar), không còn là nút nổi -->
 
 <!-- ②  Modal -->
 <div id="cc-bug-modal" class="cc-bug-hidden" role="dialog" aria-modal="true">
@@ -3648,17 +3648,17 @@ updateNavForLoggedOut();
 
 <style>
   #cc-bug-fab{
-    position:fixed; right:22px; bottom:22px; z-index:9998;
+    position:static; z-index:auto; order:1; margin-left:4px; flex-shrink:0;
     background:linear-gradient(135deg,#ef4444,#dc2626);
-    color:#fff; border:0; border-radius:99px; padding:12px 18px;
-    font-weight:700; font-size:.9rem; cursor:pointer;
-    box-shadow:0 8px 24px rgba(220,38,38,.35);
-    display:inline-flex; align-items:center; gap:8px;
+    color:#fff; border:0; border-radius:99px; padding:9px 16px;
+    font-weight:700; font-size:.82rem; cursor:pointer;
+    box-shadow:0 3px 10px rgba(220,38,38,.25);
+    display:inline-flex; align-items:center; gap:6px;
     transition:transform .15s, box-shadow .15s;
   }
-  #cc-bug-fab:hover{transform:translateY(-2px); box-shadow:0 12px 28px rgba(220,38,38,.45)}
-  #cc-bug-fab i{font-size:1rem}
-  @media (max-width:640px){ #cc-bug-fab span{display:none} #cc-bug-fab{padding:14px} }
+  #cc-bug-fab:hover{transform:translateY(-2px); box-shadow:0 6px 16px rgba(220,38,38,.35)}
+  #cc-bug-fab i{font-size:.95rem}
+  @media (max-width:640px){ #cc-bug-fab span{display:none} #cc-bug-fab{padding:9px 12px;} }
 
   #cc-bug-modal{position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px}
   #cc-bug-modal.cc-bug-hidden{display:none}
@@ -3745,6 +3745,8 @@ updateNavForLoggedOut();
           title, area, severity: sev, message: detail,
           path: location.pathname,
           ua:   navigator.userAgent.slice(0, 200),
+          email: window._currentUser?.email || '',
+          name:  window._currentUser?.displayName || '',
         });
       } else {
         // Fallback: gọi trực tiếp
@@ -3756,6 +3758,8 @@ updateNavForLoggedOut();
             userId: window._currentUser?.uid || '',
             title, area, severity: sev, message: detail,
             path: location.pathname,
+            email: window._currentUser?.email || '',
+            name:  window._currentUser?.displayName || '',
           }),
         });
       }
