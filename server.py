@@ -355,9 +355,10 @@ def _fanout_structured_tables(ev_type: str, payload: dict, user_id: str):
             if attempt_id:
                 conn.execute(
                     'INSERT INTO quiz_answers (attempt_id, question_id, question_text, is_correct, '
-                    'retry_count, answered_at) VALUES (?, ?, ?, ?, ?, ?)',
+                    'retry_count, duration_sec, answered_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
                     (attempt_id, payload.get('questionId', ''), payload.get('questionText', ''),
-                     int(bool(payload.get('correct'))), payload.get('retryCount', 0), ts)
+                     int(bool(payload.get('correct'))), payload.get('retryCount', 0),
+                     payload.get('durationSec'), ts)
                 )
         elif ev_type == 'quiz_complete':
             attempt_id = payload.get('attemptId')
@@ -480,25 +481,82 @@ def admin_events():
     return jsonify({'events': events, 'total': len(events)})
 
 
-# ── NEW: dedicated analytics endpoints (previously impossible — no data) ───
+# ── /api/admin-analytics/quiz — real per-question breakdown ────────────────
+# Backed by quiz_attempts (1 row / lượt thi) + quiz_answers (1 row / câu trả
+# lời, ghi bởi selectQuizOption -> nextQuestion trong lesson.html qua
+# ccTrack('quiz_answer', ...)). question_text được lưu lại tại thời điểm trả
+# lời (snapshot) nên vẫn đúng dù sau này admin sửa/xóa câu hỏi trong ngân
+# hàng — chỉ cột `difficulty` là tra cứu "best-effort" theo quiz_questions.id
+# hiện tại (sẽ là null nếu câu hỏi đã bị xóa, hoặc là câu fallback/thực hành
+# không có id số).
 @app.route('/api/admin-analytics/quiz', methods=['GET'])
 def analytics_quiz():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
     conn = db.get_conn()
+
     total_attempts = conn.execute('SELECT COUNT(*) c FROM quiz_attempts').fetchone()['c']
+    finished_attempts = conn.execute(
+        'SELECT COUNT(*) c FROM quiz_attempts WHERE finished_at IS NOT NULL'
+    ).fetchone()['c']
     avg_score = conn.execute(
         'SELECT AVG(1.0 * correct_q / NULLIF(total_q, 0)) a FROM quiz_attempts WHERE finished_at IS NOT NULL'
     ).fetchone()['a']
-    hardest_questions = conn.execute(
-        "SELECT question_id, question_text, "
-        "SUM(CASE WHEN is_correct=0 THEN 1 ELSE 0 END) wrong, COUNT(*) total "
-        "FROM quiz_answers GROUP BY question_id ORDER BY (1.0*wrong/total) DESC LIMIT 15"
-    ).fetchall()
+    avg_attempt_duration = conn.execute(
+        'SELECT AVG(duration_sec) a FROM quiz_attempts WHERE finished_at IS NOT NULL'
+    ).fetchone()['a']
+
+    rows = conn.execute('''
+        SELECT
+            question_id,
+            question_text,
+            COUNT(*)                                            AS attempts,
+            SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END)      AS correct_n,
+            SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END)      AS wrong_n,
+            AVG(duration_sec)                                    AS avg_time,
+            AVG(retry_count)                                     AS avg_retries
+        FROM quiz_answers
+        WHERE question_id IS NOT NULL AND question_id != ''
+        GROUP BY question_id, question_text
+    ''').fetchall()
+
+    bank_difficulty = {}
+    try:
+        bank_rows = conn.execute('SELECT id, difficulty FROM quiz_questions').fetchall()
+        bank_difficulty = {str(r['id']): r['difficulty'] for r in bank_rows}
+    except Exception:
+        pass
+
+    questions = []
+    for r in rows:
+        attempts = r['attempts'] or 0
+        correct_n = r['correct_n'] or 0
+        wrong_n = r['wrong_n'] or 0
+        questions.append({
+            'question_id':  r['question_id'],
+            'text':         r['question_text'],
+            'attempts':     attempts,
+            'correct_pct':  round(100.0 * correct_n / attempts, 1) if attempts else 0,
+            'wrong_pct':    round(100.0 * wrong_n / attempts, 1) if attempts else 0,
+            'avg_time_sec': round(r['avg_time'], 1) if r['avg_time'] is not None else None,
+            'avg_retries':  round(r['avg_retries'], 2) if r['avg_retries'] is not None else 0,
+            'difficulty':   bank_difficulty.get(str(r['question_id'])),
+        })
+    questions.sort(key=lambda q: q['wrong_pct'], reverse=True)
+
+    overall_avg_time = conn.execute(
+        'SELECT AVG(duration_sec) a FROM quiz_answers WHERE duration_sec IS NOT NULL'
+    ).fetchone()['a']
+    overall_avg_retries = conn.execute('SELECT AVG(retry_count) a FROM quiz_answers').fetchone()['a']
+
     return jsonify({
-        'total_attempts': total_attempts,
-        'avg_score_pct': round((avg_score or 0) * 100, 1),
-        'hardest_questions': [dict(r) for r in hardest_questions],
+        'total_attempts':          total_attempts,
+        'finished_attempts':       finished_attempts,
+        'avg_score_pct':           round((avg_score or 0) * 100, 1),
+        'avg_attempt_duration_sec': round(avg_attempt_duration, 1) if avg_attempt_duration is not None else None,
+        'avg_time_sec':            round(overall_avg_time, 1) if overall_avg_time is not None else None,
+        'avg_retries':             round(overall_avg_retries, 2) if overall_avg_retries is not None else 0,
+        'questions':               questions,
     })
 
 
