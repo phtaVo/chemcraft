@@ -90,6 +90,7 @@ def init_db():
                     question_text TEXT,
                     is_correct    INTEGER,
                     retry_count   INTEGER DEFAULT 0,
+                    duration_sec  REAL,
                     answered_at   REAL
                 );
 
@@ -165,6 +166,13 @@ def init_db():
                 );
                 CREATE INDEX IF NOT EXISTS idx_quiz_questions_active ON quiz_questions(active);
             ''')
+            # Migration for DBs created before duration_sec existed on quiz_answers
+            # (Quiz Analytics needs real per-question timing — see quiz_answer
+            # fanout in server.py). SQLite has no "ADD COLUMN IF NOT EXISTS",
+            # so check PRAGMA table_info first.
+            cols = [r['name'] for r in conn.execute('PRAGMA table_info(quiz_answers)').fetchall()]
+            if 'duration_sec' not in cols:
+                conn.execute('ALTER TABLE quiz_answers ADD COLUMN duration_sec REAL')
             conn.commit()
         finally:
             conn.close()
