@@ -1031,6 +1031,66 @@ def admin_rankings():
         },
     })
 
+
+# ── /api/admin-notifications ────────────────────────────────────────────────
+# Chuông thông báo trong Admin Dashboard: hiện danh sách báo lỗi (bug_report)
+# gần đây kèm đầy đủ thông tin người báo (email, tên, uid), và số lượng
+# thông báo "chưa xem" (so với lần cuối admin bấm vào chuông).
+@app.route('/api/admin-notifications', methods=['GET'])
+def admin_notifications():
+    session = _require_admin()
+    if not session:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    limit = max(1, min(int(request.args.get('limit', 30)), 100))
+    admin_id = session.get('admin_id')
+
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            'SELECT last_seen_ts FROM admin_notif_state WHERE admin_id = ?', (admin_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    last_seen_ts = row['last_seen_ts'] if row else 0
+
+    events = [e for e in _events_snapshot() if e.get('type') == 'bug_report']
+    events.sort(key=lambda e: e['ts'], reverse=True)
+    unread = sum(1 for e in events if e['ts'] > last_seen_ts)
+    events = events[:limit]
+
+    items = [{
+        'ts':       e['ts'],
+        'unread':   e['ts'] > last_seen_ts,
+        'uid':      _uid_of(e),
+        'email':    e.get('email') or '',
+        'name':     e.get('name') or e.get('displayName') or '',
+        'title':    e.get('title') or '',
+        'message':  e.get('message') or '',
+        'severity': (e.get('severity') or 'normal'),
+        'area':     e.get('area') or '',
+        'path':     e.get('path') or '',
+    } for e in events]
+
+    return jsonify({'items': items, 'unread': unread, 'last_seen_ts': last_seen_ts})
+
+
+@app.route('/api/admin-notifications/mark-read', methods=['POST'])
+def admin_notifications_mark_read():
+    session = _require_admin()
+    if not session:
+        return jsonify({'error': 'unauthorized'}), 401
+    admin_id = session.get('admin_id')
+    now = time.time()
+    with db.tx() as conn:
+        conn.execute(
+            'INSERT INTO admin_notif_state (admin_id, last_seen_ts) VALUES (?, ?) '
+            'ON CONFLICT(admin_id) DO UPDATE SET last_seen_ts = excluded.last_seen_ts',
+            (admin_id, now)
+        )
+    return jsonify({'ok': True, 'last_seen_ts': now})
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
