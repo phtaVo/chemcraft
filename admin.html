@@ -1045,14 +1045,21 @@ function refreshChartsTheme(){
   }
 
   /* ═══════════════ OVERRIDE: renderMockCharts ═══════════════ */
+  let _renderInFlight = false;
   const _renderReal = async function () {
-    safeDestroy();
-    const C = chartColors();
-    if (window.Chart) Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+    // Chặn chạy chồng: nếu đang có 1 lần gọi khác chưa await xong (fetchMetrics),
+    // bỏ qua lần gọi mới — tránh 2 lần cùng tạo Chart trên cùng canvas
+    // (nguyên nhân thật của lỗi "Canvas is already in use").
+    if (_renderInFlight) { console.warn('[real-data] _renderReal đang chạy, bỏ qua lần gọi trùng.'); return; }
+    _renderInFlight = true;
+    try {
+      safeDestroy();
+      const C = chartColors();
+      if (window.Chart) Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
 
-    let m;
-    try { m = await fetchMetrics(); }
-    catch (e) { console.warn('[real-data] metrics unavailable:', e.message); return; }
+      let m;
+      try { m = await fetchMetrics(); }
+      catch (e) { console.warn('[real-data] metrics unavailable:', e.message); return; }
 
     // Growth chart — hoạt động 7 ngày
     const g = document.getElementById('chart-growth');
@@ -1149,6 +1156,9 @@ function refreshChartsTheme(){
           },
         },
       });
+    }
+    } finally {
+      _renderInFlight = false;
     }
   };
   window.renderMockCharts = _renderReal;
