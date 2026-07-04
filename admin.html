@@ -2504,17 +2504,6 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); d
    ═══════════════════════════════════════════════════════════════ */
 PAGES['quiz'] = { title:'Quản lý Quiz', sub:'Phân tích tỉ lệ đúng/sai, độ khó, thời gian làm bài', render: renderQuiz };
 
-const MOCK_QUIZ_DATA = [
-  {id:'q1', text:'Cân bằng phản ứng: KMnO₄ + HCl → ?', correct:42, wrong:58, avgTime:48, retries:2.1, difficulty:'Khó'},
-  {id:'q2', text:'Este là hợp chất được tạo thành từ:', correct:71, wrong:29, avgTime:22, retries:1.2, difficulty:'Dễ'},
-  {id:'q3', text:'pH của dung dịch HCl 0.01M là:', correct:64, wrong:36, avgTime:35, retries:1.5, difficulty:'TB'},
-  {id:'q4', text:'Halogen nào có tính oxi hóa mạnh nhất?', correct:85, wrong:15, avgTime:18, retries:1.0, difficulty:'Dễ'},
-  {id:'q5', text:'Viết phương trình điện phân NaCl nóng chảy', correct:31, wrong:69, avgTime:72, retries:3.4, difficulty:'Khó'},
-  {id:'q6', text:'Công thức phân tử của benzen là:', correct:91, wrong:9,  avgTime:12, retries:1.0, difficulty:'Dễ'},
-  {id:'q7', text:'Tốc độ phản ứng phụ thuộc vào yếu tố nào?', correct:58, wrong:42, avgTime:41, retries:1.8, difficulty:'TB'},
-  {id:'q8', text:'Xác định sản phẩm chính của phản ứng cộng HBr vào propene', correct:29, wrong:71, avgTime:85, retries:3.8, difficulty:'Khó'},
-];
-
 let _quizPageTab = 'bank'; // Mở mặc định vào Ngân hàng câu hỏi — tính năng chính của tab Quiz
 
 function renderQuiz(){
@@ -2539,99 +2528,179 @@ function switchQuizPageTab(tab){
   if (tab==='bank') renderQuizBank(); else renderQuizAnalytics();
 }
 
-function renderQuizAnalytics(){
-  document.getElementById('quiz-page-body').innerHTML = `
+/* Dữ liệu thật lấy từ /api/admin-analytics/quiz — SQL trên quiz_attempts +
+   quiz_answers (được ghi mỗi khi học sinh làm quiz thật trong lesson.html
+   qua ccTrack('quiz_start'/'quiz_answer'/'quiz_complete', ...)). Không còn
+   dữ liệu giả — nếu chưa có học sinh nào làm quiz, các bảng/biểu đồ dưới
+   đây sẽ hiển thị trạng thái "chưa có dữ liệu" thay vì số liệu bịa. */
+let _qzAnalyticsData = null;   // cache response từ server cho lần render lại (đổi filter) không cần gọi lại API
+let _qzAnalyticsFilter = 'all'; // 'all' | 'Dễ' | 'TB' | 'Khó'
+let _qzAnalyticsChart = null;
+
+async function renderQuizAnalytics(){
+  const body = document.getElementById('quiz-page-body');
+  body.innerHTML = `<div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu phân tích quiz...</div>`;
+  try {
+    _qzAnalyticsData = await _qzApi('/api/admin-analytics/quiz');
+  } catch (e) {
+    body.innerHTML = `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i> Không tải được dữ liệu phân tích: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  _paintQuizAnalytics();
+}
+
+function _qzAnalyticsFiltered(){
+  const qs = (_qzAnalyticsData && _qzAnalyticsData.questions) || [];
+  if (_qzAnalyticsFilter === 'all') return qs;
+  return qs.filter(q => q.difficulty === _qzAnalyticsFilter);
+}
+
+function _paintQuizAnalytics(){
+  const d = _qzAnalyticsData || {};
+  const questions = _qzAnalyticsFiltered();
+  const body = document.getElementById('quiz-page-body');
+
+  const kpis = [
+    ['Lượt làm quiz', (d.total_attempts ?? 0).toLocaleString('vi-VN'), 'fa-list-check', 'var(--indigo)'],
+    ['Điểm trung bình', (d.avg_score_pct != null ? d.avg_score_pct + '%' : '—'), 'fa-check', 'var(--green)'],
+    ['Thời gian TB / câu', (d.avg_time_sec != null ? d.avg_time_sec + ' giây' : '—'), 'fa-stopwatch', 'var(--cyan)'],
+    ['Làm lại TB / câu', (d.avg_retries != null ? d.avg_retries + 'x' : '—'), 'fa-rotate-right', 'var(--orange)'],
+  ];
+
+  const diffPills = ['all','Dễ','TB','Khó'].map(v =>
+    `<div class="a-filter-pill ${_qzAnalyticsFilter===v?'active':''}" data-diff="${v}">${v==='all'?'Tất cả':v}</div>`
+  ).join('');
+
+  body.innerHTML = `
     <div class="a-page-head">
       <div><div class="a-page-title">Quiz Analytics</div>
-      <div class="a-page-desc">Phân tích từng câu hỏi — phát hiện nội dung học sinh chưa nắm vững.</div></div>
-      <div class="a-filter-pills">
-        <div class="a-filter-pill active">Tất cả</div>
-        <div class="a-filter-pill">Dễ</div>
-        <div class="a-filter-pill">TB</div>
-        <div class="a-filter-pill">Khó</div>
-      </div>
+      <div class="a-page-desc">Phân tích từng câu hỏi từ dữ liệu làm bài thật của học sinh — phát hiện nội dung chưa nắm vững.</div></div>
+      <div class="a-filter-pills">${diffPills}</div>
     </div>
 
-    <!-- KPI -->
     <div class="kpi-grid" style="margin-bottom:20px;">
-      ${[['Tổng câu hỏi','8','fa-circle-question','var(--indigo)'],
-         ['Tỉ lệ đúng TB','59%','fa-check','var(--green)'],
-         ['Thời gian TB','42 giây','fa-stopwatch','var(--cyan)'],
-         ['Tỉ lệ làm lại TB','2.0x','fa-rotate-right','var(--orange)']
-       ].map(([l,v,ic,co])=>`
+      ${kpis.map(([l,v,ic,co])=>`
         <div class="kpi-card">
           <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div></div>
           <div class="kpi-value" style="font-size:1.4rem;">${v}</div><div class="kpi-label">${l}</div>
         </div>`).join('')}
     </div>
 
-    <!-- Chart + table -->
-    <div class="panel" style="margin-bottom:16px;">
-      <div class="panel-head"><div class="panel-title">Tỉ lệ đúng/sai theo từng câu hỏi</div><div class="panel-tag">Bar chart</div></div>
-      <div class="chart-wrap" style="height:220px;"><canvas id="chart-quiz-bars"></canvas></div>
-    </div>
+    ${questions.length === 0 ? `
+      <div class="mod-note"><i class="fa-solid fa-circle-info"></i> Chưa có dữ liệu làm quiz thật nào ${_qzAnalyticsFilter!=='all' ? `cho độ khó "${escapeHtml(_qzAnalyticsFilter)}"` : ''}. Dữ liệu sẽ tự động xuất hiện khi học sinh làm bài trong trang Bài học.</div>
+    ` : `
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-head"><div class="panel-title">Tỉ lệ đúng/sai theo từng câu hỏi</div><div class="panel-tag">Top ${Math.min(20, questions.length)} câu sai nhiều nhất</div></div>
+        <div class="chart-wrap" style="height:220px;"><canvas id="chart-quiz-bars"></canvas></div>
+      </div>
 
-    <div class="a-table-wrap">
-      <table class="a-table">
-        <thead><tr>
-          <th>Câu hỏi</th><th>Đúng</th><th>Sai</th><th>Độ khó</th>
-          <th>Thời gian TB</th><th>Làm lại</th><th>Đánh giá</th>
-        </tr></thead>
-        <tbody>
-          ${MOCK_QUIZ_DATA.map(q => {
-            const alert = q.wrong > 60 ? `<span class="badge warn"><i class="fa-solid fa-triangle-exclamation"></i> Cần xem lại</span>` : q.wrong < 20 ? `<span class="badge ok">Ổn</span>` : `<span class="badge off">Bình thường</span>`;
-            const diffColor = q.difficulty==='Dễ'?'ok':q.difficulty==='Khó'?'warn':'off';
-            return `<tr>
-              <td style="max-width:260px;font-size:0.84rem;font-weight:600;">${escapeHtml(q.text)}</td>
-              <td><div style="display:flex;align-items:center;gap:7px;">
-                <div style="width:50px;height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden;">
-                  <div style="width:${q.correct}%;height:100%;background:var(--green);border-radius:99px;"></div>
-                </div>
-                <span style="font-weight:800;color:var(--green-d);font-size:0.84rem;">${q.correct}%</span>
-              </div></td>
-              <td><span style="font-weight:800;color:var(--red-d);font-size:0.84rem;">${q.wrong}%</span></td>
-              <td><span class="badge ${diffColor}">${q.difficulty}</span></td>
-              <td style="font-size:0.84rem;">${q.avgTime}s</td>
-              <td style="font-size:0.84rem;">${q.retries}x</td>
-              <td>${alert}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
+      <div class="a-table-wrap">
+        <table class="a-table">
+          <thead><tr>
+            <th>Câu hỏi</th><th>Lượt trả lời</th><th>Đúng</th><th>Sai</th><th>Độ khó</th>
+            <th>Thời gian TB</th><th>Làm lại</th><th>Đánh giá</th>
+          </tr></thead>
+          <tbody>
+            ${questions.map(q => {
+              const alert = q.wrong_pct > 60 ? `<span class="badge warn"><i class="fa-solid fa-triangle-exclamation"></i> Cần xem lại</span>` : q.wrong_pct < 20 ? `<span class="badge ok">Ổn</span>` : `<span class="badge off">Bình thường</span>`;
+              const diffColor = q.difficulty==='Dễ'?'ok':q.difficulty==='Khó'?'warn':'off';
+              return `<tr>
+                <td style="max-width:260px;font-size:0.84rem;font-weight:600;">${escapeHtml(q.text || '(không có nội dung)')}</td>
+                <td style="font-size:0.84rem;">${q.attempts}</td>
+                <td><div style="display:flex;align-items:center;gap:7px;">
+                  <div style="width:50px;height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden;">
+                    <div style="width:${q.correct_pct}%;height:100%;background:var(--green);border-radius:99px;"></div>
+                  </div>
+                  <span style="font-weight:800;color:var(--green-d);font-size:0.84rem;">${q.correct_pct}%</span>
+                </div></td>
+                <td><span style="font-weight:800;color:var(--red-d);font-size:0.84rem;">${q.wrong_pct}%</span></td>
+                <td>${q.difficulty ? `<span class="badge ${diffColor}">${escapeHtml(q.difficulty)}</span>` : `<span class="badge off">Không rõ</span>`}</td>
+                <td style="font-size:0.84rem;">${q.avg_time_sec != null ? q.avg_time_sec + 's' : '—'}</td>
+                <td style="font-size:0.84rem;">${q.avg_retries}x</td>
+                <td>${alert}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
 
-    <div class="panel" style="margin-top:16px;">
-      <div class="panel-head"><div class="panel-title">Insight tự động</div></div>
-      <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
-        <div class="mod-note" style="border-left-color:var(--red);">
-          <i class="fa-solid fa-circle-xmark" style="color:var(--red);"></i>
-          <strong>Câu khó nhất:</strong> "Xác định sản phẩm chính của phản ứng cộng HBr vào propene" — 71% sai, làm lại trung bình 3.8 lần. Cần bổ sung giải thích quy tắc Markovnikov trong bài học liên quan.
-        </div>
-        <div class="mod-note" style="border-left-color:var(--green);">
-          <i class="fa-solid fa-circle-check" style="color:var(--green);"></i>
-          <strong>Câu dễ nhất:</strong> "Công thức phân tử của benzen" — 91% đúng, thời gian trung bình 12 giây. Có thể tăng độ khó.
-        </div>
-        <div class="mod-note" style="border-left-color:var(--orange);">
-          <i class="fa-solid fa-fire" style="color:var(--orange);"></i>
-          <strong>3 câu cần xem lại:</strong> KMnO₄, Điện phân NaCl, Cộng HBr — đều có tỉ lệ sai >60%. Khuyến nghị cập nhật nội dung bài học tương ứng.
+      <div class="panel" style="margin-top:16px;">
+        <div class="panel-head"><div class="panel-title">Insight tự động</div></div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:4px 0;">
+          ${_qzAnalyticsInsights(questions)}
         </div>
       </div>
-    </div>
+    `}
   `;
 
+  if (questions.length > 0) {
+    document.querySelectorAll('#quiz-page-body .a-filter-pill').forEach(p => p.onclick = () => {
+      _qzAnalyticsFilter = p.dataset.diff;
+      _paintQuizAnalytics();
+    });
+    _qzRenderChart(questions);
+  } else {
+    document.querySelectorAll('#quiz-page-body .a-filter-pill').forEach(p => p.onclick = () => {
+      _qzAnalyticsFilter = p.dataset.diff;
+      _paintQuizAnalytics();
+    });
+  }
+}
+
+function _qzAnalyticsInsights(questions){
+  if (!questions.length) return '';
+  const byAttempts = questions.filter(q => q.attempts >= 3); // đủ mẫu để nhận xét đáng tin
+  const pool = byAttempts.length ? byAttempts : questions;
+  const hardest = [...pool].sort((a,b)=>b.wrong_pct-a.wrong_pct)[0];
+  const easiest = [...pool].sort((a,b)=>a.wrong_pct-b.wrong_pct)[0];
+  const needReview = questions.filter(q => q.wrong_pct > 60);
+
+  let html = '';
+  if (hardest) {
+    html += `<div class="mod-note" style="border-left-color:var(--red);">
+      <i class="fa-solid fa-circle-xmark" style="color:var(--red);"></i>
+      <strong>Câu khó nhất:</strong> "${escapeHtml(hardest.text || '')}" — ${hardest.wrong_pct}% sai trên ${hardest.attempts} lượt trả lời${hardest.avg_retries ? `, làm lại trung bình ${hardest.avg_retries} lần` : ''}. Nên xem lại nội dung bài học liên quan.
+    </div>`;
+  }
+  if (easiest) {
+    html += `<div class="mod-note" style="border-left-color:var(--green);">
+      <i class="fa-solid fa-circle-check" style="color:var(--green);"></i>
+      <strong>Câu dễ nhất:</strong> "${escapeHtml(easiest.text || '')}" — ${easiest.correct_pct}% đúng${easiest.avg_time_sec != null ? `, thời gian trung bình ${easiest.avg_time_sec} giây` : ''}. Có thể cân nhắc tăng độ khó.
+    </div>`;
+  }
+  if (needReview.length) {
+    const names = needReview.slice(0,3).map(q => (q.text||'').split(' ').slice(0,6).join(' ') + '...');
+    html += `<div class="mod-note" style="border-left-color:var(--orange);">
+      <i class="fa-solid fa-fire" style="color:var(--orange);"></i>
+      <strong>${needReview.length} câu cần xem lại:</strong> ${names.map(n=>escapeHtml(n)).join('; ')}${needReview.length>3?', ...':''} — đều có tỉ lệ sai trên 60%. Khuyến nghị cập nhật nội dung bài học tương ứng.
+    </div>`;
+  }
+  return html || `<div class="mod-note">Chưa đủ dữ liệu để đưa ra nhận xét.</div>`;
+}
+
+function _qzRenderChart(questions){
+  const top = [...questions].sort((a,b)=>b.wrong_pct-a.wrong_pct).slice(0, 20);
   const C = chartColors();
   Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
-  new Chart(document.getElementById('chart-quiz-bars'), {
+  if (_qzAnalyticsChart) { _qzAnalyticsChart.destroy(); _qzAnalyticsChart = null; }
+  const ctx = document.getElementById('chart-quiz-bars');
+  if (!ctx) return;
+  _qzAnalyticsChart = new Chart(ctx, {
     type:'bar',
     data:{
-      labels: MOCK_QUIZ_DATA.map((_,i)=>`Câu ${i+1}`),
+      labels: top.map((q,i)=>`Câu ${i+1}`),
       datasets:[
-        {label:'Đúng (%)', data: MOCK_QUIZ_DATA.map(q=>q.correct), backgroundColor:'rgba(16,185,129,0.75)', borderRadius:5, maxBarThickness:28},
-        {label:'Sai (%)',  data: MOCK_QUIZ_DATA.map(q=>q.wrong),   backgroundColor:'rgba(239,68,68,0.65)',  borderRadius:5, maxBarThickness:28},
+        {label:'Đúng (%)', data: top.map(q=>q.correct_pct), backgroundColor:'rgba(16,185,129,0.75)', borderRadius:5, maxBarThickness:28},
+        {label:'Sai (%)',  data: top.map(q=>q.wrong_pct),   backgroundColor:'rgba(239,68,68,0.65)',  borderRadius:5, maxBarThickness:28},
       ]
     },
     options:{responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{labels:{color:C.text}}},
+      plugins:{legend:{labels:{color:C.text}},
+        tooltip:{callbacks:{afterTitle:(items)=> {
+          const q = top[items[0].dataIndex];
+          return q ? (q.text||'').slice(0,80) : '';
+        }}}
+      },
       scales:{x:{grid:{display:false},ticks:{color:C.text}}, y:{grid:{color:C.grid},ticks:{color:C.text},max:100,
         title:{display:true,text:'%',color:C.text}}},
     }
