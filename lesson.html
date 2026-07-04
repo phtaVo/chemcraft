@@ -865,7 +865,13 @@
         }
 
         // ================= QUIZ =================
-        const quizData = [
+        // Bộ câu hỏi trắc nghiệm giờ được ADMIN quản lý (thêm/xóa) trong trang
+        // admin.html → tab Quiz → "Ngân hàng câu hỏi", lưu ở SQLite (quiz_bank.py).
+        // Mỗi lần bấm "BẮT ĐẦU THI", client gọi /api/quiz-questions để server rút
+        // ngẫu nhiên 1 bộ đề mới từ ngân hàng đó — xem loadQuizQuestions() bên dưới.
+        // Mảng tĩnh dưới đây CHỈ dùng làm phương án dự phòng (fallback) khi không
+        // gọi được API (mất mạng, server lỗi...) để trang không bao giờ "chết".
+        const QUIZ_FALLBACK_MC = [
             { q: "Phản ứng tỏa nhiệt là phản ứng có:", opts: ["ΔrH < 0, làm môi trường nóng lên", "ΔrH > 0, làm môi trường nóng lên", "ΔrH < 0, làm môi trường lạnh đi", "ΔrH > 0, làm môi trường lạnh đi"], ans: 0 },
             { q: "Nhiệt tạo thành chuẩn (ΔfHo) của một đơn chất bền vững (VD: O2, H2) bằng:", opts: ["< 0", "1", "0", "Phụ thuộc nhiệt độ"], ans: 2 },
             { q: "Khi hòa tan Vôi sống (CaO) vào nước, cốc thủy tinh nóng lên rất nhanh. Phương trình nhiệt hóa học có:", opts: ["ΔH > 0", "ΔH = 0", "ΔH < 0", "Không xác định được"], ans: 2 },
@@ -902,16 +908,49 @@
             { q: "Trộn 2 thể tích khí bằng nhau, khí A có M=2, khí B có M=32. Số hạt vi mô trong khí B bằng bao nhiêu lần khí A?", opts: ["16 lần", "8 lần", "1 lần (bằng nhau)", "1/16 lần"], ans: 2 },
             { q: "Nhận xét đúng về Lực Van der Waals:", opts: ["Là lực liên kết hóa học rất mạnh", "Chỉ có ở chất khí", "Có bản chất tĩnh điện, rất yếu", "Cản trở sự bay hơi của nước"], ans: 2 },
             { q: "Khi tăng nhiệt độ 40 độ C, v tăng 16 lần. Hỏi hệ số nhiệt độ γ là bao nhiêu?", opts: ["1", "2", "3", "4"], ans: 1 },
+        ];
+        // 2 câu thực hành thao tác trực tiếp trên mini-lab ảo — gắn với DOM/JS
+        // đặc thù của trang này nên KHÔNG đưa vào ngân hàng câu hỏi của admin,
+        // luôn được nối vào cuối mỗi bộ đề (dù bộ trắc nghiệm là random hay fallback).
+        const QUIZ_PRACTICAL = [
             { type: "practical", id: "p1", q: "THỰC HÀNH 1: Sử dụng bộ dụng cụ ảo, hãy pha chế hóa chất sao cho nhiệt độ của cốc thủy tinh hạ xuống còn DƯỚI 10°C để hãm tốc phản ứng." },
             { type: "practical", id: "p2", q: "THỰC HÀNH 2: Trạm Vũ Trụ cần chính xác 16.0 gam khí O2 (Cho M_O = 16). Hãy tính toán số mol và kéo xilanh ảo dưới đây để bơm đúng lượng khí đó (sai số ± 0.02 mol)." }
         ];
 
+        let quizData = QUIZ_FALLBACK_MC.concat(QUIZ_PRACTICAL);
         let currentQIndex = 0;
         let userAnswers = new Array(quizData.length).fill(null);
         let isReviewMode = false;
         let practicalInterval = null;
 
-        function startQuiz() {
+        // Gọi server để rút ngẫu nhiên 1 bộ đề trắc nghiệm từ ngân hàng câu hỏi
+        // (được admin quản lý). Trả về mảng dạng {q, opts, ans} giống hệt định
+        // dạng cũ nên toàn bộ code render/chấm điểm bên dưới không cần đổi gì.
+        async function loadQuizQuestions(count = 34) {
+            try {
+                const res = await fetch(`/api/quiz-questions?count=${count}`);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                const list = (data.questions || []).map(q => ({
+                    id: q.id, q: q.question, opts: q.options, ans: q.answerIndex
+                }));
+                if (list.length === 0) throw new Error('empty');
+                return list;
+            } catch (e) {
+                console.warn('[quiz] Không tải được ngân hàng câu hỏi từ server, dùng bộ dự phòng:', e);
+                return QUIZ_FALLBACK_MC;
+            }
+        }
+
+        async function startQuiz() {
+            const startBtn = document.querySelector('#quiz-start button');
+            if (startBtn) { startBtn.disabled = true; startBtn.style.opacity = '0.6'; }
+
+            const mcQuestions = await loadQuizQuestions(QUIZ_FALLBACK_MC.length);
+            quizData = mcQuestions.concat(QUIZ_PRACTICAL);
+
+            if (startBtn) { startBtn.disabled = false; startBtn.style.opacity = ''; }
+
             document.getElementById('quiz-start').classList.add('hidden');
             document.getElementById('quiz-result').classList.add('hidden');
             document.getElementById('quiz-area').classList.remove('hidden');
