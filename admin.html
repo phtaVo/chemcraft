@@ -338,6 +338,25 @@ table.a-table{width:100%; border-collapse:collapse;}
 .ccr-sev-low{background:#dcfce7; color:#166534}
 .ccr-sample{font-size:.78rem; color:#475569; line-height:1.35}
 .ccr-dim{color:#cbd5e1}
+/* ── Chuông thông báo (bug report) ─────────────────── */
+.notif-panel{position:absolute; top:44px; right:0; width:360px; max-height:420px; overflow-y:auto; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--sh-4); display:none; z-index:200;}
+.notif-panel.open{display:block;}
+.notif-head{padding:12px 16px; font-weight:800; font-size:.88rem; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;}
+.notif-head button{border:0; background:transparent; color:var(--cyan); font-size:.75rem; font-weight:700; cursor:pointer;}
+.notif-item{padding:12px 16px; border-bottom:1px solid var(--line); font-size:.82rem; cursor:default;}
+.notif-item:last-child{border-bottom:0;}
+.notif-item.unread{background:rgba(79,107,255,0.06);}
+.notif-item-top{display:flex; justify-content:space-between; gap:8px; margin-bottom:3px;}
+.notif-item-title{font-weight:700; color:var(--fg);}
+.notif-item-time{font-size:.7rem; color:var(--fg-mute); white-space:nowrap;}
+.notif-item-user{font-size:.75rem; color:var(--fg-soft); margin-bottom:3px;}
+.notif-item-msg{font-size:.78rem; color:var(--fg-mute); line-height:1.4;}
+.notif-empty{padding:40px 16px; text-align:center; color:var(--fg-mute); font-size:.85rem;}
+.notif-sev{display:inline-block; padding:1px 7px; border-radius:99px; font-size:.65rem; font-weight:700; margin-right:5px;}
+.notif-sev-critical{background:#fee2e2; color:#991b1b}
+.notif-sev-high{background:#ffedd5; color:#9a3412}
+.notif-sev-normal{background:#dbeafe; color:#1e40af}
+.notif-sev-low{background:#dcfce7; color:#166534}
 </style>
 </head>
 <body>
@@ -484,8 +503,9 @@ table.a-table{width:100%; border-collapse:collapse;}
         <div class="a-crumb-sub" id="page-sub">Tổng quan toàn hệ thống ChemCraft</div>
       </div>
       <div class="a-topbar-spacer"></div>
-      <div class="a-topbar-actions">
-        <button class="a-icon-btn" title="Thông báo"><i class="fa-regular fa-bell"></i><span class="dot"></span></button>
+      <div class="a-topbar-actions" style="position:relative;">
+        <button class="a-icon-btn" id="notif-bell-btn" title="Thông báo"><i class="fa-regular fa-bell"></i><span class="dot" id="notif-dot" style="display:none;"></span></button>
+        <div id="notif-panel" class="notif-panel"></div>
         <button class="a-icon-btn" id="theme-toggle" onclick="toggleTheme()" title="Chuyển giao diện"><i class="fa-solid fa-moon"></i></button>
       </div>
     </div>
@@ -2235,6 +2255,88 @@ const Rankings = {
   },
 };
 function renderLeaderboard(){ Rankings.render(); }
+
+/* ═══════════════════════════════════════════════════════════════
+   CHUÔNG THÔNG BÁO (bug report) — poll /api/admin-notifications
+   ═══════════════════════════════════════════════════════════════ */
+(function () {
+  function adminToken() {
+    return window.__adminToken || sessionStorage.getItem('cc_admin_token') || '';
+  }
+  function esc(s) {
+    return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function relTime(ts) {
+    if (!ts) return '';
+    const d = Date.now()/1000 - ts;
+    if (d < 60) return 'vừa xong';
+    if (d < 3600) return Math.floor(d/60) + ' phút trước';
+    if (d < 86400) return Math.floor(d/3600) + ' giờ trước';
+    if (d < 604800) return Math.floor(d/86400) + ' ngày trước';
+    return new Date(ts*1000).toLocaleDateString('vi-VN');
+  }
+
+  let _data = null;
+  const btn   = document.getElementById('notif-bell-btn');
+  const dot   = document.getElementById('notif-dot');
+  const panel = document.getElementById('notif-panel');
+  if (!btn || !panel) return;
+
+  function render() {
+    if (!_data) { panel.innerHTML = `<div class="notif-empty"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải…</div>`; return; }
+    const items = _data.items || [];
+    panel.innerHTML = `
+      <div class="notif-head"><span>Báo cáo lỗi (${_data.unread || 0} mới)</span>
+        <button id="notif-mark-read">Đánh dấu đã đọc</button></div>
+      ${items.length ? items.map(it => `
+        <div class="notif-item ${it.unread ? 'unread' : ''}">
+          <div class="notif-item-top">
+            <span class="notif-item-title"><span class="notif-sev notif-sev-${esc(it.severity)}">${esc(it.severity)}</span>${esc(it.title || 'Báo lỗi')}</span>
+            <span class="notif-item-time">${relTime(it.ts)}</span>
+          </div>
+          <div class="notif-item-user"><i class="fa-solid fa-user"></i> ${esc(it.name) || 'Chưa rõ tên'} — ${esc(it.email) || esc(it.uid) || 'Ẩn danh'}</div>
+          <div class="notif-item-msg">${esc(it.message).slice(0,180)}${it.area ? ` <span class="ccr-dim">(${esc(it.area)})</span>` : ''}</div>
+        </div>`).join('') : `<div class="notif-empty"><i class="fa-solid fa-inbox"></i><br>Chưa có báo cáo lỗi nào.</div>`}
+    `;
+    const mr = document.getElementById('notif-mark-read');
+    if (mr) mr.onclick = markRead;
+  }
+
+  async function fetchNotifs() {
+    const t = adminToken();
+    if (!t) return;
+    try {
+      const r = await fetch('/api/admin-notifications?limit=30', { headers: { 'X-Admin-Token': t } });
+      if (!r.ok) return;
+      _data = await r.json();
+      dot.style.display = (_data.unread > 0) ? 'block' : 'none';
+      if (panel.classList.contains('open')) render();
+    } catch (e) { console.warn('[notif] fetch error:', e); }
+  }
+
+  async function markRead() {
+    const t = adminToken();
+    if (!t) return;
+    try {
+      await fetch('/api/admin-notifications/mark-read', { method: 'POST', headers: { 'X-Admin-Token': t } });
+      if (_data) { _data.items.forEach(it => it.unread = false); _data.unread = 0; }
+      dot.style.display = 'none';
+      render();
+    } catch (e) { console.warn('[notif] mark-read error:', e); }
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) render();
+  });
+  document.addEventListener('click', (e) => {
+    if (!panel.contains(e.target) && e.target !== btn) panel.classList.remove('open');
+  });
+
+  fetchNotifs();
+  setInterval(fetchNotifs, 30000); // poll mỗi 30 giây
+})();
 
 /* ═══════════════════════════════════════════════════════════════
    SHARED STYLES (inject into <head>)
