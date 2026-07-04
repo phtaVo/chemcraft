@@ -596,9 +596,13 @@ ALLOWED_EVENT_TYPES = ALLOWED_EVENT_TYPES | {
 
 
 def _events_snapshot():
-    """Copy sang list trong lock, dùng cho các hàm tổng hợp."""
-    with _event_lock:
-        return list(_events_mem)
+    """Trả về toàn bộ sự kiện (đã phẳng hoá) từ SQLite, dùng cho các hàm
+    tổng hợp (xếp hạng, hoạt động, hồ sơ...). Trước đây dùng biến in-memory
+    `_events_mem`/`_event_lock` nhưng 2 biến này chưa từng được khởi tạo ở
+    đâu trong file, gây NameError (lỗi 500) mỗi khi endpoint liên quan được
+    gọi — nay đọc thẳng từ database.py (nguồn dữ liệu thật, đã ghi bởi
+    log_event()/db.record_event())."""
+    return db.all_events()
 
 
 def _uid_of(ev):
