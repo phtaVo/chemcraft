@@ -113,6 +113,34 @@ def init_db():
                     duration_sec REAL,
                     ts           REAL
                 );
+
+                -- ── Bảng cho admin_auth.py ────────────────────────────
+                CREATE TABLE IF NOT EXISTS admin_accounts (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username      TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    name          TEXT DEFAULT '',
+                    role          TEXT DEFAULT 'admin',
+                    active        INTEGER DEFAULT 1,
+                    created_at    REAL,
+                    last_login_at REAL
+                );
+
+                CREATE TABLE IF NOT EXISTS admin_sessions (
+                    token        TEXT PRIMARY KEY,
+                    admin_id     INTEGER NOT NULL,
+                    created_at   REAL,
+                    last_seen_at REAL,
+                    ip           TEXT DEFAULT ''
+                );
+
+                CREATE TABLE IF NOT EXISTS admin_login_audit (
+                    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT,
+                    ip       TEXT DEFAULT '',
+                    success  INTEGER DEFAULT 0,
+                    ts       REAL
+                );
             ''')
             conn.commit()
         finally:
