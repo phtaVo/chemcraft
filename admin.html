@@ -2320,21 +2320,43 @@ function renderLAHeatmap(matrix){
 /* ═══════════════════════════════════════════════════════════════
    MODULE: PHÂN TÍCH LAB 3D
    ═══════════════════════════════════════════════════════════════ */
-PAGES['lab-analytics'] = { title:'Phân tích Lab 3D', sub:'Drop-off, bước sai, tỉ lệ hoàn thành', render: renderLabAnalytics };
+PAGES['lab-analytics'] = { title:'Phân tích Lab 3D', sub:'Lượt vào Lab, tỉ lệ hoàn thành, điểm AI chấm (A-F)', render: renderLabAnalytics };
 
-function renderLabAnalytics(){
+let _labAnData = null;
+let _labAnLoading = false;
+
+async function renderLabAnalytics(){
   document.getElementById('page-root').innerHTML = `
     <div class="a-page-head">
       <div><div class="a-page-title">Phân tích Lab 3D</div>
-      <div class="a-page-desc">Theo dõi từng bước thí nghiệm — phát hiện điểm yếu trong quy trình thực hành.</div></div>
+      <div class="a-page-desc">Lượt vào Lab, tỉ lệ hoàn thành nhiệm vụ, và kết quả chấm điểm AI (A-F) thật từ modal "Đánh Giá AI".</div></div>
     </div>
+    <div id="lab-an-root"><div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu thật từ server...</div></div>
+  `;
 
+  if (_labAnLoading) return;
+  _labAnLoading = true;
+  try {
+    _labAnData = await _qzApi('/api/admin-analytics/lab');
+  } catch (e) {
+    document.getElementById('lab-an-root').innerHTML =
+      `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation"></i> Không tải được dữ liệu: ${escapeHtml(e.message)}</div>`;
+    _labAnLoading = false;
+    return;
+  }
+  _labAnLoading = false;
+
+  const k = _labAnData.kpi;
+  document.getElementById('lab-an-root').innerHTML = `
     <div class="kpi-grid" style="margin-bottom:20px;">
-      ${[['Tổng lượt vào Lab','1,248','fa-vial','var(--cyan)',''],
-         ['Tỉ lệ hoàn thành','72%','fa-circle-check','var(--green)',''],
-         ['Bỏ giữa chừng','18%','fa-person-running','var(--red)',''],
-         ['Quan sát sai HT','10%','fa-eye-slash','var(--orange)','']
-       ].map(([l,v,ic,co])=>`
+      ${[
+        ['Tổng lượt vào Lab', k.lab_opened, 'fa-vial', 'var(--cyan)'],
+        ['Tỉ lệ hoàn thành', k.completion_rate_pct+'%', 'fa-circle-check', 'var(--green)'],
+        ['Không có hiện tượng', k.lab_no_reaction, 'fa-person-running', 'var(--orange)'],
+        ['Lượt được AI chấm điểm', k.total_graded, 'fa-robot', '#4F6BFF'],
+        ['Điểm AI trung bình', k.avg_ai_score+'/100', 'fa-star', '#F59E0B'],
+        ['Tỉ lệ đạt điểm C-F', k.c_to_f_pct+'%', 'fa-triangle-exclamation', 'var(--red)'],
+      ].map(([l,v,ic,co])=>`
         <div class="kpi-card">
           <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div></div>
           <div class="kpi-value" style="font-size:1.4rem;">${v}</div><div class="kpi-label">${l}</div>
@@ -2343,57 +2365,71 @@ function renderLabAnalytics(){
 
     <div class="panel-grid" style="margin-bottom:16px;">
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Thí nghiệm KMnO₄ — Kết quả 100 học sinh</div></div>
-        <div class="chart-wrap"><canvas id="chart-lab-result"></canvas></div>
+        <div class="panel-head"><div class="panel-title">Phân phối điểm AI đánh giá (A-F)</div><div class="panel-tag">Doughnut</div></div>
+        <div class="chart-wrap"><canvas id="chart-lab-grades"></canvas></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Bước gây lỗi nhiều nhất</div></div>
-        <div id="lab-steps-list"></div>
+        <div class="panel-head"><div class="panel-title">Phản ứng hoàn thành nhiều nhất</div></div>
+        <div id="lab-top-reactions"></div>
       </div>
     </div>
 
     <div class="panel" style="margin-bottom:16px;">
-      <div class="panel-head"><div class="panel-title">Tỉ lệ hoàn thành theo thí nghiệm</div><div class="panel-tag">Bar chart</div></div>
-      <div class="chart-wrap sm"><canvas id="chart-lab-exp"></canvas></div>
+      <div class="panel-head"><div class="panel-title">Xu hướng tỉ lệ điểm C-F (14 ngày gần nhất)</div><div class="panel-tag">Line chart</div></div>
+      <div class="chart-wrap sm"><canvas id="chart-lab-cftrend"></canvas></div>
     </div>
   `;
 
   const C = chartColors();
   Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
-  new Chart(document.getElementById('chart-lab-result'),{
+
+  Chart.getChart('chart-lab-grades')?.destroy();
+  const gd = _labAnData.grade_distribution;
+  const gdTotal = gd.counts.reduce((a,b)=>a+b,0);
+  new Chart(document.getElementById('chart-lab-grades'),{
     type:'doughnut',
-    data:{labels:['Hoàn thành (72)','Thoát giữa chừng (18)','Quan sát sai HT (10)'],
-      datasets:[{data:[72,18,10], backgroundColor:['#10B981','#EF4444','#F59E0B'], borderWidth:0}]},
+    data:{labels: gd.labels.map((l,i)=>`${l} (${gd.counts[i]})`),
+      datasets:[{data: gd.counts, backgroundColor:['#10B981','#06B6D4','#F59E0B','#F97316','#EF4444'], borderWidth:0}]},
     options:{responsive:true,maintainAspectRatio:false,cutout:'65%', plugins:{legend:{position:'bottom', labels:{color:C.text, padding:12}}}}
   });
+  if (gdTotal === 0) {
+    document.getElementById('chart-lab-grades').insertAdjacentHTML('afterend',
+      '<div class="mod-note" style="margin-top:10px;">Chưa có học sinh nào dùng "Đánh Giá AI" trong Lab.</div>');
+  }
 
-  new Chart(document.getElementById('chart-lab-exp'),{
-    type:'bar',
-    data:{labels:['KMnO₄','Cu(OH)₂','HCl + Zn','Na + H₂O','AgNO₃','CaCO₃ + HCl'],
-      datasets:[{label:'Tỉ lệ hoàn thành (%)', data:[72,68,81,60,77,55], backgroundColor:'#06B6D4', borderRadius:6, maxBarThickness:36}]},
-    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
-      scales:{x:{grid:{display:false},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text},max:100}}}
+  Chart.getChart('chart-lab-cftrend')?.destroy();
+  const trend = _labAnData.cf_trend_14d;
+  const trendLabels = Array.from({length: trend.graded.length}, (_,i)=>{
+    const d = new Date(Date.now() - (trend.graded.length-1-i)*86400000);
+    return d.toLocaleDateString('vi-VN', {day:'2-digit', month:'2-digit'});
+  });
+  const cfPct = trend.graded.map((g,i)=> g>0 ? Math.round(100*trend.c_to_f[i]/g) : 0);
+  new Chart(document.getElementById('chart-lab-cftrend'),{
+    type:'line',
+    data:{labels: trendLabels,
+      datasets:[{label:'% điểm C-F trong ngày', data: cfPct,
+        borderColor:'#EF4444', backgroundColor:'rgba(239,68,68,0.12)', fill:true, tension:.35}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:C.grid},ticks:{color:C.text}}, y:{grid:{color:C.grid},ticks:{color:C.text}, min:0, max:100}}}
   });
 
-  const steps = [
-    ['Quan sát hiện tượng màu','63%','Ghi chú chưa đủ chi tiết → Hệ thống tự chấm F'],
-    ['Thêm thuốc thử đúng tỉ lệ','41%','Học sinh nhầm thứ tự thêm hóa chất'],
-    ['Đọc màu kết tủa đúng','35%','Thiếu hướng dẫn phân biệt màu kết tủa'],
-    ['Ghi kết luận phản ứng','28%','Không nêu được phương trình thu gọn'],
-  ];
-  document.getElementById('lab-steps-list').innerHTML = `<div style="padding:6px 0;">`+
-    steps.map(([step,pct,note]) => `
-      <div style="padding:12px 0; border-bottom:1px solid var(--line);">
-        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-          <div style="font-size:0.87rem; font-weight:700; color:var(--fg);">${escapeHtml(step)}</div>
-          <div style="font-size:0.82rem; font-weight:800; color:var(--red);">${pct} sai</div>
+  const topReactions = _labAnData.top_completed_reactions || [];
+  document.getElementById('lab-top-reactions').innerHTML = topReactions.length ? `<div style="padding:6px 0;">` +
+    topReactions.map(([eq,count])=>{
+      const max = topReactions[0][1] || 1;
+      const w = Math.round(100*count/max);
+      return `<div style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:700; color:var(--fg); margin-bottom:5px;">
+          <span style="max-width:75%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(eq)}</span>
+          <span style="color:var(--cyan);">${count} lượt</span>
         </div>
-        <div style="font-size:0.77rem; color:var(--fg-mute); font-weight:500; margin-bottom:7px;">${escapeHtml(note)}</div>
-        <div style="background:var(--surface-2); border-radius:99px; height:8px; overflow:hidden;">
-          <div style="width:${pct}; height:100%; background:linear-gradient(90deg,var(--orange),var(--red)); border-radius:99px;"></div>
+        <div style="background:var(--surface-2); border-radius:99px; height:10px; overflow:hidden;">
+          <div style="height:100%; width:${w}%; background:var(--cyan); border-radius:99px;"></div>
         </div>
-      </div>`).join('') +
-    '<div class="mod-note" style="margin-top:12px;">Bước <strong>Quan sát hiện tượng màu</strong> gây ra lỗi nhiều nhất (63%). Cần cải thiện hướng dẫn tại bước này.</div></div>';
+      </div>`;
+    }).join('') + '</div>'
+    : '<div class="mod-note">Chưa có thí nghiệm nào hoàn thành để thống kê.</div>';
 }
 
 /* ═══════════════════════════════════════════════════════════════
