@@ -762,6 +762,9 @@ def analytics_lab():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
     conn = db.get_conn()
+    now = time.time()
+    day_sec = 86400
+
     popular = conn.execute(
         'SELECT reaction_eq, COUNT(*) runs, '
         'SUM(CASE WHEN outcome="success" THEN 1 ELSE 0 END) successes, '
@@ -776,7 +779,74 @@ def analytics_lab():
     avg_session = conn.execute(
         'SELECT AVG(duration_sec) a FROM lab_sessions WHERE duration_sec IS NOT NULL'
     ).fetchone()['a']
+
+    # ── KPI tổng quan: lượt vào Lab, tỉ lệ hoàn thành nhiệm vụ ──────────
+    lab_opened = db.count_events('lab_open')
+    lab_completed = db.count_events('lab_complete')
+    lab_no_reaction = db.count_events('lab_error')  # thử phản ứng nhưng không có hiện tượng gì (xem lab.html)
+    completion_rate_pct = round(100 * lab_completed / lab_opened) if lab_opened else 0
+
+    # ── Phân phối điểm đánh giá AI (A-F) — event 'lab_ai_grade', ghi khi
+    # học sinh bấm "🎯 Đánh Giá AI" trong lab.html và nhận kết quả chấm điểm
+    # thật từ Gemini (xem runAIAssessment()/renderAssessment() trong lab.html).
+    grade_events = db.query_events('lab_ai_grade', since=0, limit=5000)
+    grade_counts = Counter()
+    scores = []
+    for ev in grade_events:
+        g = (ev.get('grade') or '').strip().upper()
+        if g in ('A', 'B', 'C', 'D', 'F'):
+            grade_counts[g] += 1
+        s = ev.get('score')
+        if isinstance(s, (int, float)):
+            scores.append(s)
+    total_graded = sum(grade_counts.values())
+    c_to_f = grade_counts['C'] + grade_counts['D'] + grade_counts['F']
+    c_to_f_pct = round(100 * c_to_f / total_graded, 1) if total_graded else 0
+    avg_ai_score = round(sum(scores) / len(scores), 1) if scores else 0
+
+    # Xu hướng điểm C-F theo ngày (14 ngày gần nhất) — để vẽ biểu đồ xu hướng
+    days = 14
+    cf_by_day = [0] * days
+    graded_by_day = [0] * days
+    for ev in grade_events:
+        age = now - ev['ts']
+        if age < 0 or age > days * day_sec:
+            continue
+        idx = days - 1 - int(age // day_sec)
+        if 0 <= idx < days:
+            graded_by_day[idx] += 1
+            if (ev.get('grade') or '').strip().upper() in ('C', 'D', 'F'):
+                cf_by_day[idx] += 1
+
+    # ── Phản ứng hoàn thành nhiều nhất — từ event 'lab_complete' (payload.eq),
+    # vì bảng lab_reaction_runs hiện chưa được ghi (lab.html chưa gọi
+    # ccLab.result()/lab_reaction_result). Đây là nguồn dữ liệu thật duy nhất
+    # hiện có cho "phản ứng phổ biến nhất".
+    complete_events = db.query_events('lab_complete', since=0, limit=5000)
+    eq_counter = Counter()
+    for ev in complete_events:
+        eq = (ev.get('eq') or '').strip()
+        if eq:
+            eq_counter[eq] += 1
+    top_completed_reactions = eq_counter.most_common(10)
+
     return jsonify({
+        'kpi': {
+            'lab_opened': lab_opened,
+            'lab_completed': lab_completed,
+            'lab_no_reaction': lab_no_reaction,
+            'completion_rate_pct': completion_rate_pct,
+            'total_graded': total_graded,
+            'avg_ai_score': avg_ai_score,
+            'c_to_f_count': c_to_f,
+            'c_to_f_pct': c_to_f_pct,
+        },
+        'grade_distribution': {
+            'labels': ['A', 'B', 'C', 'D', 'F'],
+            'counts': [grade_counts['A'], grade_counts['B'], grade_counts['C'], grade_counts['D'], grade_counts['F']],
+        },
+        'cf_trend_14d': {'graded': graded_by_day, 'c_to_f': cf_by_day},
+        'top_completed_reactions': top_completed_reactions,
         'popular_reactions': [dict(r) for r in popular],
         'most_failed_reactions': [dict(r) for r in most_failed],
         'avg_session_duration_sec': round(avg_session or 0, 1),
@@ -989,6 +1059,7 @@ ALLOWED_EVENT_TYPES = ALLOWED_EVENT_TYPES | {
     'quiz_answer',
     'ai_followup',
     'bug_report',   # Người dùng báo cáo lỗi từ index.html / lab.html
+    'lab_ai_grade', # Kết quả chấm điểm AI (A-F) trong modal "Đánh Giá AI" của lab.html
 }
 
 
