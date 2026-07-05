@@ -44,40 +44,44 @@ GEMINI_URL = (
 # Render, không có cách nào mở lại từ phía code.
 #
 # → Giải pháp: gửi email qua HTTP API (đi qua cổng 443 bình thường, không bị
-# chặn) bằng SendGrid — free 100 email/ngày vĩnh viễn, không cần thẻ.
-#   1) Tạo tài khoản tại https://signup.sendgrid.com/
-#   2) Vào Settings → Sender Authentication → "Verify a Single Sender"
-#      → điền voducphat.learncode.tk01@gmail.com. SendGrid gửi 1 email xác
-#      nhận tới hộp thư đó — mở Gmail, bấm xác nhận là xong (KHÔNG cần có
-#      domain riêng, chỉ cần xác minh đúng địa chỉ Gmail đang có).
-#   3) Vào Settings → API Keys → Create API Key → chọn quyền "Mail Send".
-#   4) Copy API key đó, set biến môi trường SENDGRID_API_KEY trên Render.
+# chặn) bằng Brevo (trước đây tên là Sendinblue) — free 300 email/ngày vĩnh
+# viễn, không cần thẻ, đăng ký đơn giản hơn SendGrid.
+#   1) Tạo tài khoản tại https://www.brevo.com/ (nút "Sign up free")
+#   2) Vào Contacts/Senders → "Senders, Domains & Dedicated IPs" → tab
+#      "Senders" → "Add a New Sender" → điền tên + email
+#      voducphat.learncode.tk01@gmail.com. Brevo gửi 1 email xác nhận tới
+#      hộp thư đó — mở Gmail, bấm xác nhận là xong (KHÔNG cần domain riêng).
+#   3) Vào menu (góc trên phải, click avatar) → "SMTP & API" → tab "API Keys"
+#      → "Generate a new API key" → đặt tên bất kỳ → Generate.
+#   4) Copy API key đó (dạng "xkeysib-....", rất dài), set biến môi trường
+#      BREVO_API_KEY trên Render.
 MAIL_SENDER_ADDRESS = os.getenv('CHEMCRAFT_MAIL_ADDRESS', 'voducphat.learncode.tk01@gmail.com')
 MAIL_SENDER_NAME    = os.getenv('CHEMCRAFT_MAIL_NAME', 'ChemCraft')
-SENDGRID_API_KEY    = os.getenv('SENDGRID_API_KEY', '')
-SENDGRID_URL        = 'https://api.sendgrid.com/v3/mail/send'
+BREVO_API_KEY       = os.getenv('BREVO_API_KEY', '').strip()
+BREVO_URL           = 'https://api.brevo.com/v3/smtp/email'  # tên có "smtp" nhưng đây là REST API qua HTTPS, không phải cổng SMTP
 
 
 def send_admin_email(to_email: str, subject: str, body_text: str) -> None:
-    """Gửi email trực tiếp (không qua mailto:) bằng SendGrid HTTP API — dùng
+    """Gửi email trực tiếp (không qua mailto:) bằng Brevo HTTP API — dùng
     HTTPS (cổng 443) nên không bị Render chặn như SMTP. Raise Exception với
     thông báo tiếng Việt dễ hiểu nếu thất bại."""
-    if not SENDGRID_API_KEY:
+    if not BREVO_API_KEY:
         raise RuntimeError(
-            'Server chưa cấu hình SENDGRID_API_KEY. Xem hướng dẫn cấu hình gửi '
+            'Server chưa cấu hình BREVO_API_KEY. Xem hướng dẫn cấu hình gửi '
             'email ở comment phía trên hàm send_admin_email() trong server.py.'
         )
     payload = {
-        'personalizations': [{'to': [{'email': to_email}]}],
-        'from': {'email': MAIL_SENDER_ADDRESS, 'name': MAIL_SENDER_NAME},
+        'sender': {'name': MAIL_SENDER_NAME, 'email': MAIL_SENDER_ADDRESS},
+        'to': [{'email': to_email}],
         'subject': subject,
-        'content': [{'type': 'text/plain', 'value': body_text}],
+        'textContent': body_text,
     }
     resp = requests.post(
-        SENDGRID_URL,
+        BREVO_URL,
         headers={
-            'Authorization': f'Bearer {SENDGRID_API_KEY}',
+            'api-key': BREVO_API_KEY,
             'Content-Type': 'application/json',
+            'accept': 'application/json',
         },
         json=payload,
         timeout=20,
@@ -85,12 +89,10 @@ def send_admin_email(to_email: str, subject: str, body_text: str) -> None:
     if resp.status_code not in (200, 201, 202):
         detail = resp.text[:300]
         try:
-            errs = resp.json().get('errors', [])
-            if errs:
-                detail = errs[0].get('message', detail)
+            detail = resp.json().get('message', detail)
         except Exception:
             pass
-        raise RuntimeError(f'SendGrid từ chối gửi (status {resp.status_code}): {detail}')
+        raise RuntimeError(f'Brevo từ chối gửi (status {resp.status_code}): {detail}')
 
 
 FIREBASE_CONFIG = {
