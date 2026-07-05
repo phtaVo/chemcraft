@@ -1,9 +1,6 @@
 import os
 import re
 import time
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from collections import Counter
 from datetime import datetime
 from threading import Lock
@@ -40,35 +37,60 @@ GEMINI_URL = (
 )
 
 # ── Gửi email trực tiếp từ trang Admin (thay cho mailto:) ───────────────────
-# Dùng Gmail SMTP. Gmail KHÔNG cho đăng nhập SMTP bằng mật khẩu thường — cần
-# bật xác minh 2 bước cho tài khoản voducphat.learncode.tk01@gmail.com rồi
-# tạo "Mật khẩu ứng dụng" (App Password) tại myaccount.google.com/apppasswords,
-# sau đó set biến môi trường CHEMCRAFT_MAIL_APP_PASSWORD trên Render (16 ký tự,
-# không có khoảng trắng). Không set thì API gửi mail sẽ báo lỗi rõ ràng thay vì
-# im lặng thất bại.
+# QUAN TRỌNG: Render CHẶN toàn bộ kết nối SMTP đi ra ngoài (cổng 25/465/587)
+# ở tầng hạ tầng để chống spam — vì vậy nối thẳng smtplib tới smtp.gmail.com
+# sẽ LUÔN báo lỗi "[Errno 101] Network is unreachable", kể cả khi App
+# Password đúng 100%. Đây không phải lỗi cấu hình, mà là giới hạn mạng của
+# Render, không có cách nào mở lại từ phía code.
+#
+# → Giải pháp: gửi email qua HTTP API (đi qua cổng 443 bình thường, không bị
+# chặn) bằng SendGrid — free 100 email/ngày vĩnh viễn, không cần thẻ.
+#   1) Tạo tài khoản tại https://signup.sendgrid.com/
+#   2) Vào Settings → Sender Authentication → "Verify a Single Sender"
+#      → điền voducphat.learncode.tk01@gmail.com. SendGrid gửi 1 email xác
+#      nhận tới hộp thư đó — mở Gmail, bấm xác nhận là xong (KHÔNG cần có
+#      domain riêng, chỉ cần xác minh đúng địa chỉ Gmail đang có).
+#   3) Vào Settings → API Keys → Create API Key → chọn quyền "Mail Send".
+#   4) Copy API key đó, set biến môi trường SENDGRID_API_KEY trên Render.
 MAIL_SENDER_ADDRESS = os.getenv('CHEMCRAFT_MAIL_ADDRESS', 'voducphat.learncode.tk01@gmail.com')
-MAIL_SENDER_NAME     = os.getenv('CHEMCRAFT_MAIL_NAME', 'ChemCraft')
-MAIL_APP_PASSWORD    = os.getenv('CHEMCRAFT_MAIL_APP_PASSWORD', '')
-MAIL_SMTP_HOST        = os.getenv('CHEMCRAFT_MAIL_SMTP_HOST', 'smtp.gmail.com')
-MAIL_SMTP_PORT        = int(os.getenv('CHEMCRAFT_MAIL_SMTP_PORT', '465'))
+MAIL_SENDER_NAME    = os.getenv('CHEMCRAFT_MAIL_NAME', 'ChemCraft')
+SENDGRID_API_KEY    = os.getenv('SENDGRID_API_KEY', '')
+SENDGRID_URL        = 'https://api.sendgrid.com/v3/mail/send'
 
 
 def send_admin_email(to_email: str, subject: str, body_text: str) -> None:
-    """Gửi email trực tiếp (không qua mailto:) bằng Gmail SMTP (SSL).
-    Raise Exception với thông báo tiếng Việt dễ hiểu nếu thất bại."""
-    if not MAIL_APP_PASSWORD:
+    """Gửi email trực tiếp (không qua mailto:) bằng SendGrid HTTP API — dùng
+    HTTPS (cổng 443) nên không bị Render chặn như SMTP. Raise Exception với
+    thông báo tiếng Việt dễ hiểu nếu thất bại."""
+    if not SENDGRID_API_KEY:
         raise RuntimeError(
-            'Server chưa cấu hình CHEMCRAFT_MAIL_APP_PASSWORD (Mật khẩu ứng dụng Gmail).'
+            'Server chưa cấu hình SENDGRID_API_KEY. Xem hướng dẫn cấu hình gửi '
+            'email ở comment phía trên hàm send_admin_email() trong server.py.'
         )
-    msg = MIMEMultipart()
-    msg['From'] = f'{MAIL_SENDER_NAME} <{MAIL_SENDER_ADDRESS}>'
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
-
-    with smtplib.SMTP_SSL(MAIL_SMTP_HOST, MAIL_SMTP_PORT, timeout=20) as server:
-        server.login(MAIL_SENDER_ADDRESS, MAIL_APP_PASSWORD)
-        server.sendmail(MAIL_SENDER_ADDRESS, [to_email], msg.as_string())
+    payload = {
+        'personalizations': [{'to': [{'email': to_email}]}],
+        'from': {'email': MAIL_SENDER_ADDRESS, 'name': MAIL_SENDER_NAME},
+        'subject': subject,
+        'content': [{'type': 'text/plain', 'value': body_text}],
+    }
+    resp = requests.post(
+        SENDGRID_URL,
+        headers={
+            'Authorization': f'Bearer {SENDGRID_API_KEY}',
+            'Content-Type': 'application/json',
+        },
+        json=payload,
+        timeout=20,
+    )
+    if resp.status_code not in (200, 201, 202):
+        detail = resp.text[:300]
+        try:
+            errs = resp.json().get('errors', [])
+            if errs:
+                detail = errs[0].get('message', detail)
+        except Exception:
+            pass
+        raise RuntimeError(f'SendGrid từ chối gửi (status {resp.status_code}): {detail}')
 
 
 FIREBASE_CONFIG = {
@@ -345,8 +367,6 @@ def admin_send_reply_email():
 
     try:
         send_admin_email(to_email, subject, content)
-    except smtplib.SMTPAuthenticationError:
-        return jsonify({'error': 'Gmail từ chối đăng nhập — kiểm tra lại Mật khẩu ứng dụng (App Password) trên server.'}), 500
     except Exception as e:
         app.logger.error('send_admin_email error: %s', e)
         return jsonify({'error': f'Gửi email thất bại: {e}'}), 500
