@@ -48,44 +48,37 @@ GEMINI_URL = (
 # ràng, setup nhanh hơn hầu hết các dịch vụ khác.
 MAIL_SENDER_ADDRESS = os.getenv('CHEMCRAFT_MAIL_ADDRESS', 'voducphat.learncode.tk01@gmail.com')
 MAIL_SENDER_NAME    = os.getenv('CHEMCRAFT_MAIL_NAME', 'ChemCraft')
-RESEND_API_KEY      = os.getenv('RESEND_API_KEY', '').strip()
-RESEND_URL          = 'https://api.resend.com/emails'
-# QUAN TRỌNG: Resend yêu cầu domain gửi (phần sau @ trong MAIL_SENDER_ADDRESS)
-# phải được verify trong Resend Dashboard → Domains (thêm bản ghi DNS: SPF,
-# DKIM). Nếu chưa verify domain, Resend CHỈ cho gửi test tới đúng email bạn
-# dùng để đăng ký tài khoản Resend — gửi cho người khác sẽ bị từ chối.
-# MAIL_SENDER_ADDRESS hiện là @gmail.com — bạn KHÔNG verify được domain này
-# (không sở hữu gmail.com). Có 2 lựa chọn:
-#   (a) Testing nhanh: đổi MAIL_SENDER_ADDRESS thành 'onboarding@resend.dev'
-#       (Resend cấp sẵn, đã verify) — nhưng chỉ gửi được tới email đăng ký
-#       tài khoản Resend, không dùng được cho production thật.
-#   (b) Production thật: dùng 1 domain riêng (vd: chemcraft.io.vn), vào
-#       Resend Dashboard → Add Domain → thêm 3 bản ghi DNS họ đưa ra → chờ
-#       verify (thường vài phút) → đổi MAIL_SENDER_ADDRESS sang
-#       admin@<domain đó>.
-# Xem hướng dẫn lấy RESEND_API_KEY ở cuối file (phần comment cuối cùng).
+BREVO_API_KEY       = os.getenv('BREVO_API_KEY', '').strip()
+BREVO_URL           = 'https://api.brevo.com/v3/smtp/email'  # tên có "smtp" nhưng đây là REST API qua HTTPS, không phải cổng SMTP
+# QUAN TRỌNG: Brevo cho verify từng ĐỊA CHỈ EMAIL đơn lẻ (single sender) chỉ
+# bằng cách bấm link xác nhận gửi vào hộp thư đó — KHÔNG cần sở hữu domain
+# riêng hay đụng vào DNS như Resend/Mailgun/SES. Vì vậy có thể dùng đúng
+# voducphat.learncode.tk01@gmail.com làm sender và gửi tới bất kỳ ai, ngay
+# cả khi không có domain riêng. Xem hướng dẫn lấy BREVO_API_KEY ở cuối file
+# (phần comment cuối cùng).
 
 
 def send_admin_email(to_email: str, subject: str, body_text: str) -> None:
-    """Gửi email trực tiếp (không qua mailto:) bằng Resend HTTP API — dùng
+    """Gửi email trực tiếp (không qua mailto:) bằng Brevo HTTP API — dùng
     HTTPS (cổng 443) nên không bị Render chặn như SMTP. Raise Exception với
     thông báo tiếng Việt dễ hiểu nếu thất bại."""
-    if not RESEND_API_KEY:
+    if not BREVO_API_KEY:
         raise RuntimeError(
-            'Server chưa cấu hình RESEND_API_KEY. Xem hướng dẫn cấu hình gửi '
+            'Server chưa cấu hình BREVO_API_KEY. Xem hướng dẫn cấu hình gửi '
             'email ở comment phía trên hàm send_admin_email() trong server.py.'
         )
     payload = {
-        'from': f'{MAIL_SENDER_NAME} <{MAIL_SENDER_ADDRESS}>',
-        'to': [to_email],
+        'sender': {'name': MAIL_SENDER_NAME, 'email': MAIL_SENDER_ADDRESS},
+        'to': [{'email': to_email}],
         'subject': subject,
-        'text': body_text,
+        'textContent': body_text,
     }
     resp = requests.post(
-        RESEND_URL,
+        BREVO_URL,
         headers={
-            'Authorization': f'Bearer {RESEND_API_KEY}',
+            'api-key': BREVO_API_KEY,
             'Content-Type': 'application/json',
+            'accept': 'application/json',
         },
         json=payload,
         timeout=20,
@@ -96,7 +89,7 @@ def send_admin_email(to_email: str, subject: str, body_text: str) -> None:
             detail = resp.json().get('message', detail)
         except Exception:
             pass
-        raise RuntimeError(f'Resend từ chối gửi (status {resp.status_code}): {detail}')
+        raise RuntimeError(f'Brevo từ chối gửi (status {resp.status_code}): {detail}')
 
 
 FIREBASE_CONFIG = {
