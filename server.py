@@ -695,7 +695,22 @@ def analytics_ai():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
     conn = db.get_conn()
-    total_conversations = conn.execute('SELECT COUNT(*) c FROM ai_conversations').fetchone()['c']
+    now = time.time()
+
+    # 'admin_reply_draft' = admin dùng nút "AI viết lại chuyên nghiệp hơn" trong
+    # modal Phản hồi (AI Assistant module) — không phải câu hỏi của học sinh nên
+    # loại khỏi mọi số liệu thống kê bên dưới.
+    total_conversations = conn.execute(
+        "SELECT COUNT(*) c FROM ai_conversations WHERE topic != 'admin_reply_draft'"
+    ).fetchone()['c']
+    total_questions = conn.execute(
+        "SELECT COUNT(*) c FROM ai_messages m JOIN ai_conversations c ON c.id = m.conversation_id "
+        "WHERE m.role='user' AND c.topic != 'admin_reply_draft'"
+    ).fetchone()['c']
+    unique_users = conn.execute(
+        "SELECT COUNT(DISTINCT user_id) c FROM ai_conversations "
+        "WHERE user_id != '' AND topic != 'admin_reply_draft'"
+    ).fetchone()['c']
     avg_latency = conn.execute(
         "SELECT AVG(latency_ms) a FROM ai_messages WHERE role='model' AND ok=1"
     ).fetchone()['a']
@@ -703,15 +718,138 @@ def analytics_ai():
         "SELECT 1.0 * SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) / COUNT(*) r FROM ai_messages WHERE role='model'"
     ).fetchone()['r']
     by_topic = conn.execute(
-        "SELECT COALESCE(NULLIF(topic,''),'(chưa gắn chủ đề)') topic, COUNT(*) c "
-        "FROM ai_conversations GROUP BY topic ORDER BY c DESC LIMIT 15"
+        "SELECT COALESCE(NULLIF(topic,''),'(chưa gắn nguồn)') topic, COUNT(*) c "
+        "FROM ai_conversations WHERE topic != 'admin_reply_draft' GROUP BY topic ORDER BY c DESC LIMIT 15"
     ).fetchall()
+
+    # Tần suất sử dụng AI theo ngày (14 ngày gần nhất) — đếm số CÂU HỎI thật
+    # (ai_messages role='user'), không dùng event 'ai_chat' vì event đó chỉ được
+    # ghi khi Gemini trả lời thành công, sẽ thiếu các lượt hỏi bị lỗi.
+    days = 14
+    day_sec = 86400
+    buckets = [0] * days
+    day_rows = conn.execute(
+        "SELECT m.ts ts FROM ai_messages m JOIN ai_conversations c ON c.id = m.conversation_id "
+        "WHERE m.role='user' AND m.ts >= ? AND c.topic != 'admin_reply_draft'",
+        (now - days * day_sec,)
+    ).fetchall()
+    for r in day_rows:
+        age = now - r['ts']
+        idx = days - 1 - int(age // day_sec)
+        if 0 <= idx < days:
+            buckets[idx] += 1
+
+    # Từ khóa phổ biến — chỉ quét các nguồn là câu hỏi tự nhiên của học sinh,
+    # bỏ qua lab_reaction_predict/lab_ai_assessment (prompt kỹ thuật/JSON nội bộ,
+    # không phản ánh học sinh đang thắc mắc về nội dung gì).
+    stop = set('và của là ở có cho một các những này đó khi được với thì để làm như từ trong về hay hoặc '
+               'thế nào tại sao gì bao nhiêu bạn tôi em ạ nhé nha mình cái con giúp hãy vậy nữa rồi '
+               'the a an of is are and or to in on for how why what which'.split())
+    words = Counter()
+    kw_rows = conn.execute(
+        "SELECT m.content content FROM ai_messages m JOIN ai_conversations c ON c.id = m.conversation_id "
+        "WHERE m.role='user' AND c.topic IN ('ai_solver','lab_molecule_chat','lab_assistant_chat','')"
+    ).fetchall()
+    for r in kw_rows:
+        for w in (r['content'] or '').split():
+            w = w.strip('.,?!:;()[]{}"\'“”‘’').lower()
+            if len(w) >= 3 and w not in stop and not w.isdigit():
+                words[w] += 1
+    top_keywords = words.most_common(30)
+
     return jsonify({
         'total_conversations': total_conversations,
+        'total_questions': total_questions,
+        'unique_users': unique_users,
         'avg_latency_ms': round(avg_latency or 0),
         'error_rate_pct': round((error_rate or 0) * 100, 2),
         'by_topic': [dict(r) for r in by_topic],
+        'daily_questions_14d': buckets,
+        'top_keywords': top_keywords,
     })
+
+
+# ── Admin: danh sách câu hỏi/cuộc hội thoại AI thật — nguồn dữ liệu chính cho
+# bảng "Câu hỏi gần đây" trong module AI Assistant. Hỗ trợ tìm kiếm, lọc theo
+# nguồn (topic), và phân trang.
+@app.route('/api/admin/ai-conversations', methods=['GET'])
+def admin_ai_conversations():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    conn = db.get_conn()
+
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        limit = min(100, max(1, int(request.args.get('limit', 20))))
+    except (TypeError, ValueError):
+        limit = 20
+    offset = (page - 1) * limit
+    search = (request.args.get('search') or '').strip()
+    topic = (request.args.get('topic') or '').strip()
+
+    where = ["c.topic != 'admin_reply_draft'"]
+    params = []
+    if topic and topic != 'all':
+        where.append('c.topic = ?')
+        params.append(topic)
+    if search:
+        where.append(
+            "EXISTS (SELECT 1 FROM ai_messages m WHERE m.conversation_id = c.id "
+            "AND m.role='user' AND m.content LIKE ?)"
+        )
+        params.append(f'%{search}%')
+    where_sql = ' AND '.join(where)
+
+    total = conn.execute(f'SELECT COUNT(*) c FROM ai_conversations c WHERE {where_sql}', params).fetchone()['c']
+
+    rows = conn.execute(f'''
+        SELECT
+            c.id, c.user_id, c.ip, c.started_at, c.topic,
+            (SELECT content FROM ai_messages m WHERE m.conversation_id = c.id AND m.role='user'
+             ORDER BY m.ts ASC LIMIT 1) AS first_question,
+            (SELECT COUNT(*) FROM ai_messages m WHERE m.conversation_id = c.id) AS message_count,
+            (SELECT MAX(ts) FROM ai_messages m WHERE m.conversation_id = c.id) AS last_ts,
+            (SELECT MAX(has_image) FROM ai_messages m WHERE m.conversation_id = c.id AND m.role='user') AS has_image,
+            (SELECT SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) FROM ai_messages m
+             WHERE m.conversation_id = c.id AND m.role='model') AS error_count
+        FROM ai_conversations c
+        WHERE {where_sql}
+        ORDER BY last_ts DESC
+        LIMIT ? OFFSET ?
+    ''', params + [limit, offset]).fetchall()
+
+    topics = conn.execute(
+        "SELECT COALESCE(NULLIF(topic,''),'(chưa gắn nguồn)') topic, COUNT(*) c FROM ai_conversations "
+        "WHERE topic != 'admin_reply_draft' GROUP BY topic ORDER BY c DESC"
+    ).fetchall()
+
+    return jsonify({
+        'items': [dict(r) for r in rows],
+        'total': total,
+        'page': page,
+        'limit': limit,
+        'topics': [dict(r) for r in topics],
+    })
+
+
+# ── Admin: chi tiết đầy đủ 1 cuộc hội thoại — dùng khi admin bấm "Xem" hoặc
+# "Phản hồi" để đọc lại toàn bộ ngữ cảnh trước khi soạn email.
+@app.route('/api/admin/ai-conversations/<int:cid>', methods=['GET'])
+def admin_ai_conversation_detail(cid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    conn = db.get_conn()
+    conv = conn.execute('SELECT * FROM ai_conversations WHERE id = ?', (cid,)).fetchone()
+    if not conv:
+        return jsonify({'error': 'Không tìm thấy cuộc hội thoại.'}), 404
+    msgs = conn.execute(
+        'SELECT role, content, has_image, ok, error_msg, latency_ms, ts FROM ai_messages '
+        'WHERE conversation_id = ? ORDER BY ts ASC', (cid,)
+    ).fetchall()
+    return jsonify({'conversation': dict(conv), 'messages': [dict(m) for m in msgs]})
 
 
 # ── Static file serving (unchanged) ─────────────────────────────────────────
