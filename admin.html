@@ -683,8 +683,8 @@ const PAGES = {
       'Đọc trực tiếp từ Excel/Database. Giao diện Import/Export Excel, kiểm tra dữ liệu, cảnh báo trùng lặp, so sánh phiên bản và chỉnh sửa từng phản ứng.', ['Import / Export Excel','Cảnh báo trùng dữ liệu','So sánh phiên bản']) },
   media:      { title:'Quản lý Media', sub:'Ảnh, video, PDF, mô hình 3D, texture, HDRI, âm thanh', render: () => renderStub('fa-photo-film','Quản lý Media',
       'Quản lý ảnh, video, PDF, mô hình 3D, texture, HDRI, âm thanh — hỗ trợ upload, preview, version, folder và tag.', ['Upload & Preview','Version & Folder','Gắn Tag']) },
-  'ai-analytics': { title:'AI Assistant Analytics', sub:'Chủ đề, từ khóa, mức hài lòng từ lịch sử trò chuyện', render: () => renderStub('fa-robot','AI Assistant Analytics',
-      'Thống kê chủ đề hỏi nhiều nhất, từ khóa phổ biến, tỉ lệ hài lòng, câu hỏi chưa trả lời tốt, follow-up — kèm Word Cloud, Top 100 câu hỏi và biểu đồ xu hướng.', ['Word Cloud','Top 100 câu hỏi','Tỉ lệ hài lòng']) },
+  'ai-analytics': { title:'AI Assistant', sub:'Câu hỏi thật, tần suất sử dụng, từ khóa, phản hồi học sinh', render: () => renderStub('fa-robot','AI Assistant',
+      'Tổng hợp câu hỏi thật học sinh đã hỏi AI (giải bài tập + trợ lý AI trong Lab 3D), tên/email người hỏi, tần suất sử dụng, từ khóa phổ biến, và trình soạn email phản hồi.', ['Danh sách câu hỏi thật','Tần suất & từ khóa','Soạn email phản hồi']) },
   'learning-analytics': { title:'Learning Analytics', sub:'User Growth, Retention, Churn, Funnel, Leaderboard', render: () => renderStub('fa-chart-line','Learning Analytics',
       'Triển khai đầy đủ: User Growth, Retention, Churn, Session Time, Heatmap, User Journey, Funnel, Leaderboard — có thể lọc theo trường, lớp, khóa học, bài học, khoảng thời gian.', ['Retention / Churn','Funnel hành trình','Lọc theo trường/lớp']) },
   'lab-analytics': { title:'Phân tích Lab 3D', sub:'Sankey, Funnel, Drop-off — bước nào học sinh hay sai nhất', render: () => renderStub('fa-diagram-project','Phân tích Lab 3D',
@@ -1240,50 +1240,10 @@ function refreshChartsTheme(){
     _renderReal();
   };
 
-  /* ═══════════════ OVERRIDE: AI Analytics ═══════════════ */
-  const origRenderAI = window.renderAIAnalytics;
-  window.renderAIAnalytics = async function () {
-    if (typeof origRenderAI === 'function') origRenderAI();
-    let m;
-    try { m = await fetchMetrics(); } catch (e) { return; }
-
-    // Cập nhật KPI cards ở đầu trang (4 thẻ đầu tiên trong .kpi-grid vừa render)
-    const cards = document.querySelectorAll('.kpi-card .kpi-value');
-    if (cards.length >= 4) {
-      const errRate = m.server.chat_total ? Math.round(100 * m.server.chat_errors / m.server.chat_total) : 0;
-      cards[0].textContent = m.counts.ai_chats.toLocaleString('vi-VN');
-      cards[1].textContent = (m.top_questions[0]?.[0] || '—').slice(0, 28);
-      cards[2].textContent = m.server.rate_limit_hits + ' lần';
-      cards[3].textContent = errRate + '% lỗi';
-    }
-
-    // Top câu hỏi (thay demo)
-    const box = document.getElementById('ai-top-questions');
-    if (box && m.top_questions.length) {
-      box.innerHTML = m.top_questions.map(([q, n], i) => `
-        <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line);">
-          <div style="width:22px;height:22px;border-radius:6px;background:${i < 3 ? 'var(--gold-l)' : 'var(--surface-2)'};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;color:${i < 3 ? 'var(--gold-d)' : 'var(--fg-mute)'};flex-shrink:0;">${i + 1}</div>
-          <div style="flex:1;font-size:.84rem;font-weight:600;color:var(--fg);">${escapeHtml(q)}</div>
-          <div style="font-size:.78rem;font-weight:800;color:var(--cyan-d);white-space:nowrap;">${n} lần</div>
-        </div>`).join('');
-    } else if (box) {
-      box.innerHTML = '<div style="text-align:center;color:var(--fg-mute);padding:24px;font-size:.85rem;">Chưa có câu hỏi AI nào được ghi nhận.</div>';
-    }
-
-    // Word cloud thật
-    const wc = document.getElementById('word-cloud');
-    if (wc) {
-      if (!m.word_cloud.length) {
-        wc.innerHTML = '<div style="color:var(--fg-mute);font-size:.85rem;">Chưa đủ dữ liệu.</div>';
-      } else {
-        const max = m.word_cloud[0][1] || 1;
-        wc.innerHTML = m.word_cloud.map(([w, n]) => {
-          const s = Math.max(0.78, Math.min(1.6, 0.78 + (n / max) * 0.9));
-          return `<span style="font-size:${s}rem;font-weight:800;padding:4px 8px;border-radius:6px;background:var(--surface-2);color:var(--indigo);">${escapeHtml(w)}</span>`;
-        }).join('');
-      }
-    }
-  };
+  /* NOTE: module "AI Assistant" (PAGES['ai-analytics']) đã được viết lại hoàn
+     toàn thành đối tượng AIAssistant tự lấy dữ liệu thật từ
+     /api/admin-analytics/ai + /api/admin/ai-conversations — không còn cần
+     override vá DOM theo index như các stub cũ bên dưới. */
 
   /* ═══════════════ OVERRIDE: Lab Analytics ═══════════════ */
   const origRenderLab = window.renderLabAnalytics;
@@ -1732,89 +1692,452 @@ function renderHeatmap(containerId){
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MODULE: AI ASSISTANT ANALYTICS
+   MODULE: AI ASSISTANT
+   Tổng hợp câu hỏi thật học sinh đã hỏi AI (giải bài tập + các trợ lý AI
+   trong Lab 3D), cho biết ai hỏi (tên/email tra qua Firestore users/{uid}),
+   cho phép admin xem lại toàn bộ hội thoại và soạn email phản hồi tốt hơn.
+   Dữ liệu lấy từ /api/admin-analytics/ai + /api/admin/ai-conversations,
+   là các bảng SQL thật (ai_conversations/ai_messages) — không còn mock.
    ═══════════════════════════════════════════════════════════════ */
-PAGES['ai-analytics'] = { title:'AI Assistant Analytics', sub:'Chủ đề, từ khóa, mức hài lòng', render: renderAIAnalytics };
+PAGES['ai-analytics'] = { title:'AI Assistant', sub:'Câu hỏi thật, tần suất sử dụng, từ khóa phổ biến, phản hồi học sinh', render: () => AIAssistant.render() };
 
-function renderAIAnalytics(){
-  document.getElementById('page-root').innerHTML = `
-    <div class="a-page-head">
-      <div><div class="a-page-title">AI Assistant Analytics</div>
-      <div class="a-page-desc">Phân tích lịch sử trò chuyện với Gemini để hiểu học sinh đang vướng ở đâu.</div></div>
-    </div>
+const AI_TOPIC_LABELS = {
+  '': 'Không rõ nguồn',
+  '(chưa gắn nguồn)': 'Không rõ nguồn',
+  'ai_solver': 'Giải bài tập AI',
+  'lab_molecule_chat': 'Lab — Trợ lý phân tử',
+  'lab_assistant_chat': 'Lab — Trợ lý thí nghiệm',
+  'lab_ai_assessment': 'Lab — Chấm điểm AI (tự động)',
+  'lab_reaction_predict': 'Lab — Dự đoán phản ứng (nội bộ)',
+};
+function _aiTopicLabel(t){ return AI_TOPIC_LABELS[t || ''] || t || 'Không rõ nguồn'; }
+function _aiTopicBadgeClass(t){
+  if (t === 'ai_solver') return 'ok';
+  if (t === 'lab_assistant_chat' || t === 'lab_molecule_chat') return 'off';
+  return 'warn'; // assessment/predict — nội bộ, đáng để admin phân biệt rõ
+}
 
-    <div class="kpi-grid" style="margin-bottom:20px;">
-      ${[['Tổng câu hỏi','4,218','fa-comment-dots','var(--cyan)','↑ 12%'],
-         ['Chủ đề phổ biến','Oxi hóa khử','fa-fire','var(--orange)',''],
-         ['Follow-up','38%','fa-reply','var(--purple)','↑ 5%'],
-         ['Chưa trả lời tốt','142','fa-circle-exclamation','var(--red)','']
-       ].map(([l,v,ic,co,tr])=>`
-        <div class="kpi-card">
-          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div>${tr?`<span class="kpi-trend up">${tr}</span>`:''}</div>
-          <div class="kpi-value" style="font-size:1.3rem;">${v}</div><div class="kpi-label">${l}</div>
-        </div>`).join('')}
-    </div>
+const AIAssistant = {
+  _summary: null,
+  _list: null,
+  _page: 1,
+  _limit: 15,
+  _search: '',
+  _topic: 'all',
+  _userCache: {},
+  _threadCache: {},
+  _replyConvId: null,
 
-    <div class="panel-grid" style="margin-bottom:16px;">
-      <div class="panel">
-        <div class="panel-head"><div class="panel-title">Top câu hỏi được hỏi nhiều nhất</div><div class="panel-tag">Firestore: ai_logs</div></div>
-        <div id="ai-top-questions">
-          ${[['Tại sao KMnO₄ mất màu trong phản ứng oxi hóa?',125],
-             ['Este là gì? Cho ví dụ.',97],['Halogen phản ứng như thế nào với kim loại?',80],
-             ['Cách cân bằng phản ứng oxi hóa khử?',76],['Độ pH của dung dịch kiềm là bao nhiêu?',64],
-             ['Phân biệt phản ứng thuận nghịch và không thuận nghịch',58],
-             ['Tại sao NaOH làm quỳ tím hóa xanh?',51],['Công thức cấu tạo của benzen?',44]
-           ].map(([q,n],i)=>`
-            <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line);">
-              <div style="width:22px; height:22px; border-radius:6px; background:${i<3?'var(--gold-l)':'var(--surface-2)'}; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:800; color:${i<3?'var(--gold-d)':'var(--fg-mute)'}; flex-shrink:0;">${i+1}</div>
-              <div style="flex:1; font-size:0.84rem; font-weight:600; color:var(--fg);">${escapeHtml(q)}</div>
-              <div style="font-size:0.78rem; font-weight:800; color:var(--cyan-d); white-space:nowrap;">${n} lần</div>
-            </div>`).join('')}
-          <div class="mod-note" style="margin-top:12px;">Dữ liệu minh họa. Kết nối collection <code>ai_logs</code> trong Firestore để hiển thị dữ liệu thật.</div>
+  async render(){
+    const root = document.getElementById('page-root');
+    root.innerHTML = `
+      <div class="a-page-head">
+        <div><div class="a-page-title">AI Assistant</div>
+        <div class="a-page-desc">Câu hỏi thật học sinh đã hỏi AI — giải bài tập & các trợ lý AI trong Lab 3D. Dữ liệu thật, không mô phỏng.</div></div>
+      </div>
+
+      <div class="kpi-grid" id="ai-kpis" style="margin-bottom:20px;">
+        <div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>
+      </div>
+
+      <div class="panel-grid" style="margin-bottom:16px;">
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">Tần suất sử dụng AI (14 ngày)</div><div class="panel-tag">Số câu hỏi / ngày</div></div>
+          <div class="chart-wrap sm"><canvas id="chart-ai-usage"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">Nguồn câu hỏi</div><div class="panel-tag">Pie chart</div></div>
+          <div class="chart-wrap sm"><canvas id="chart-ai-topics"></canvas></div>
         </div>
       </div>
-      <div class="panel">
-        <div class="panel-head"><div class="panel-title">Phân bổ chủ đề</div><div class="panel-tag">Pie chart</div></div>
-        <div class="chart-wrap"><canvas id="chart-ai-topics"></canvas></div>
+
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-head"><div class="panel-title">Từ khóa phổ biến</div><div class="panel-tag">Trích từ câu hỏi thật</div></div>
+        <div id="ai-keywords" style="display:flex; flex-wrap:wrap; gap:8px; padding:12px 0;"></div>
       </div>
-    </div>
 
-    <div class="panel">
-      <div class="panel-head"><div class="panel-title">Xu hướng câu hỏi theo tuần</div><div class="panel-tag">Line chart</div></div>
-      <div class="chart-wrap sm"><canvas id="chart-ai-trend"></canvas></div>
-    </div>
+      <div class="panel">
+        <div class="panel-head" style="flex-wrap:wrap; gap:10px;">
+          <div class="panel-title">Câu hỏi gần đây</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input id="ai-search" type="text" placeholder="Tìm trong nội dung câu hỏi..." style="padding:7px 12px; border-radius:8px; border:1px solid var(--line); font-size:0.82rem; min-width:220px;">
+            <select id="ai-topic-filter" style="padding:7px 10px; border-radius:8px; border:1px solid var(--line); font-size:0.82rem;">
+              <option value="all">Tất cả nguồn</option>
+            </select>
+          </div>
+        </div>
+        <div id="ai-table-wrap">
+          <div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải danh sách...</div>
+        </div>
+        <div id="ai-pagination" style="display:flex; justify-content:center; align-items:center; gap:10px; padding:14px 0;"></div>
+      </div>
 
-    <div class="panel" style="margin-top:16px;">
-      <div class="panel-head"><div class="panel-title">Word Cloud — Từ khóa phổ biến</div></div>
-      <div id="word-cloud" style="display:flex; flex-wrap:wrap; gap:8px; padding:12px 0;"></div>
-    </div>
-  `;
+      <!-- Modal: xem toàn bộ hội thoại -->
+      <div class="mod-overlay" id="ai-thread-modal-overlay" onclick="if(event.target===this)closeModal('ai-thread-modal-overlay')">
+        <div class="mod-panel" id="ai-thread-modal" style="max-width:640px;"></div>
+      </div>
 
-  const C = chartColors();
-  Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
-  new Chart(document.getElementById('chart-ai-topics'),{
-    type:'pie',
-    data:{labels:['Oxi hóa - khử','Hữu cơ','Dung dịch - pH','Điện hóa','Chu kỳ bảng tuần hoàn'],
-      datasets:[{data:[32,24,19,15,10], backgroundColor:['#06B6D4','#8B5CF6','#F59E0B','#10B981','#EC4899'], borderWidth:0}]},
-    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{color:C.text}}}}
-  });
-  new Chart(document.getElementById('chart-ai-trend'),{
-    type:'line',
-    data:{labels:['T1','T2','T3','T4','T5','T6','T7','T8'],
-      datasets:[
-        {label:'Tổng câu hỏi', data:[480,510,560,490,620,710,680,760], borderColor:'#06B6D4', fill:false, tension:.4},
-        {label:'Follow-up', data:[140,160,210,190,240,290,270,300], borderColor:'#8B5CF6', fill:false, tension:.4}
-      ]},
-    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{labels:{color:C.text}}},
-      scales:{x:{grid:{color:C.grid},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text}}}}
-  });
+      <!-- Modal: soạn email phản hồi -->
+      <div class="mod-overlay" id="ai-reply-modal-overlay" onclick="if(event.target===this)closeModal('ai-reply-modal-overlay')">
+        <div class="mod-panel" id="ai-reply-modal" style="max-width:640px;"></div>
+      </div>
+    `;
 
-  const words = [['KMnO₄',5],['Este',4],['Halogen',4],['Oxi hóa',5],['pH',3],['NaOH',3],['Benzen',3],['Điện cực',2],['Axit',4],['Bazơ',3],['Ion',3],['Muối',2],['Dung dịch',3],['Phân tử',2],['Electron',3],['Hóa trị',2],['Công thức',2]];
-  const szmap = {2:'0.78rem',3:'0.92rem',4:'1.1rem',5:'1.36rem'};
-  const cmap  = {2:'var(--fg-mute)',3:'var(--fg-soft)',4:'var(--cyan)',5:'var(--indigo)'};
-  document.getElementById('word-cloud').innerHTML = words.sort(()=>Math.random()-.5).map(([w,s])=>
-    `<span style="font-size:${szmap[s]};color:${cmap[s]};font-weight:800; padding:4px 8px; border-radius:6px; background:var(--surface-2); cursor:default;">${w}</span>`).join('');
-}
+    document.getElementById('ai-search').addEventListener('input', (e) => {
+      clearTimeout(this._searchDebounce);
+      this._searchDebounce = setTimeout(() => {
+        this._search = e.target.value.trim();
+        this._page = 1;
+        this._fetchList();
+      }, 350);
+    });
+
+    await Promise.all([this._fetchSummary(), this._fetchList()]);
+  },
+
+  async _fetchSummary(){
+    try {
+      this._summary = await _qzApi('/api/admin-analytics/ai');
+      this._renderSummary();
+    } catch (e) {
+      document.getElementById('ai-kpis').innerHTML = `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i> Không tải được số liệu tổng quan: ${escapeHtml(e.message)}</div>`;
+    }
+  },
+
+  _renderSummary(){
+    const s = this._summary;
+    document.getElementById('ai-kpis').innerHTML = [
+      ['Tổng câu hỏi', (s.total_questions ?? 0).toLocaleString('vi-VN'), 'fa-comment-dots', 'var(--cyan)'],
+      ['Học sinh đã dùng AI', (s.unique_users ?? 0).toLocaleString('vi-VN'), 'fa-user-group', 'var(--indigo)'],
+      ['Tổng cuộc hội thoại', (s.total_conversations ?? 0).toLocaleString('vi-VN'), 'fa-messages', 'var(--purple)'],
+      ['Tỉ lệ lỗi AI', (s.error_rate_pct ?? 0) + '%', 'fa-circle-exclamation', s.error_rate_pct > 5 ? 'var(--red)' : 'var(--green)'],
+    ].map(([l,v,ic,co])=>`
+      <div class="kpi-card">
+        <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div></div>
+        <div class="kpi-value" style="font-size:1.3rem;">${v}</div><div class="kpi-label">${l}</div>
+      </div>`).join('');
+
+    const C = chartColors();
+    Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+    const days = (s.daily_questions_14d || []).length;
+    const labels = Array.from({length: days}, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
+      return `${d.getDate()}/${d.getMonth()+1}`;
+    });
+    new Chart(document.getElementById('chart-ai-usage'), {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Câu hỏi', data: s.daily_questions_14d || [], borderColor: '#06B6D4', backgroundColor: 'rgba(6,182,212,0.12)', fill: true, tension: 0.35 }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+        scales:{x:{grid:{display:false},ticks:{color:C.text}}, y:{beginAtZero:true, grid:{color:C.grid},ticks:{color:C.text,precision:0}}} }
+    });
+
+    const byTopic = s.by_topic || [];
+    if (byTopic.length) {
+      new Chart(document.getElementById('chart-ai-topics'), {
+        type: 'pie',
+        data: {
+          labels: byTopic.map(t => _aiTopicLabel(t.topic)),
+          datasets: [{ data: byTopic.map(t => t.c), backgroundColor: ['#06B6D4','#8B5CF6','#F59E0B','#10B981','#EC4899','#64748B'], borderWidth:0 }]
+        },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{color:C.text, font:{size:11}}}} }
+      });
+    } else {
+      document.getElementById('chart-ai-topics').parentElement.innerHTML = `<div class="mod-note">Chưa có dữ liệu.</div>`;
+    }
+
+    const words = s.top_keywords || [];
+    const kwEl = document.getElementById('ai-keywords');
+    if (!words.length) {
+      kwEl.innerHTML = `<div class="mod-note">Chưa có đủ câu hỏi để trích từ khóa.</div>`;
+    } else {
+      const max = words[0][1] || 1;
+      kwEl.innerHTML = words.map(([w, n]) => {
+        const scale = n / max;
+        const size = (0.78 + scale * 0.65).toFixed(2);
+        const color = scale > 0.66 ? 'var(--indigo)' : scale > 0.33 ? 'var(--cyan)' : 'var(--fg-soft)';
+        return `<span title="${n} lần" style="font-size:${size}rem;color:${color};font-weight:800;padding:4px 8px;border-radius:6px;background:var(--surface-2);cursor:default;">${escapeHtml(w)}</span>`;
+      }).join('');
+    }
+  },
+
+  async _fetchList(){
+    const wrap = document.getElementById('ai-table-wrap');
+    wrap.innerHTML = `<div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải danh sách...</div>`;
+    try {
+      const params = new URLSearchParams({ page: this._page, limit: this._limit });
+      if (this._search) params.set('search', this._search);
+      if (this._topic !== 'all') params.set('topic', this._topic);
+      this._list = await _qzApi(`/api/admin/ai-conversations?${params.toString()}`);
+      this._populateTopicFilter();
+      await this._resolveUserNames();
+      this._renderTable();
+      this._renderPagination();
+    } catch (e) {
+      wrap.innerHTML = `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i> Không tải được danh sách: ${escapeHtml(e.message)}</div>`;
+    }
+  },
+
+  _populateTopicFilter(){
+    const sel = document.getElementById('ai-topic-filter');
+    if (!sel || sel.dataset.filled) return; // chỉ dựng 1 lần, tránh mất lựa chọn hiện tại khi refetch
+    const topics = (this._list && this._list.topics) || [];
+    sel.innerHTML = `<option value="all">Tất cả nguồn</option>` +
+      topics.map(t => `<option value="${escapeHtml(t.topic)}">${escapeHtml(_aiTopicLabel(t.topic))} (${t.c})</option>`).join('');
+    sel.dataset.filled = '1';
+    sel.onchange = () => { this._topic = sel.value; this._page = 1; this._fetchList(); };
+  },
+
+  async _resolveUserNames(){
+    const items = (this._list && this._list.items) || [];
+    const uids = new Set(items.map(r => r.user_id).filter(Boolean));
+    const need = [...uids].filter(u => !(u in this._userCache));
+    if (!need.length) return;
+    const db = window._fbDb, fns = window._fbFns;
+    if (!db || !fns?.doc || !fns?.getDoc) {
+      need.forEach(u => this._userCache[u] = { name: '', email: '' });
+      return;
+    }
+    await Promise.all(need.map(async u => {
+      try {
+        const snap = await fns.getDoc(fns.doc(db, 'users', u));
+        if (snap.exists()) {
+          const d = snap.data();
+          this._userCache[u] = { name: d.displayName || d.name || d.fullName || '', email: d.email || '' };
+        } else {
+          this._userCache[u] = { name: '', email: '' };
+        }
+      } catch (e) { this._userCache[u] = { name: '', email: '' }; }
+    }));
+  },
+
+  _initials(name, email){
+    const src = (name || email || '?').trim();
+    const parts = src.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return src.slice(0, 2).toUpperCase();
+  },
+
+  _relTime(ts){
+    if (!ts) return '—';
+    const now = Date.now() / 1000;
+    const t = ts > 1e12 ? ts / 1000 : ts;
+    const d = now - t;
+    if (d < 60) return 'vừa xong';
+    if (d < 3600) return `${Math.floor(d / 60)} phút trước`;
+    if (d < 86400) return `${Math.floor(d / 3600)} giờ trước`;
+    if (d < 604800) return `${Math.floor(d / 86400)} ngày trước`;
+    return new Date(t * 1000).toLocaleDateString('vi-VN');
+  },
+
+  _userCell(uid){
+    if (!uid) return `<div class="ccr-user"><div class="ccr-avatar">?</div><div class="ccr-user-meta"><div class="ccr-user-name">Khách (chưa đăng nhập)</div><div class="ccr-user-sub">—</div></div></div>`;
+    const u = this._userCache[uid] || {};
+    const name = u.name || u.email || uid;
+    const sub = u.email && u.name ? u.email : uid;
+    return `<div class="ccr-user">
+      <div class="ccr-avatar">${escapeHtml(this._initials(u.name, u.email))}</div>
+      <div class="ccr-user-meta"><div class="ccr-user-name">${escapeHtml(name)}</div><div class="ccr-user-sub">${escapeHtml(sub)}</div></div>
+    </div>`;
+  },
+
+  _renderTable(){
+    const wrap = document.getElementById('ai-table-wrap');
+    const items = (this._list && this._list.items) || [];
+    if (!items.length) {
+      wrap.innerHTML = `<div class="mod-note" style="margin:16px 0;"><i class="fa-solid fa-inbox"></i> Không tìm thấy câu hỏi nào khớp bộ lọc.</div>`;
+      return;
+    }
+    wrap.innerHTML = `<table class="a-table"><thead><tr>
+      <th>Học sinh</th><th>Câu hỏi</th><th>Nguồn</th><th class="num">Tin nhắn</th><th>Thời gian</th><th></th>
+    </tr></thead><tbody>
+      ${items.map(r => {
+        const q = (r.first_question || '(không có nội dung văn bản)').slice(0, 140);
+        const flags = [];
+        if (r.has_image) flags.push('<span class="badge off"><i class="fa-solid fa-paperclip"></i> Đính kèm</span>');
+        if (r.error_count > 0) flags.push('<span class="badge warn"><i class="fa-solid fa-triangle-exclamation"></i> Lỗi AI</span>');
+        return `<tr>
+          <td>${this._userCell(r.user_id)}</td>
+          <td style="max-width:280px;">
+            <div style="font-size:0.84rem;font-weight:600;color:var(--fg);margin-bottom:4px;">${escapeHtml(q)}${(r.first_question||'').length>140?'…':''}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">${flags.join('')}</div>
+          </td>
+          <td><span class="badge ${_aiTopicBadgeClass(r.topic)}">${escapeHtml(_aiTopicLabel(r.topic))}</span></td>
+          <td class="num">${r.message_count}</td>
+          <td style="font-size:0.82rem;color:var(--fg-mute);">${this._relTime(r.last_ts)}</td>
+          <td style="white-space:nowrap;">
+            <button class="mod-btn mod-btn-ghost" style="padding:5px 10px;font-size:0.78rem;" onclick="AIAssistant.openThread(${r.id})"><i class="fa-solid fa-eye"></i> Xem</button>
+            <button class="mod-btn mod-btn-primary" style="padding:5px 10px;font-size:0.78rem;" onclick="AIAssistant.openReply(${r.id})"><i class="fa-solid fa-reply"></i> Phản hồi</button>
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>`;
+  },
+
+  _renderPagination(){
+    const el = document.getElementById('ai-pagination');
+    const total = (this._list && this._list.total) || 0;
+    const pages = Math.max(1, Math.ceil(total / this._limit));
+    if (pages <= 1) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <button class="mod-btn mod-btn-ghost" style="padding:6px 12px;" ${this._page<=1?'disabled':''} onclick="AIAssistant._goPage(${this._page-1})"><i class="fa-solid fa-chevron-left"></i></button>
+      <span style="font-size:0.82rem;color:var(--fg-mute);">Trang ${this._page} / ${pages} — ${total} câu hỏi</span>
+      <button class="mod-btn mod-btn-ghost" style="padding:6px 12px;" ${this._page>=pages?'disabled':''} onclick="AIAssistant._goPage(${this._page+1})"><i class="fa-solid fa-chevron-right"></i></button>
+    `;
+  },
+  _goPage(p){ this._page = p; this._fetchList(); },
+
+  async _getThread(cid){
+    if (this._threadCache[cid]) return this._threadCache[cid];
+    const data = await _qzApi(`/api/admin/ai-conversations/${cid}`);
+    this._threadCache[cid] = data;
+    return data;
+  },
+
+  async openThread(cid){
+    const panel = document.getElementById('ai-thread-modal');
+    panel.innerHTML = `<div class="mod-body"><div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải hội thoại...</div></div>`;
+    openModal('ai-thread-modal-overlay');
+    try {
+      const { conversation, messages } = await this._getThread(cid);
+      const uid = conversation.user_id;
+      const u = uid ? (this._userCache[uid] || {}) : {};
+      panel.innerHTML = `
+        <div class="mod-head">
+          <div class="mod-title"><i class="fa-solid fa-messages"></i> Hội thoại #${cid}</div>
+          <button class="mod-close" onclick="closeModal('ai-thread-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="mod-body" style="max-height:60vh;overflow-y:auto;">
+          <div class="mod-note" style="margin-bottom:14px;">
+            <strong>${escapeHtml(u.name || u.email || uid || 'Khách')}</strong>${u.email?` · ${escapeHtml(u.email)}`:''}
+            · Nguồn: ${escapeHtml(_aiTopicLabel(conversation.topic))}
+          </div>
+          ${messages.map(m => {
+            const isUser = m.role === 'user';
+            if (!m.content && !m.ok) {
+              return `<div style="margin-bottom:12px;"><span class="badge warn"><i class="fa-solid fa-triangle-exclamation"></i> Lỗi AI: ${escapeHtml(m.error_msg||'')}</span></div>`;
+            }
+            return `<div style="display:flex;justify-content:${isUser?'flex-end':'flex-start'};margin-bottom:10px;">
+              <div style="max-width:80%;padding:10px 14px;border-radius:12px;background:${isUser?'var(--indigo-l, #eef2ff)':'var(--surface-2)'};font-size:0.86rem;line-height:1.55;white-space:pre-wrap;">
+                ${escapeHtml(m.content || '')}${m.has_image?' <span class="badge off" style="margin-left:6px;"><i class="fa-solid fa-paperclip"></i></span>':''}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="mod-foot">
+          <button class="mod-btn mod-btn-ghost" onclick="closeModal('ai-thread-modal-overlay')">Đóng</button>
+          <button class="mod-btn mod-btn-primary" onclick="closeModal('ai-thread-modal-overlay'); AIAssistant.openReply(${cid})"><i class="fa-solid fa-reply"></i> Phản hồi</button>
+        </div>`;
+    } catch (e) {
+      panel.innerHTML = `<div class="mod-body"><div class="mod-note" style="border-left-color:var(--red);">Lỗi tải hội thoại: ${escapeHtml(e.message)}</div></div>`;
+    }
+  },
+
+  async openReply(cid){
+    this._replyConvId = cid;
+    const panel = document.getElementById('ai-reply-modal');
+    panel.innerHTML = `<div class="mod-body"><div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang chuẩn bị nội dung...</div></div>`;
+    openModal('ai-reply-modal-overlay');
+    try {
+      const { conversation, messages } = await this._getThread(cid);
+      const uid = conversation.user_id;
+      const u = uid ? (this._userCache[uid] || {}) : {};
+      const question = messages.find(m => m.role === 'user')?.content || '';
+      const aiAnswer = messages.find(m => m.role === 'model' && m.ok !== 0)?.content || '';
+      const defaultBody =
+`Chào ${u.name || 'em'},
+
+Cảm ơn em đã đặt câu hỏi trên ChemCraft. Về thắc mắc của em:
+
+"${question.slice(0, 300)}"
+
+Đây là phần giải thích chi tiết hơn từ giáo viên:
+[Thầy/cô bổ sung nội dung ở đây]
+
+Nếu còn điểm nào chưa rõ, em cứ nhắn lại nhé!
+
+Thân mến,
+Đội ngũ ChemCraft`;
+
+      panel.innerHTML = `
+        <div class="mod-head">
+          <div class="mod-title"><i class="fa-solid fa-envelope"></i> Soạn email phản hồi</div>
+          <button class="mod-close" onclick="closeModal('ai-reply-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="mod-body">
+          ${!u.email ? `<div class="mod-note" style="border-left-color:var(--orange);margin-bottom:10px;"><i class="fa-solid fa-triangle-exclamation"></i> Không tìm thấy email đã đăng ký cho học sinh này — hãy nhập thủ công bên dưới.</div>` : ''}
+          <div class="mod-field"><label>Đến</label>
+            <input id="ai-reply-to" type="email" value="${escapeHtml(u.email || '')}" placeholder="email@hocsinh.com">
+          </div>
+          <div class="mod-field"><label>Tiêu đề</label>
+            <input id="ai-reply-subject" type="text" value="Phản hồi câu hỏi của em trên ChemCraft">
+          </div>
+          <div class="mod-field"><label>Nội dung</label>
+            <textarea id="ai-reply-body" rows="10" style="resize:vertical;font-family:inherit;">${escapeHtml(defaultBody)}</textarea>
+          </div>
+          <div class="mod-note" id="ai-reply-ai-note" style="display:none;"><i class="fa-solid fa-spinner fa-spin"></i> AI đang viết lại email chuyên nghiệp hơn...</div>
+        </div>
+        <div class="mod-foot" style="flex-wrap:wrap;gap:8px;">
+          <button class="mod-btn mod-btn-ghost" onclick="AIAssistant._aiRewriteReply('${encodeURIComponent(question).slice(0,4000)}','${encodeURIComponent(aiAnswer).slice(0,4000)}')">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> AI viết lại chuyên nghiệp hơn
+          </button>
+          <button class="mod-btn mod-btn-ghost" onclick="AIAssistant._copyReply()"><i class="fa-solid fa-copy"></i> Sao chép</button>
+          <button class="mod-btn mod-btn-primary" onclick="AIAssistant._openMail()"><i class="fa-solid fa-paper-plane"></i> Mở trong Mail</button>
+        </div>`;
+    } catch (e) {
+      panel.innerHTML = `<div class="mod-body"><div class="mod-note" style="border-left-color:var(--red);">Lỗi chuẩn bị phản hồi: ${escapeHtml(e.message)}</div></div>`;
+    }
+  },
+
+  async _aiRewriteReply(qEnc, aEnc){
+    const note = document.getElementById('ai-reply-ai-note');
+    const bodyEl = document.getElementById('ai-reply-body');
+    const question = decodeURIComponent(qEnc || '');
+    const aiAnswer = decodeURIComponent(aEnc || '');
+    const teacherDraft = bodyEl.value;
+    note.style.display = 'flex';
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: 'Bạn là một giáo viên Hóa học tận tâm. Viết email trả lời học sinh bằng tiếng Việt, giọng văn ấm áp, rõ ràng, chuyên nghiệp, súc tích, có tính khích lệ. Chỉ trả về phần nội dung email (không kèm tiêu đề, không thêm lời dẫn hay markdown).',
+          messages: [{
+            role: 'user',
+            content: `Câu hỏi gốc của học sinh:\n${question}\n\nCâu trả lời ban đầu của AI:\n${aiAnswer}\n\nBản nháp hiện tại của giáo viên (có thể còn sơ sài, hãy dùng làm gợi ý nội dung):\n${teacherDraft}\n\nHãy viết lại thành một email phản hồi hoàn chỉnh, chuyên nghiệp hơn.`,
+          }],
+          topic: 'admin_reply_draft',
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.text) bodyEl.value = data.text.trim();
+    } catch (e) {
+      alert('Không thể tạo bản nháp AI: ' + e.message);
+    } finally {
+      note.style.display = 'none';
+    }
+  },
+
+  _copyReply(){
+    const text = document.getElementById('ai-reply-body').value;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = event.target.closest('button');
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Đã sao chép';
+      setTimeout(() => { btn.innerHTML = orig; }, 1500);
+    }).catch(() => alert('Không thể sao chép. Hãy chọn và copy thủ công.'));
+  },
+
+  _openMail(){
+    const to = document.getElementById('ai-reply-to').value.trim();
+    const subject = document.getElementById('ai-reply-subject').value.trim();
+    const body = document.getElementById('ai-reply-body').value;
+    if (!to) { alert('Vui lòng nhập email người nhận.'); return; }
+    const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = url;
+  },
+};
+
 
 /* ═══════════════════════════════════════════════════════════════
    MODULE: LEARNING ANALYTICS
