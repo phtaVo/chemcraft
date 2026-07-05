@@ -2075,13 +2075,14 @@ Thân mến,
             <textarea id="ai-reply-body" rows="10" style="resize:vertical;font-family:inherit;">${escapeHtml(defaultBody)}</textarea>
           </div>
           <div class="mod-note" id="ai-reply-ai-note" style="display:none;"><i class="fa-solid fa-spinner fa-spin"></i> AI đang viết lại email chuyên nghiệp hơn...</div>
+          <div class="mod-note" id="ai-reply-send-note" style="display:none;"></div>
         </div>
         <div class="mod-foot" style="flex-wrap:wrap;gap:8px;">
           <button class="mod-btn mod-btn-ghost" onclick="AIAssistant._aiRewriteReply('${encodeURIComponent(question).slice(0,4000)}','${encodeURIComponent(aiAnswer).slice(0,4000)}')">
             <i class="fa-solid fa-wand-magic-sparkles"></i> AI viết lại chuyên nghiệp hơn
           </button>
           <button class="mod-btn mod-btn-ghost" onclick="AIAssistant._copyReply()"><i class="fa-solid fa-copy"></i> Sao chép</button>
-          <button class="mod-btn mod-btn-primary" onclick="AIAssistant._openMail()"><i class="fa-solid fa-paper-plane"></i> Mở trong Mail</button>
+          <button class="mod-btn mod-btn-primary" id="ai-reply-send-btn" onclick="AIAssistant._sendEmailNow()"><i class="fa-solid fa-paper-plane"></i> Gửi email ngay</button>
         </div>`;
     } catch (e) {
       panel.innerHTML = `<div class="mod-body"><div class="mod-note" style="border-left-color:var(--red);">Lỗi chuẩn bị phản hồi: ${escapeHtml(e.message)}</div></div>`;
@@ -2128,13 +2129,38 @@ Thân mến,
     }).catch(() => alert('Không thể sao chép. Hãy chọn và copy thủ công.'));
   },
 
-  _openMail(){
+  async _sendEmailNow(){
     const to = document.getElementById('ai-reply-to').value.trim();
     const subject = document.getElementById('ai-reply-subject').value.trim();
     const body = document.getElementById('ai-reply-body').value;
+    const note = document.getElementById('ai-reply-send-note');
+    const btn = document.getElementById('ai-reply-send-btn');
+
     if (!to) { alert('Vui lòng nhập email người nhận.'); return; }
-    const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = url;
+    if (!body.trim()) { alert('Nội dung email đang trống.'); return; }
+
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang gửi...';
+    note.style.display = 'flex';
+    note.style.borderLeftColor = '';
+    note.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang gửi email từ voducphat.learncode.tk01@gmail.com...';
+
+    try {
+      await _qzApi('/api/admin/send-reply-email', {
+        method: 'POST',
+        body: JSON.stringify({ to, subject, body, conversationId: this._replyConvId }),
+      });
+      note.style.borderLeftColor = 'var(--green)';
+      note.innerHTML = `<i class="fa-solid fa-circle-check"></i> Đã gửi email tới ${escapeHtml(to)}!`;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Đã gửi';
+      setTimeout(() => closeModal('ai-reply-modal-overlay'), 1600);
+    } catch (e) {
+      note.style.borderLeftColor = 'var(--red)';
+      note.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(e.message)}`;
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
   },
 };
 
