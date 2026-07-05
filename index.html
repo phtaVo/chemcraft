@@ -710,6 +710,15 @@ button, .nav-btn, .bb, .dash-card, .q-opt, .chem-btn {
 /* ══ SOUND TOGGLE ══ */
 #sound-toggle{position:fixed;bottom:24px;right:24px;z-index:998;width:48px;height:48px;border-radius:50%;background:var(--white);border:none;box-shadow:var(--sh-3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.2rem;transition:transform 0.2s cubic-bezier(.4,0,.2,1),box-shadow 0.2s;}
 #sound-toggle:hover{transform:scale(1.08) translateY(-2px);box-shadow:var(--sh-4);}
+/* Nút "AI nhanh" — lối tắt vào tính năng Giải bài tập AI (section#quiz) từ
+   bất kỳ trang nào, không cần tìm trong menu điều hướng. */
+#ai-quick-fab{position:fixed;bottom:80px;right:24px;z-index:998;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#06B6D4,#4F6BFF);border:none;box-shadow:0 4px 14px rgba(6,182,212,0.4);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.35rem;transition:transform 0.2s cubic-bezier(.4,0,.2,1),box-shadow 0.2s;}
+#ai-quick-fab:hover{transform:scale(1.08) translateY(-2px);box-shadow:0 6px 20px rgba(6,182,212,0.55);}
+#ai-quick-fab .ai-quick-badge{position:absolute;top:-4px;right:-4px;background:#F59E0B;color:#fff;font-size:0.6rem;font-weight:800;border-radius:99px;padding:2px 5px;line-height:1;box-shadow:0 0 0 2px #fff;}
+@media (max-width:640px){
+  #ai-quick-fab{bottom:76px;right:16px;width:46px;height:46px;font-size:1.15rem;}
+  #sound-toggle{right:16px;}
+}
 
 /* ═══ AI SOLVER PANEL (legacy mc-* kept neutral/disabled visually) ═══ */
 .mc-panel{background:var(--white);border:1px solid var(--border);box-shadow:var(--sh-1);border-radius:var(--r-lg);}
@@ -2127,11 +2136,18 @@ BẮT BUỘC:
         }
 
         // Gọi backend proxy → Gemini (API key ẩn hoàn toàn ở server)
+        // Gửi kèm userId + topic để trang Admin > AI Assistant biết được câu hỏi
+        // này đến từ tính năng "Giải bài tập AI" và của học sinh nào (tra cứu
+        // tên/email qua Firestore users/{uid} ở phía admin).
         async function callChatProxy(messages) {
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages, systemPrompt })
+                body: JSON.stringify({
+                    messages, systemPrompt,
+                    userId: window._currentUser?.uid || '',
+                    topic: 'ai_solver',
+                })
             });
             const data = await response.json();
             if (data.error) throw new Error(data.error);
@@ -2331,6 +2347,16 @@ function goTo(id){
   window.scrollTo(0,0);
 }
 function scrollToId(id){setTimeout(function(){var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},120);}
+
+// "AI nhanh" — nút nổi truy cập nhanh tới tính năng Giải bài tập AI (section#quiz)
+// từ bất kỳ trang nào, không cần đi qua menu điều hướng.
+function openAIQuick(){
+  goTo('quiz');
+  setTimeout(function(){
+    var input = document.getElementById('problem-input');
+    if (input){ input.focus(); input.scrollIntoView({behavior:'smooth', block:'center'}); }
+  }, 150);
+}
 
 // Home scene
 (function(){
@@ -3101,6 +3127,10 @@ setTimeout(attachSounds,400);
   requestAnimationFrame(loop);
 })();
 </script>
+<button id="ai-quick-fab" onclick="openAIQuick()" title="Hỏi AI nhanh — giải bài tập ngay">
+  <i class="fa-solid fa-wand-magic-sparkles"></i>
+  <span class="ai-quick-badge">AI</span>
+</button>
 <button id="sound-toggle" onclick="toggleSound()" title="Bật/tắt âm thanh">🔊</button>
 
 <script>
