@@ -1295,6 +1295,143 @@ def admin_user_profile():
     })
 
 
+# ── /api/admin-analytics/learning ───────────────────────────────────────────
+# Dữ liệu THẬT cho tab "Learning Analytics": KPI tổng quan (đăng nhập, học
+# bài, quiz, lab, hoàn thành), funnel theo user thật, tăng trưởng người dùng
+# (dựa vào lần đầu xuất hiện của mỗi user_id), phân phối thời gian học/session
+# (tách session theo khoảng nghỉ > 30 phút, giống logic _activity_for_uid),
+# và heatmap hoạt động theo giờ/ngày trong 28 ngày gần nhất (bỏ 'heartbeat'
+# để không bị nhiễu bởi nhịp tim mỗi 60s khi mở tab nền).
+@app.route('/api/admin-analytics/learning', methods=['GET'])
+def analytics_learning():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    conn = db.get_conn()
+    now = time.time()
+    day_sec = 86400
+
+    def _distinct_users(sql, params=()):
+        rows = conn.execute(sql, params).fetchall()
+        return {r[0] for r in rows if r[0]}
+
+    # ── KPI tổng quan ────────────────────────────────────────────────────
+    total_students = len(_distinct_users("SELECT DISTINCT user_id FROM events WHERE user_id != ''"))
+    active_7d = len(_distinct_users(
+        "SELECT DISTINCT user_id FROM events WHERE user_id != '' AND ts >= ?", (now - 7 * day_sec,)
+    ))
+    active_30d = len(_distinct_users(
+        "SELECT DISTINCT user_id FROM events WHERE user_id != '' AND ts >= ?", (now - 30 * day_sec,)
+    ))
+    lessons_completed = db.count_events('lesson_complete')
+    quiz_completed = conn.execute(
+        'SELECT COUNT(*) c FROM quiz_attempts WHERE finished_at IS NOT NULL'
+    ).fetchone()['c']
+    lab_opened = db.count_events('lab_open')
+    lab_completed = db.count_events('lab_complete')
+
+    # ── Funnel theo user thật (không phải % giả định) ───────────────────
+    users_logged_in = _distinct_users("SELECT DISTINCT user_id FROM events WHERE user_id != ''")
+    users_lesson = _distinct_users(
+        "SELECT DISTINCT user_id FROM events WHERE user_id != '' AND type IN ('lesson_start','lesson_open','lesson_complete')"
+    )
+    users_quiz = _distinct_users("SELECT DISTINCT user_id FROM quiz_attempts WHERE user_id != ''")
+    users_lab = _distinct_users("SELECT DISTINCT user_id FROM lab_sessions WHERE user_id != ''")
+    users_done = _distinct_users(
+        "SELECT DISTINCT user_id FROM events WHERE user_id != '' AND type = 'lab_complete'"
+    )
+    base = max(1, len(users_logged_in))
+    funnel = [
+        {'label': 'Đăng nhập',  'count': len(users_logged_in), 'pct': 100},
+        {'label': 'Học bài',    'count': len(users_lesson),    'pct': round(100 * len(users_lesson) / base)},
+        {'label': 'Làm Quiz',   'count': len(users_quiz),      'pct': round(100 * len(users_quiz) / base)},
+        {'label': 'Vào Lab',    'count': len(users_lab),       'pct': round(100 * len(users_lab) / base)},
+        {'label': 'Hoàn thành', 'count': len(users_done),      'pct': round(100 * len(users_done) / base)},
+    ]
+
+    # ── Tăng trưởng người dùng: ngày xuất hiện lần đầu của mỗi user_id ──
+    growth_days = 30
+    first_seen_rows = conn.execute(
+        "SELECT user_id, MIN(ts) first_ts FROM events WHERE user_id != '' GROUP BY user_id"
+    ).fetchall()
+    users_before_window = 0
+    new_by_day = [0] * growth_days
+    window_start = now - growth_days * day_sec
+    for r in first_seen_rows:
+        if r['first_ts'] < window_start:
+            users_before_window += 1
+            continue
+        age = now - r['first_ts']
+        idx = growth_days - 1 - int(age // day_sec)
+        if 0 <= idx < growth_days:
+            new_by_day[idx] += 1
+    labels = [
+        datetime.fromtimestamp(now - (growth_days - 1 - i) * day_sec).strftime('%d/%m')
+        for i in range(growth_days)
+    ]
+    cumulative = []
+    running = users_before_window
+    for n in new_by_day:
+        running += n
+        cumulative.append(running)
+
+    # ── Phân phối thời gian học (phút/session), tách session theo gap 30' ──
+    session_rows = conn.execute(
+        "SELECT user_id, ts FROM events WHERE user_id != '' AND type != 'heartbeat' AND ts >= ? "
+        "ORDER BY user_id, ts", (now - 60 * day_sec,)
+    ).fetchall()
+    GAP = 30 * 60
+    durations_min = []
+    cur_uid, seg_start, prev_ts = None, None, None
+    for r in session_rows:
+        if r['user_id'] != cur_uid:
+            if cur_uid is not None and prev_ts is not None and seg_start is not None:
+                durations_min.append((prev_ts - seg_start) / 60.0)
+            cur_uid, seg_start, prev_ts = r['user_id'], r['ts'], r['ts']
+            continue
+        if r['ts'] - prev_ts > GAP:
+            durations_min.append((prev_ts - seg_start) / 60.0)
+            seg_start = r['ts']
+        prev_ts = r['ts']
+    if cur_uid is not None and prev_ts is not None and seg_start is not None:
+        durations_min.append((prev_ts - seg_start) / 60.0)
+
+    buckets_def = [(0, 5), (5, 10), (10, 20), (20, 30), (30, 45), (45, 60), (60, None)]
+    bucket_labels = ['0-5', '5-10', '10-20', '20-30', '30-45', '45-60', '>60']
+    bucket_counts = [0] * len(buckets_def)
+    for d in durations_min:
+        for i, (lo, hi) in enumerate(buckets_def):
+            if d >= lo and (hi is None or d < hi):
+                bucket_counts[i] += 1
+                break
+    avg_session_min = round(sum(durations_min) / len(durations_min), 1) if durations_min else 0
+
+    # ── Heatmap giờ × ngày trong tuần, 28 ngày gần nhất (bỏ heartbeat) ──
+    heat_rows = conn.execute(
+        "SELECT ts FROM events WHERE ts >= ? AND type != 'heartbeat'", (now - 28 * day_sec,)
+    ).fetchall()
+    heatmap = [[0] * 24 for _ in range(7)]
+    for r in heat_rows:
+        d = datetime.fromtimestamp(r['ts'])
+        heatmap[d.weekday()][d.hour] += 1
+
+    return jsonify({
+        'kpi': {
+            'total_students': total_students,
+            'active_7d': active_7d,
+            'active_30d': active_30d,
+            'lessons_completed': lessons_completed,
+            'quiz_completed': quiz_completed,
+            'lab_opened': lab_opened,
+            'lab_completed': lab_completed,
+            'avg_session_min': avg_session_min,
+        },
+        'funnel': funnel,
+        'growth': {'labels': labels, 'new_users': new_by_day, 'cumulative': cumulative},
+        'session_distribution': {'labels': bucket_labels, 'counts': bucket_counts},
+        'heatmap': heatmap,
+    })
+
+
 # ── /api/admin-rankings ────────────────────────────────────────────────────
 # Xếp hạng học sinh theo 3 tiêu chí:
 #   • lab      : số thí nghiệm đã thực hiện (lab_open) và hoàn thành (lab_complete)
