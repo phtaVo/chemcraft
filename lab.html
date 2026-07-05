@@ -2394,7 +2394,14 @@
 
             // Hàm dựng 1 kệ riêng biệt với danh sách hóa chất tương ứng
             function buildShelfSection(items, anchor, rotY, label, labelColor) {
-                const shelfWidth = 26;
+                // RÀ SOÁT (2026-07): kệ "Vô cơ" có 102 hóa chất nhưng công thức cũ
+                // (shelfWidth=26, 4 tầng) chỉ chứa được 23 chai/tầng × 4 = 92 ô.
+                // 10 hóa chất cuối cùng bị vòng lặp ghi ĐÈ lên đúng toạ độ của 10
+                // hóa chất đầu tiên ở tầng trên cùng → chai lọ chồng lên nhau, khó nhìn.
+                // Mở rộng kệ lên 30 (27 chai/tầng × 4 = 108 ô) để đủ chỗ cho tất cả,
+                // giữ nguyên khoảng cách SHELF_SPACING nên các chai còn lại không bị
+                // xít lại gần nhau hơn — chỉ đơn giản là kệ dài hơn.
+                const shelfWidth = 30;
                 const shelfGeo = new THREE.BoxGeometry(shelfWidth, 0.2, 2.0);
                 const glowGeo = new THREE.BoxGeometry(shelfWidth + 0.1, 0.05, 2.1);
                 const sectionGrp = new THREE.Group();
@@ -2494,7 +2501,13 @@
                     searchableChems.push({ chemId: chem.id, chemName: chem.name, desc: chem.desc || '', hitbox: chemHitbox });
 
                     currentX += SHELF_SPACING;
-                    if (currentX > SHELF_HALF) { currentX = -SHELF_HALF; currentLevel = Math.min(currentLevel + 1, levelsY.length - 1); }
+                    if (currentX > SHELF_HALF) {
+                        currentX = -SHELF_HALF;
+                        if (currentLevel + 1 > levelsY.length - 1) {
+                            console.warn(`[buildShelfSection] Kệ "${label}" đã đầy (${items.length} hóa chất vượt quá sức chứa) — một số chai có thể bị đè lên nhau. Cân nhắc mở rộng shelfWidth hoặc thêm tầng.`);
+                        }
+                        currentLevel = Math.min(currentLevel + 1, levelsY.length - 1);
+                    }
                 });
 
                 sectionGrp.userData.isShelfSection = true;
@@ -2513,6 +2526,110 @@
             buildShelfSection(donChat, {x: -29, z: 0}, Math.PI/2, 'KỆ ĐƠN CHẤT', '#ffeb3b');
             // Kệ Hữu cơ trên tường phải, xoay mặt vào trong
             buildShelfSection(huuCo, {x: 29, z: 0}, -Math.PI/2, 'KỆ HỢP CHẤT HỮU CƠ', '#a5f3a0');
+
+            // ── TỦ TRẮNG GÓC PHÒNG (mới) ─────────────────────────────────
+            // Theo yêu cầu rà soát: xây thêm 1 tủ trưng bày màu trắng đặt ở
+            // góc phòng (góc trước-phải, cạnh tường phải, cách kệ Hữu cơ đủ
+            // xa để không đụng nhau) chứa một bộ hóa chất thông dụng hay dùng,
+            // giúp học sinh lấy nhanh mà không cần chạy tới kệ tường dài.
+            function buildCornerCabinet(items, anchor, rotY, label) {
+                const cabW = 6.4, cabH = 7.6, cabD = 2.0;
+                const grp = new THREE.Group();
+
+                const bodyMat = new THREE.MeshPhysicalMaterial({ color: '#f7f9fb', roughness: 0.25, metalness: 0.05, clearcoat: 0.7, clearcoatRoughness: 0.15, envMapIntensity: 1.1 });
+                const trimMat = new THREE.MeshStandardMaterial({ color: '#d8dee5', roughness: 0.35, metalness: 0.4 });
+                const glassDoorMat = new THREE.MeshPhysicalMaterial({ color: '#dff1ff', transmission: 0.85, transparent: true, opacity: 0.28, roughness: 0.06, ior: 1.45, thickness: 0.2, side: THREE.DoubleSide });
+
+                // Thân tủ
+                const body = new THREE.Mesh(new THREE.BoxGeometry(cabW, cabH, cabD), bodyMat);
+                body.position.y = cabH / 2; body.castShadow = true; body.receiveShadow = true;
+                grp.add(body);
+                // Chân tủ mảnh (đế kim loại nhẹ, phong cách hiện đại)
+                const legMat = new THREE.MeshStandardMaterial({ color: '#9aa4ad', metalness: 0.8, roughness: 0.3 });
+                [[-cabW/2+0.4, -cabD/2+0.35], [cabW/2-0.4, -cabD/2+0.35], [-cabW/2+0.4, cabD/2-0.35], [cabW/2-0.4, cabD/2-0.35]].forEach(([dx,dz]) => {
+                    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 10), legMat);
+                    leg.position.set(dx, 0.25, dz); grp.add(leg);
+                });
+                // Viền trên/dưới cho tủ trông "đẹp" và có điểm nhấn
+                const topTrim = new THREE.Mesh(new THREE.BoxGeometry(cabW + 0.15, 0.12, cabD + 0.15), trimMat);
+                topTrim.position.y = cabH + 0.06; grp.add(topTrim);
+                const baseTrim = new THREE.Mesh(new THREE.BoxGeometry(cabW + 0.1, 0.5, cabD + 0.1), trimMat);
+                baseTrim.position.y = 0.25; grp.add(baseTrim);
+
+                // 2 tấm ván tạo 3 tầng bên trong
+                const shelfBoardMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.4 });
+                const tierY = [1.15, 3.55, 5.95];
+                [tierY[1], tierY[2]].forEach(y => {
+                    const board = new THREE.Mesh(new THREE.BoxGeometry(cabW - 0.3, 0.1, cabD - 0.3), shelfBoardMat);
+                    board.position.y = y - 0.55; grp.add(board);
+                });
+
+                // Cửa kính trước (chỉ để trang trí, không cản click vì đặt phía sau hitbox hóa chất)
+                const doorL = new THREE.Mesh(new THREE.PlaneGeometry(cabW/2 - 0.15, cabH - 0.5), glassDoorMat);
+                doorL.position.set(-cabW/4 + 0.05, cabH/2, cabD/2 + 0.02); grp.add(doorL);
+                const doorR = doorL.clone(); doorR.position.x = cabW/4 - 0.05; grp.add(doorR);
+                const handleMat = new THREE.MeshStandardMaterial({ color: '#c9a15a', metalness: 0.85, roughness: 0.25 });
+                [-0.12, 0.12].forEach(dx => {
+                    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.4, 8), handleMat);
+                    handle.position.set(dx, cabH/2, cabD/2 + 0.06); grp.add(handle);
+                });
+
+                // Đèn nhỏ chiếu sáng bên trong tủ cho dễ nhìn
+                const cabLight = new THREE.PointLight(0xfff8ea, 0.8, 8);
+                cabLight.position.set(0, cabH - 0.3, 0.3); grp.add(cabLight);
+
+                // Bảng tên phía trên tủ
+                const labelCanvas = document.createElement('canvas');
+                labelCanvas.width = 768; labelCanvas.height = 192;
+                const lctx = labelCanvas.getContext('2d');
+                lctx.fillStyle = 'rgba(5,10,20,0.85)'; lctx.fillRect(0,0,768,192);
+                lctx.strokeStyle = '#c9a15a'; lctx.lineWidth = 6; lctx.strokeRect(6,6,756,180);
+                lctx.fillStyle = '#f7f9fb'; lctx.font = 'bold 62px Segoe UI, Arial'; lctx.textAlign = 'center'; lctx.textBaseline = 'middle';
+                lctx.shadowColor = '#c9a15a'; lctx.shadowBlur = 20;
+                lctx.fillText(label, 384, 96);
+                const labelTex = new THREE.CanvasTexture(labelCanvas);
+                const labelMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.15), new THREE.MeshBasicMaterial({map: labelTex, transparent: true}));
+                labelMesh.position.set(0, cabH + 0.85, 0); grp.add(labelMesh);
+
+                // Đặt hóa chất lên 3 tầng (tối đa 3 chai/tầng)
+                const perTier = 3;
+                items.slice(0, tierY.length * perTier).forEach((chem, i) => {
+                    const level = Math.floor(i / perTier);
+                    const slot = i % perTier;
+                    const itemGroup = new THREE.Group();
+                    const bottle = new THREE.Mesh(makeBottleGeom(), glassMat); bottle.position.y = 0.0;
+                    const cap = new THREE.Mesh(makeCapGeom(), new THREE.MeshStandardMaterial({color: '#1e293b', metalness: 0.6, roughness: 0.35, envMapIntensity: 1.2})); cap.position.y = 1.30;
+                    const contentMat = chem.solid
+                        ? new THREE.MeshStandardMaterial({ color: chem.color, roughness: 0.75, envMapIntensity: 0.8 })
+                        : new THREE.MeshPhysicalMaterial({ color: chem.color, transmission: 0.55, transparent: true, opacity: chem.op, roughness: 0.08, envMapIntensity: 1.3 });
+                    const content = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.75, 32), contentMat); content.position.y = 0.4;
+                    const lbl = createLabel(chem.id); lbl.position.set(0, 0.6, 0.36);
+                    itemGroup.add(bottle, cap, content, lbl);
+                    itemGroup.scale.setScalar(0.82);
+                    itemGroup.position.set((slot - 1) * 1.9, tierY[level], 0.15);
+                    grp.add(itemGroup);
+
+                    const hitboxGeometry = new THREE.CylinderGeometry(0.55, 0.55, 1.4); hitboxGeometry.translate(0, 0.6, 0);
+                    const chemHitbox = new THREE.Mesh(hitboxGeometry, new THREE.MeshBasicMaterial({visible:false}));
+                    chemHitbox.userData = { isChemical: true, chemId: chem.id, chemName: chem.name, parentGroup: itemGroup };
+                    itemGroup.add(chemHitbox);
+                    roomInteractables.push(chemHitbox);
+                    searchableChems.push({ chemId: chem.id, chemName: chem.name, desc: chem.desc || '', hitbox: chemHitbox });
+                });
+
+                grp.userData.isShelfSection = true;
+                grp.position.set(anchor.x, 0, anchor.z);
+                grp.rotation.y = rotY;
+                sceneRoom.add(grp);
+            }
+
+            // Bộ hóa chất thông dụng hay được dùng — lấy tự động từ nhóm Vô cơ,
+            // bỏ qua chai khí/giấy chỉ thị/Phenol (loại có hình dạng đặc biệt,
+            // không hợp với khung tủ trưng bày nhỏ này).
+            const commonChems = voCo.filter(c => !c.isGas && !c.isPaper && c.id !== 'Phenol').slice(0, 9);
+            // Góc trước-phải phòng, cách kệ Hữu cơ (x=29, trải dài z: -15..15) một
+            // khoảng an toàn để không chồng lấn, đối diện chéo vào bàn thí nghiệm.
+            buildCornerCabinet(commonChems, {x: 25, z: 25}, -Math.PI/4, 'TỦ HÓA CHẤT THÔNG DỤNG');
 
             const tableGroup = new THREE.Group();
             const tableTopMat = new THREE.MeshPhysicalMaterial({color:'#eef2f6', roughness:0.18, metalness:0.05, clearcoat:0.6, clearcoatRoughness:0.15, envMapIntensity:1.2});
