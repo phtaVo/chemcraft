@@ -6682,6 +6682,16 @@ Trả về JSON thuần túy, không có markdown, không có giải thích thê
             const score = result.totalScore || 0;
             const grade = result.grade || '?';
             const gradeColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+            try {
+                if (typeof window.ccTrack === 'function') {
+                    window.ccTrack('lab_ai_grade', {
+                        sessionId: window._ccLabSessionId,
+                        grade: grade,
+                        score: score,
+                        reactionEq: lastReactionContext?.equation || '',
+                    });
+                }
+            } catch(e) { console.warn('[ccTrack] lab_ai_grade error:', e); }
             let catHtml = (result.categories || []).map(c => {
                 const pct = (c.score / c.maxScore) * 100;
                 const barColor = pct >= 80 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#ef4444';
