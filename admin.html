@@ -2168,46 +2168,65 @@ Thân mến,
 /* ═══════════════════════════════════════════════════════════════
    MODULE: LEARNING ANALYTICS
    ═══════════════════════════════════════════════════════════════ */
-PAGES['learning-analytics'] = { title:'Learning Analytics', sub:'Retention, Churn, Funnel, Session, Heatmap', render: renderLearningAnalytics };
+PAGES['learning-analytics'] = { title:'Learning Analytics', sub:'Đăng nhập, học bài, quiz, lab, tăng trưởng, heatmap, thời gian học', render: renderLearningAnalytics };
 
-function renderLearningAnalytics(){
+let _laData = null;
+let _laLoading = false;
+
+async function renderLearningAnalytics(){
   document.getElementById('page-root').innerHTML = `
     <div class="a-page-head">
       <div><div class="a-page-title">Learning Analytics</div>
-      <div class="a-page-desc">Phân tích hành vi học tập: tăng trưởng, giữ chân, phễu chuyển đổi, thời gian học.</div></div>
-      <div class="a-filter-pills">
-        <div class="a-filter-pill active">Tháng này</div>
-        <div class="a-filter-pill">Quý</div>
-        <div class="a-filter-pill">Năm</div>
-      </div>
+      <div class="a-page-desc">Phân tích hành vi học tập thật: đăng nhập, học bài, quiz, lab, tăng trưởng người dùng, thời gian học.</div></div>
     </div>
+    <div id="la-root"><div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu thật từ server...</div></div>
+  `;
 
+  if (_laLoading) return;
+  _laLoading = true;
+  try {
+    _laData = await _qzApi('/api/admin-analytics/learning');
+  } catch (e) {
+    document.getElementById('la-root').innerHTML =
+      `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation"></i> Không tải được dữ liệu: ${escapeHtml(e.message)}</div>`;
+    _laLoading = false;
+    return;
+  }
+  _laLoading = false;
+
+  const k = _laData.kpi;
+  document.getElementById('la-root').innerHTML = `
     <div class="kpi-grid" style="margin-bottom:20px;">
-      ${[['Retention 7 ngày','62%','fa-rotate','var(--green)','↑ 4%'],
-         ['Churn rate','18%','fa-user-minus','var(--red)','↓ 2%'],
-         ['Session TB','18 phút','fa-clock','var(--indigo)',''],
-         ['Tỉ lệ vào Lab','31%','fa-vial','var(--cyan)','↑ 8%']
-       ].map(([l,v,ic,co,tr])=>`
+      ${[
+        ['Tổng học sinh', k.total_students, 'fa-user-graduate', '#4F6BFF'],
+        ['Hoạt động 7 ngày', k.active_7d, 'fa-bolt', 'var(--green)'],
+        ['Hoạt động 30 ngày', k.active_30d, 'fa-calendar-days', 'var(--indigo)'],
+        ['Bài học hoàn thành', k.lessons_completed, 'fa-book-open', 'var(--cyan)'],
+        ['Quiz hoàn thành', k.quiz_completed, 'fa-clipboard-check', '#F59E0B'],
+        ['Lượt vào Lab', k.lab_opened, 'fa-vial', '#EC4899'],
+        ['Lab hoàn thành', k.lab_completed, 'fa-flask-vial', '#10B981'],
+        ['Session TB (phút)', k.avg_session_min, 'fa-clock', 'var(--red)'],
+      ].map(([l,v,ic,co])=>`
         <div class="kpi-card">
-          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div>${tr?`<span class="kpi-trend ${tr.startsWith('↑')?'up':'down'}">${tr}</span>`:''}</div>
+          <div class="kpi-top"><div class="kpi-icon" style="background:${co}"><i class="fa-solid ${ic}"></i></div></div>
           <div class="kpi-value" style="font-size:1.4rem;">${v}</div><div class="kpi-label">${l}</div>
         </div>`).join('')}
     </div>
 
     <div class="panel-grid" style="margin-bottom:16px;">
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Funnel hành trình học (100 học sinh)</div><div class="panel-tag">Funnel</div></div>
+        <div class="panel-head"><div class="panel-title">Funnel hành trình học (theo học sinh thật)</div><div class="panel-tag">Funnel</div></div>
         <div id="funnel-chart"></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Heatmap hoạt động theo giờ & ngày</div></div>
+        <div class="panel-head"><div class="panel-title">Heatmap hoạt động theo giờ & ngày (28 ngày gần nhất)</div></div>
         <div id="la-heatmap"></div>
       </div>
     </div>
 
     <div class="panel-grid">
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">Tăng trưởng người dùng</div><div class="panel-tag">Area chart</div></div>
+        <div class="panel-head"><div class="panel-title">Tăng trưởng người dùng (${_laData.growth.labels.length} ngày gần nhất)</div><div class="panel-tag">Area chart</div></div>
         <div class="chart-wrap sm"><canvas id="chart-la-growth"></canvas></div>
       </div>
       <div class="panel">
@@ -2217,61 +2236,84 @@ function renderLearningAnalytics(){
     </div>
   `;
 
-  renderFunnel();
-  renderLAHeatmap();
+  renderFunnel(_laData.funnel);
+  renderLAHeatmap(_laData.heatmap);
+
   const C = chartColors();
   Chart.defaults.font.family = "'Be Vietnam Pro', sans-serif";
+
+  Chart.getChart('chart-la-growth')?.destroy();
   new Chart(document.getElementById('chart-la-growth'),{
     type:'line',
-    data:{labels:['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'],
-      datasets:[{label:'Người dùng tích lũy', data:[80,140,200,280,360,440,520,620,740,860,980,1100],
-        borderColor:'#4F6BFF', backgroundColor:'rgba(79,107,255,0.12)', fill:true, tension:.4}]},
-    options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
-      scales:{x:{grid:{color:C.grid},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text}}}}
+    data:{labels:_laData.growth.labels,
+      datasets:[
+        {label:'Người dùng tích lũy', data:_laData.growth.cumulative,
+          borderColor:'#4F6BFF', backgroundColor:'rgba(79,107,255,0.12)', fill:true, tension:.35, yAxisID:'y'},
+        {label:'Học sinh mới/ngày', data:_laData.growth.new_users,
+          borderColor:'#06B6D4', backgroundColor:'rgba(6,182,212,0.12)', fill:false, tension:.35, yAxisID:'y1'},
+      ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true, labels:{color:C.text, font:{size:11}}}},
+      scales:{
+        x:{grid:{color:C.grid},ticks:{color:C.text, maxTicksLimit:10}},
+        y:{position:'left', grid:{color:C.grid},ticks:{color:C.text}, title:{display:true,text:'Tích lũy',color:C.text}},
+        y1:{position:'right', grid:{display:false},ticks:{color:C.text}, title:{display:true,text:'Mới/ngày',color:C.text}},
+      }}
   });
+
+  Chart.getChart('chart-session')?.destroy();
   new Chart(document.getElementById('chart-session'),{
     type:'bar',
-    data:{labels:['0-5','5-10','10-20','20-30','30-45','45-60','>60'],
-      datasets:[{label:'Số lượt học', data:[42,89,210,168,95,48,22],
+    data:{labels:_laData.session_distribution.labels,
+      datasets:[{label:'Số lượt học', data:_laData.session_distribution.counts,
         backgroundColor:'rgba(6,182,212,0.7)', borderRadius:5, maxBarThickness:32}]},
     options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
-      scales:{x:{grid:{display:false},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text}}}}
+      scales:{x:{grid:{display:false},ticks:{color:C.text}},y:{grid:{color:C.grid},ticks:{color:C.text, precision:0}}}}
   });
 }
 
-function renderFunnel(){
-  const steps = [['Đăng nhập',90,90],['Học bài',70,78],['Làm Quiz',55,79],['Vào Lab',31,56],['Hoàn thành',26,84]];
+function renderFunnel(steps){
   const colors = ['#4F6BFF','#06B6D4','#10B981','#F59E0B','#EC4899'];
+  const base = Math.max(1, steps[0]?.count || 1);
   let html = '<div style="padding:8px 0;">';
-  steps.forEach(([label,n,ret],i)=>{
-    const w = Math.round((n/90)*100);
+  steps.forEach((s,i)=>{
+    const w = Math.round((s.count / base) * 100);
     html += `<div style="margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700; color:var(--fg); margin-bottom:5px;">
-        <span>${label}</span><span style="color:${colors[i]};">${n} học sinh (${n}%)</span>
+        <span>${s.label}</span><span style="color:${colors[i]};">${s.count} học sinh (${s.pct}%)</span>
       </div>
       <div style="background:var(--surface-2); border-radius:99px; height:14px; overflow:hidden;">
         <div style="height:100%; width:${w}%; background:${colors[i]}; border-radius:99px; transition:width .8s ease;"></div>
       </div>
-      ${i<steps.length-1?`<div style="font-size:0.73rem; color:var(--fg-mute); margin-top:3px; text-align:right;">Drop-off: ${100-steps[i+1][2]}% rời đi</div>`:''}
+      ${i<steps.length-1 && steps[i+1] ? `<div style="font-size:0.73rem; color:var(--fg-mute); margin-top:3px; text-align:right;">Rời đi: ${Math.max(0, s.count - steps[i+1].count)} học sinh</div>` : ''}
     </div>`;
   });
-  html += '<div class="mod-note" style="margin-top:12px;">Drop-off lớn nhất: từ Quiz sang Lab (55→31 học sinh, mất 44%).</div></div>';
+  html += (steps.every(s=>s.count===0)
+    ? '<div class="mod-note" style="margin-top:12px;">Chưa có đủ dữ liệu học sinh để tính funnel.</div>'
+    : '') + '</div>';
   document.getElementById('funnel-chart').innerHTML = html;
 }
 
-function renderLAHeatmap(){
-  const hours = ['8h','9h','10h','11h','12h','13h','14h','15h','16h','17h','18h','19h','20h','21h'];
+function renderLAHeatmap(matrix){
+  const hours = Array.from({length:24}, (_,h)=>h+'h');
   const days = ['T2','T3','T4','T5','T6','T7','CN'];
-  const data = days.map(() => hours.map(() => Math.random()));
-  const colors = (v) => v < .2 ? 'var(--surface-2)' : v < .4 ? 'var(--cyan-l)' : v < .6 ? '#7ED8E8' : v < .8 ? 'var(--cyan)' : 'var(--cyan-d)';
-  let html = '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:separate; border-spacing:3px; font-size:0.72rem;">';
+  const max = Math.max(1, ...matrix.flat());
+  const colors = (v) => {
+    const r = v / max;
+    return r === 0 ? 'var(--surface-2)' : r < .2 ? 'var(--cyan-l)' : r < .4 ? '#7ED8E8' : r < .6 ? 'var(--cyan)' : r < .8 ? 'var(--cyan-d)' : '#0E7490';
+  };
+  let html = '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:separate; border-spacing:3px; font-size:0.68rem;">';
   html += '<tr><th style="color:var(--fg-mute); font-weight:600;"></th>' + hours.map(h=>`<th style="color:var(--fg-mute); font-weight:600; text-align:center;">${h}</th>`).join('') + '</tr>';
   days.forEach((d,di) => {
     html += `<tr><td style="font-weight:700; color:var(--fg-soft); padding:3px 6px; white-space:nowrap;">${d}</td>`;
-    data[di].forEach(v => { html += `<td style="background:${colors(v)}; height:20px; border-radius:4px;" title="${Math.round(v*100)}% hoạt động"></td>`; });
+    matrix[di].forEach(v => { html += `<td style="background:${colors(v)}; height:18px; border-radius:4px;" title="${v} sự kiện"></td>`; });
     html += '</tr>';
   });
-  html += '</table></div><div style="font-size:0.72rem; color:var(--fg-mute); margin-top:8px; font-weight:500;">20h tối là giờ cao điểm học. Thứ 7 và CN hoạt động cao.</div>';
+  let peakDay = 0, peakHour = 0, peakVal = -1;
+  matrix.forEach((row,di)=>row.forEach((v,hi)=>{ if (v>peakVal){peakVal=v;peakDay=di;peakHour=hi;} }));
+  html += `</table></div><div style="font-size:0.72rem; color:var(--fg-mute); margin-top:8px; font-weight:500;">${
+    peakVal > 0 ? `Giờ cao điểm: ${days[peakDay]} lúc ${peakHour}h (${peakVal} sự kiện).` : 'Chưa có đủ dữ liệu hoạt động.'
+  }</div>`;
   document.getElementById('la-heatmap').innerHTML = html;
 }
 
