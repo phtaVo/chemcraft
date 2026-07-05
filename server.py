@@ -1,6 +1,9 @@
 import os
 import re
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from collections import Counter
 from datetime import datetime
 from threading import Lock
@@ -35,6 +38,38 @@ GEMINI_URL = (
     'https://generativelanguage.googleapis.com/v1beta/models/'
     'gemini-2.5-flash:generateContent'
 )
+
+# ── Gửi email trực tiếp từ trang Admin (thay cho mailto:) ───────────────────
+# Dùng Gmail SMTP. Gmail KHÔNG cho đăng nhập SMTP bằng mật khẩu thường — cần
+# bật xác minh 2 bước cho tài khoản voducphat.learncode.tk01@gmail.com rồi
+# tạo "Mật khẩu ứng dụng" (App Password) tại myaccount.google.com/apppasswords,
+# sau đó set biến môi trường CHEMCRAFT_MAIL_APP_PASSWORD trên Render (16 ký tự,
+# không có khoảng trắng). Không set thì API gửi mail sẽ báo lỗi rõ ràng thay vì
+# im lặng thất bại.
+MAIL_SENDER_ADDRESS = os.getenv('CHEMCRAFT_MAIL_ADDRESS', 'voducphat.learncode.tk01@gmail.com')
+MAIL_SENDER_NAME     = os.getenv('CHEMCRAFT_MAIL_NAME', 'ChemCraft')
+MAIL_APP_PASSWORD    = os.getenv('CHEMCRAFT_MAIL_APP_PASSWORD', '')
+MAIL_SMTP_HOST        = os.getenv('CHEMCRAFT_MAIL_SMTP_HOST', 'smtp.gmail.com')
+MAIL_SMTP_PORT        = int(os.getenv('CHEMCRAFT_MAIL_SMTP_PORT', '465'))
+
+
+def send_admin_email(to_email: str, subject: str, body_text: str) -> None:
+    """Gửi email trực tiếp (không qua mailto:) bằng Gmail SMTP (SSL).
+    Raise Exception với thông báo tiếng Việt dễ hiểu nếu thất bại."""
+    if not MAIL_APP_PASSWORD:
+        raise RuntimeError(
+            'Server chưa cấu hình CHEMCRAFT_MAIL_APP_PASSWORD (Mật khẩu ứng dụng Gmail).'
+        )
+    msg = MIMEMultipart()
+    msg['From'] = f'{MAIL_SENDER_NAME} <{MAIL_SENDER_ADDRESS}>'
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+
+    with smtplib.SMTP_SSL(MAIL_SMTP_HOST, MAIL_SMTP_PORT, timeout=20) as server:
+        server.login(MAIL_SENDER_ADDRESS, MAIL_APP_PASSWORD)
+        server.sendmail(MAIL_SENDER_ADDRESS, [to_email], msg.as_string())
+
 
 FIREBASE_CONFIG = {
     'apiKey':            os.getenv('FIREBASE_API_KEY', ''),
@@ -284,6 +319,46 @@ def admin_logout():
 @app.route('/api/firebase-config', methods=['GET'])
 def firebase_config():
     return jsonify(FIREBASE_CONFIG)
+
+
+# ── /api/admin/send-reply-email ─────────────────────────────────────────────
+# Gửi email phản hồi TRỰC TIẾP từ server (Gmail SMTP) khi admin bấm "Gửi" ở
+# modal "Soạn email phản hồi" — thay cho việc mở mailto: (yêu cầu người dùng
+# có sẵn ứng dụng Mail trên máy). Người gửi luôn là
+# voducphat.learncode.tk01@gmail.com (xem MAIL_SENDER_ADDRESS ở trên).
+@app.route('/api/admin/send-reply-email', methods=['POST'])
+def admin_send_reply_email():
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'Phiên đăng nhập admin đã hết hạn. Vui lòng đăng nhập lại.'}), 401
+
+    body = request.get_json(silent=True) or {}
+    to_email        = (body.get('to') or '').strip()
+    subject         = (body.get('subject') or '').strip() or 'Phản hồi từ ChemCraft'
+    content         = body.get('body') or ''
+    conversation_id = body.get('conversationId')
+
+    if not to_email or '@' not in to_email:
+        return jsonify({'error': 'Địa chỉ email người nhận không hợp lệ.'}), 400
+    if not content.strip():
+        return jsonify({'error': 'Nội dung email đang trống.'}), 400
+
+    try:
+        send_admin_email(to_email, subject, content)
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({'error': 'Gmail từ chối đăng nhập — kiểm tra lại Mật khẩu ứng dụng (App Password) trên server.'}), 500
+    except Exception as e:
+        app.logger.error('send_admin_email error: %s', e)
+        return jsonify({'error': f'Gửi email thất bại: {e}'}), 500
+
+    db.record_event('admin_reply_email_sent', {
+        'to': to_email,
+        'subject': subject,
+        'conversationId': conversation_id,
+        'adminUsername': admin.get('username', ''),
+    }, user_id='', ip=_get_client_ip())
+
+    return jsonify({'ok': True})
 
 
 # ── /api/log-event — expanded contract: quiz + lab now real ────────────────
