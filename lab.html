@@ -6458,7 +6458,9 @@ Dữ liệu thí nghiệm: Phản ứng: ${ctx?.equation || ''}. Chất phản �
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     systemPrompt,
-                    messages: [{ role: 'user', content: q }]
+                    messages: [{ role: 'user', content: q }],
+                    userId: window._currentUser?.uid || '',
+                    topic: 'lab_molecule_chat',
                 })
             }).then(r => r.json()).then(data => {
                 const reply = data.text || data.error || 'Không thể trả lời lúc này.';
@@ -6540,7 +6542,9 @@ ${ctx.products.length > 0 ? `- Sản phẩm: ${ctx.products.map(p=>p.name).join(
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     systemPrompt: `Bạn là AI Chemistry Assistant cho phòng thí nghiệm hóa học ảo Lab20. Trả lời bằng tiếng Việt, ngắn gọn, chính xác, dùng ví dụ từ dữ liệu thí nghiệm thực tế bên dưới.\n${systemContext}`,
-                    messages: aiChatHistory.slice(-6)
+                    messages: aiChatHistory.slice(-6),
+                    userId: window._currentUser?.uid || '',
+                    topic: 'lab_assistant_chat',
                 })
             }).then(r => r.json()).then(data => {
                 const reply = data.text || data.error || 'Không có phản hồi.';
@@ -6653,7 +6657,9 @@ Trả về JSON thuần túy, không có markdown, không có giải thích thê
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     systemPrompt: 'Bạn là giám khảo DỄ TÍNH, khuyến khích học sinh. Chỉ cần học sinh mô tả được hiện tượng quan sát là cho điểm cao. Trả về JSON thuần.',
-                    messages: [{ role: 'user', content: prompt }]
+                    messages: [{ role: 'user', content: prompt }],
+                    userId: window._currentUser?.uid || '',
+                    topic: 'lab_ai_assessment',
                 })
             }).then(r => r.json()).then(data => {
                 let text = data.text || '{}';
@@ -7268,7 +7274,9 @@ JSON: {"equation":"...","products":["..."],"coefficients":[...],"conditions":{"c
                         headers:{'Content-Type':'application/json'},
                         body:JSON.stringify({
                             systemPrompt:'Bạn là chuyên gia hóa học. Chỉ trả về JSON thuần.',
-                            messages:[{role:'user',content:prompt}]
+                            messages:[{role:'user',content:prompt}],
+                            userId: window._currentUser?.uid || '',
+                            topic: 'lab_reaction_predict',
                         })
                     });
                     if(!r.ok) return null;
