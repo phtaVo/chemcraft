@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import database as db
 import admin_auth
 import quiz_bank
+import lab_bank
 
 load_dotenv()
 
@@ -28,6 +29,12 @@ if _migrated:
 _seeded_questions = quiz_bank.seed_default_questions()
 if _seeded_questions:
     print(f'📦 Seeded {_seeded_questions} legacy quiz questions into quiz_questions table.')
+_seeded_molecules = lab_bank.seed_default_molecules()
+if _seeded_molecules:
+    print(f'📦 Seeded {_seeded_molecules} legacy molecules into lab_molecules table.')
+_seeded_reactions = lab_bank.seed_default_reactions()
+if _seeded_reactions:
+    print(f'📦 Seeded {_seeded_reactions} legacy reactions into lab_reactions table.')
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
@@ -754,6 +761,138 @@ def admin_delete_quiz_question(qid):
     ok = quiz_bank.delete_question(qid)
     if not ok:
         return jsonify({'error': 'Không tìm thấy câu hỏi.'}), 404
+    return jsonify({'ok': True})
+
+
+## ── Lab 3D: Ngân hàng hoá chất (mô hình 3D) & phản ứng (lab_bank.py) ────────
+# Public: lab.html gọi lúc khởi tạo để nạp thêm hoá chất/phản ứng do admin tạo
+# (chỉ trả về những bản ghi đã 'published'), gộp thêm vào LAB_MOLECULE_DATA /
+# REACTIONS vốn đã có sẵn trong file — không thay thế, chỉ bổ sung.
+@app.route('/api/lab/molecules', methods=['GET'])
+def public_lab_molecules():
+    return jsonify({'molecules': lab_bank.list_molecules(status='published')})
+
+
+@app.route('/api/lab/reactions', methods=['GET'])
+def public_lab_reactions():
+    return jsonify({'reactions': lab_bank.list_reactions(status='published')})
+
+
+# Admin: CRUD hoá chất (mô hình 3D) cho tab "Lab 3D" trong trang quản trị.
+@app.route('/api/admin/lab-molecules', methods=['GET'])
+def admin_list_lab_molecules():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    return jsonify({'molecules': lab_bank.list_molecules()})
+
+
+@app.route('/api/admin/lab-molecules', methods=['POST'])
+def admin_create_lab_molecule():
+    session = _require_admin()
+    if not session:
+        return jsonify({'error': 'unauthorized'}), 401
+    body = request.get_json(silent=True) or {}
+    chem_id = (body.get('chemId') or '').strip()
+    name = (body.get('name') or '').strip()
+    formula = (body.get('formula') or '').strip()
+    atoms = body.get('atoms') or []
+    bonds = body.get('bonds') or []
+    status = body.get('status') or 'draft'
+
+    if not chem_id or not name or not formula:
+        return jsonify({'error': 'Vui lòng nhập mã hoá chất, tên và công thức.'}), 400
+    if not isinstance(atoms, list) or not atoms:
+        return jsonify({'error': 'Cần ít nhất 1 nguyên tử (atoms) để dựng mô hình 3D.'}), 400
+    if status not in ('draft', 'published'):
+        status = 'draft'
+
+    try:
+        mid = lab_bank.create_molecule(
+            chem_id, name, formula, atoms, bonds,
+            mol_weight=body.get('molWeight'), polar=bool(body.get('polar')),
+            bond_angle=body.get('bondAngle'), bonds_desc=body.get('bondsDesc', ''),
+            desc=body.get('desc', ''), status=status, created_by=session['username'],
+        )
+    except Exception:
+        return jsonify({'error': 'Mã hoá chất đã tồn tại hoặc dữ liệu không hợp lệ.'}), 400
+    return jsonify(lab_bank.get_molecule(mid)), 201
+
+
+@app.route('/api/admin/lab-molecules/<int:mid>', methods=['PUT'])
+def admin_update_lab_molecule(mid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    if not lab_bank.get_molecule(mid):
+        return jsonify({'error': 'Không tìm thấy hoá chất.'}), 404
+    body = request.get_json(silent=True) or {}
+    if 'status' in body and body['status'] not in ('draft', 'published'):
+        return jsonify({'error': 'Trạng thái không hợp lệ.'}), 400
+    lab_bank.update_molecule(mid, **body)
+    return jsonify(lab_bank.get_molecule(mid))
+
+
+@app.route('/api/admin/lab-molecules/<int:mid>', methods=['DELETE'])
+def admin_delete_lab_molecule(mid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    ok = lab_bank.delete_molecule(mid)
+    if not ok:
+        return jsonify({'error': 'Không tìm thấy hoá chất.'}), 404
+    return jsonify({'ok': True})
+
+
+# Admin: CRUD phản ứng hoá học cho tab "Lab 3D" trong trang quản trị.
+@app.route('/api/admin/lab-reactions', methods=['GET'])
+def admin_list_lab_reactions():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    return jsonify({'reactions': lab_bank.list_reactions()})
+
+
+@app.route('/api/admin/lab-reactions', methods=['POST'])
+def admin_create_lab_reaction():
+    session = _require_admin()
+    if not session:
+        return jsonify({'error': 'unauthorized'}), 401
+    body = request.get_json(silent=True) or {}
+    eq = (body.get('eq') or '').strip()
+    status = body.get('status') or 'draft'
+    if not eq:
+        return jsonify({'error': 'Vui lòng nhập phương trình phản ứng.'}), 400
+    if status not in ('draft', 'published'):
+        status = 'draft'
+
+    rid = lab_bank.create_reaction(
+        eq, type_=body.get('type', ''), conditions=body.get('conditions', ''),
+        tools=body.get('tools', ''), steps=body.get('steps', ''), obs=body.get('obs', ''),
+        product=body.get('product', ''), grp=body.get('grp', ''),
+        status=status, created_by=session['username'],
+    )
+    return jsonify(lab_bank.get_reaction(rid)), 201
+
+
+@app.route('/api/admin/lab-reactions/<int:rid>', methods=['PUT'])
+def admin_update_lab_reaction(rid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    if not lab_bank.get_reaction(rid):
+        return jsonify({'error': 'Không tìm thấy phản ứng.'}), 404
+    body = request.get_json(silent=True) or {}
+    if 'status' in body and body['status'] not in ('draft', 'published'):
+        return jsonify({'error': 'Trạng thái không hợp lệ.'}), 400
+    fields = {k: v for k, v in body.items()
+              if k in ('eq', 'type', 'conditions', 'tools', 'steps', 'obs', 'product', 'grp', 'status')}
+    lab_bank.update_reaction(rid, **fields)
+    return jsonify(lab_bank.get_reaction(rid))
+
+
+@app.route('/api/admin/lab-reactions/<int:rid>', methods=['DELETE'])
+def admin_delete_lab_reaction(rid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    ok = lab_bank.delete_reaction(rid)
+    if not ok:
+        return jsonify({'error': 'Không tìm thấy phản ứng.'}), 404
     return jsonify({'ok': True})
 
 
