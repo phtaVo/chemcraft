@@ -165,6 +165,48 @@ def init_db():
                     updated_at   REAL
                 );
                 CREATE INDEX IF NOT EXISTS idx_quiz_questions_active ON quiz_questions(active);
+
+                -- ── Lab 3D: Ngân hàng hoá chất (mô hình 3D) & phản ứng (lab_bank.py) ──
+                -- Thay thế LAB_MOLECULE_DATA (~13 phân tử có toạ độ atoms/bonds 3D) và
+                -- REACTIONS (~233 phản ứng tĩnh) vốn nằm cứng trong lab.html. Admin có
+                -- thể thêm/sửa/xoá hoá chất và phản ứng mới; mỗi bản ghi có status
+                -- 'draft' (đang soạn, chưa hiện cho học sinh) hoặc 'published' (hiện
+                -- đầy đủ trong lab.html, học sinh dùng được ngay).
+                CREATE TABLE IF NOT EXISTS lab_molecules (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chem_id       TEXT UNIQUE NOT NULL,
+                    name          TEXT NOT NULL,
+                    formula       TEXT NOT NULL,
+                    mol_weight    REAL,
+                    polar         INTEGER DEFAULT 0,
+                    bond_angle    REAL,
+                    bonds_desc    TEXT DEFAULT '',
+                    desc          TEXT DEFAULT '',
+                    atoms         TEXT NOT NULL DEFAULT '[]',
+                    bonds         TEXT NOT NULL DEFAULT '[]',
+                    status        TEXT DEFAULT 'draft',
+                    created_by    TEXT DEFAULT '',
+                    created_at    REAL,
+                    updated_at    REAL
+                );
+                CREATE INDEX IF NOT EXISTS idx_lab_molecules_status ON lab_molecules(status);
+
+                CREATE TABLE IF NOT EXISTS lab_reactions (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    eq          TEXT NOT NULL,
+                    type        TEXT DEFAULT '',
+                    conditions  TEXT DEFAULT '',
+                    tools       TEXT DEFAULT '',
+                    steps       TEXT DEFAULT '',
+                    obs         TEXT DEFAULT '',
+                    product     TEXT DEFAULT '',
+                    grp         TEXT DEFAULT '',
+                    status      TEXT DEFAULT 'draft',
+                    created_by  TEXT DEFAULT '',
+                    created_at  REAL,
+                    updated_at  REAL
+                );
+                CREATE INDEX IF NOT EXISTS idx_lab_reactions_status ON lab_reactions(status);
             ''')
             # Migration for DBs created before duration_sec existed on quiz_answers
             # (Quiz Analytics needs real per-question timing — see quiz_answer
