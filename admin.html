@@ -3357,229 +3357,368 @@ async function deleteQuizQuestion(id){
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MODULE: QUẢN LÝ LAB 3D — CRUD hóa chất & phản ứng
+   MODULE: QUẢN LÝ LAB 3D — CRUD hóa chất (mô hình 3D) & phản ứng
+   Nối trực tiếp vào lab_bank.py qua /api/admin/lab-molecules và
+   /api/admin/lab-reactions. Toàn bộ ~13 hoá chất 3D + ~233 phản ứng
+   vốn nằm cứng trong lab.html đã được server tự seed sẵn (status
+   'published'), nên khi mở tab này lần đầu sẽ thấy đầy đủ dữ liệu cũ.
+   Bản ghi mới tạo mặc định 'draft' — bấm "Xuất bản" để học sinh thấy
+   ngay trong lab.html (lab.html tự fetch /api/lab/molecules và
+   /api/lab/reactions rồi gộp thêm vào thư viện có sẵn).
    ═══════════════════════════════════════════════════════════════ */
-PAGES['lab'] = { title:'Quản lý Lab 3D', sub:'Hóa chất, dụng cụ, phản ứng — không cần code', render: renderLabManage };
+PAGES['lab'] = { title:'Quản lý Lab 3D', sub:'Hóa chất (mô hình 3D), phản ứng, hiện tượng — đồng bộ trực tiếp vào lab', render: renderLabManage };
 
-let _chemicals = [
-  {id:'c1', name:'KMnO₄', color:'#9B59B6', state:'rắn', molar:'158.03', note:'Thuốc tím, chất oxi hóa mạnh', hazard:'⚠️'},
-  {id:'c2', name:'HCl',   color:'#BDC3C7', state:'khí/lỏng', molar:'36.46', note:'Axit clohidric', hazard:'⚠️'},
-  {id:'c3', name:'NaOH',  color:'#ECF0F1', state:'rắn', molar:'40.00', note:'Natri hiđroxit, bazơ mạnh', hazard:'⚠️'},
-  {id:'c4', name:'H₂SO₄', color:'#E8DAEF', state:'lỏng', molar:'98.08', note:'Axit sunfuric đặc', hazard:'☣️'},
-  {id:'c5', name:'CuSO₄', color:'#2980B9', state:'rắn', molar:'159.61', note:'Đồng(II) sunfat — dung dịch màu xanh', hazard:''},
-  {id:'c6', name:'Na',    color:'#F4D03F', state:'rắn', molar:'22.99',  note:'Natri kim loại — phản ứng mạnh với nước', hazard:'☣️'},
-];
-let _reactions = [
-  {id:'r1', reactants:'KMnO₄ + HCl', products:'KCl + MnCl₂ + Cl₂↑ + H₂O', type:'oxi hóa-khử', color:'mất màu tím', gas:'Cl₂ vàng lục', precip:'', ph:'acid'},
-  {id:'r2', reactants:'Na + H₂O', products:'NaOH + H₂↑', type:'thế', color:'không đổi', gas:'H₂ bong bóng', precip:'', ph:'base'},
-  {id:'r3', reactants:'CuSO₄ + NaOH', products:'Cu(OH)₂↓ + Na₂SO₄', type:'trao đổi', color:'xanh mờ dần', gas:'', precip:'Cu(OH)₂ xanh lam', ph:'base'},
-  {id:'r4', reactants:'HCl + NaOH', products:'NaCl + H₂O', type:'trung hòa', color:'đổi chất chỉ thị', gas:'', precip:'', ph:'neutral'},
-];
+function _labToken(){ return window.__adminToken || sessionStorage.getItem('cc_admin_token') || ''; }
 
-function renderLabManage(){
+let _labMolecules = [];
+let _labReactions = [];
+let _labLoaded = false;
+let _labTab = 'chem';
+let _labChemFilter = { search:'', status:'all' };
+let _labReactFilter = { search:'', status:'all', grp:'all' };
+
+async function _labApi(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': _labToken(), ...(opts.headers||{}) },
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error((data && data.error) || `Lỗi máy chủ (${res.status})`);
+  return data;
+}
+
+async function renderLabManage(){
   document.getElementById('page-root').innerHTML = `
     <div class="a-page-head">
       <div><div class="a-page-title">Quản lý Lab 3D</div>
-      <div class="a-page-desc">Thêm/sửa hóa chất và phản ứng trực tiếp — hệ thống tự cập nhật, không cần code.</div></div>
+      <div class="a-page-desc">Thêm hoá chất mới (mô hình 3D) và phản ứng — xuất bản là học sinh dùng được ngay trong lab.</div></div>
     </div>
+    <div id="lab-page-body"><div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu Lab 3D...</div></div>
+  `;
+  try {
+    const [chemData, reactData] = await Promise.all([
+      _labApi('/api/admin/lab-molecules'),
+      _labApi('/api/admin/lab-reactions'),
+    ]);
+    _labMolecules = chemData.molecules || [];
+    _labReactions = reactData.reactions || [];
+    _labLoaded = true;
+  } catch (e) {
+    document.getElementById('lab-page-body').innerHTML =
+      `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i> Không tải được dữ liệu Lab 3D: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  _renderLabBody();
+}
 
-    <!-- Tab -->
+function _renderLabBody(){
+  const body = document.getElementById('lab-page-body');
+  body.innerHTML = `
     <div style="display:flex;gap:0;margin-bottom:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:4px;width:fit-content;">
-      <button class="lab-tab active" id="tab-chem" onclick="switchLabTab('chem')"><i class="fa-solid fa-flask"></i> Hóa chất (${_chemicals.length})</button>
-      <button class="lab-tab" id="tab-react" onclick="switchLabTab('react')"><i class="fa-solid fa-bolt"></i> Phản ứng (${_reactions.length})</button>
+      <button class="lab-tab ${_labTab==='chem'?'active':''}" id="tab-chem" onclick="switchLabTab('chem')"><i class="fa-solid fa-flask"></i> Hóa chất 3D (${_labMolecules.length})</button>
+      <button class="lab-tab ${_labTab==='react'?'active':''}" id="tab-react" onclick="switchLabTab('react')"><i class="fa-solid fa-bolt"></i> Phản ứng (${_labReactions.length})</button>
     </div>
 
-    <!-- Chemicals panel -->
-    <div id="lab-chem-panel">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-        <button class="mod-btn mod-btn-primary" onclick="openChemModal()"><i class="fa-solid fa-plus"></i> Thêm hóa chất</button>
+    <div id="lab-chem-panel" style="display:${_labTab==='chem'?'block':'none'};">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="chem-search" placeholder="Tìm theo tên, công thức, mã..." value="${escapeHtml(_labChemFilter.search)}"
+            oninput="_labChemFilter.search=this.value; _renderChemGrid();" style="min-width:220px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;">
+          <select onchange="_labChemFilter.status=this.value; _renderChemGrid();" style="padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="published">Đã xuất bản</option>
+            <option value="draft">Bản nháp</option>
+          </select>
+        </div>
+        <button class="mod-btn mod-btn-primary" onclick="openChemModal()"><i class="fa-solid fa-plus"></i> Thêm hóa chất 3D</button>
       </div>
       <div class="chem-grid" id="chem-grid">${renderChemGrid()}</div>
     </div>
 
-    <!-- Reactions panel -->
-    <div id="lab-react-panel" style="display:none;">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+    <div id="lab-react-panel" style="display:${_labTab==='react'?'block':'none'};">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="react-search" placeholder="Tìm theo phương trình, nhóm..." value="${escapeHtml(_labReactFilter.search)}"
+            oninput="_labReactFilter.search=this.value; _renderReactTable();" style="min-width:220px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;">
+          <select onchange="_labReactFilter.status=this.value; _renderReactTable();" style="padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="published">Đã xuất bản</option>
+            <option value="draft">Bản nháp</option>
+          </select>
+        </div>
         <button class="mod-btn mod-btn-primary" onclick="openReactionModal()"><i class="fa-solid fa-plus"></i> Thêm phản ứng</button>
       </div>
       <div class="a-table-wrap"><table class="a-table">
-        <thead><tr><th>Chất phản ứng</th><th>Sản phẩm</th><th>Loại</th><th>Màu dung dịch</th><th>Khí</th><th>Kết tủa</th><th>pH</th><th></th></tr></thead>
+        <thead><tr><th>Phương trình</th><th>Loại</th><th>Nhóm</th><th>Hiện tượng</th><th>Trạng thái</th><th></th></tr></thead>
         <tbody id="react-tbody">${renderReactTable()}</tbody>
       </table></div>
     </div>
 
-    <!-- Chem modal -->
     <div class="mod-overlay" id="chem-modal-overlay" onclick="if(event.target===this)closeModal('chem-modal-overlay')">
-      <div class="mod-panel" id="chem-modal"></div>
+      <div class="mod-panel" id="chem-modal" style="max-width:640px;"></div>
     </div>
-    <!-- Reaction modal -->
     <div class="mod-overlay" id="react-modal-overlay" onclick="if(event.target===this)closeModal('react-modal-overlay')">
-      <div class="mod-panel" id="react-modal"></div>
+      <div class="mod-panel" id="react-modal" style="max-width:640px;"></div>
     </div>
   `;
 }
 
-function renderChemGrid(){
-  return _chemicals.map(c => `
-    <div class="chem-card" id="chem-${c.id}">
-      <div class="chem-color-dot" style="background:${c.color};"></div>
-      <div class="chem-name">${c.name} ${c.hazard}</div>
-      <div class="chem-meta">${c.state} · ${c.molar} g/mol</div>
-      <div class="chem-note">${escapeHtml(c.note)}</div>
-      <div style="display:flex;gap:6px;margin-top:10px;">
-        <button class="tbl-act-btn" onclick="openChemModal('${c.id}')"><i class="fa-solid fa-pen"></i></button>
-        <button class="tbl-act-btn danger" onclick="deleteChem('${c.id}')"><i class="fa-solid fa-trash"></i></button>
-      </div>
-    </div>`).join('');
-}
-
-function renderReactTable(){
-  return _reactions.map(r => `
-    <tr>
-      <td style="font-weight:700;font-size:0.87rem;">${escapeHtml(r.reactants)}</td>
-      <td style="font-size:0.83rem;">${escapeHtml(r.products)}</td>
-      <td><span class="badge off">${escapeHtml(r.type)}</span></td>
-      <td style="font-size:0.82rem;">${escapeHtml(r.color)||'—'}</td>
-      <td style="font-size:0.82rem;">${r.gas?`<span class="badge" style="background:var(--gold-l);color:var(--gold-d);">${escapeHtml(r.gas)}</span>`:'—'}</td>
-      <td style="font-size:0.82rem;">${r.precip?`<span class="badge" style="background:var(--purple-l);color:var(--purple-d);">${escapeHtml(r.precip)}</span>`:'—'}</td>
-      <td><span class="badge ${r.ph==='acid'?'warn':r.ph==='base'?'ok':'off'}">${r.ph}</span></td>
-      <td><div style="display:flex;gap:5px;">
-        <button class="tbl-act-btn" onclick="openReactionModal('${r.id}')"><i class="fa-solid fa-pen"></i></button>
-        <button class="tbl-act-btn danger" onclick="deleteReaction('${r.id}')"><i class="fa-solid fa-trash"></i></button>
-      </div></td>
-    </tr>`).join('');
-}
-
 function switchLabTab(tab){
+  _labTab = tab;
   document.getElementById('lab-chem-panel').style.display  = tab==='chem'?'block':'none';
   document.getElementById('lab-react-panel').style.display = tab==='react'?'block':'none';
   document.getElementById('tab-chem').classList.toggle('active',  tab==='chem');
   document.getElementById('tab-react').classList.toggle('active', tab==='react');
 }
 
+function _filteredChems(){
+  const q = _labChemFilter.search.trim().toLowerCase();
+  return _labMolecules.filter(c => {
+    if (_labChemFilter.status!=='all' && c.status!==_labChemFilter.status) return false;
+    if (!q) return true;
+    return (c.name||'').toLowerCase().includes(q) || (c.formula||'').toLowerCase().includes(q) || (c.chemId||'').toLowerCase().includes(q);
+  });
+}
+
+function renderChemGrid(){
+  const list = _filteredChems();
+  if (!list.length) return `<div class="mod-note">Không có hóa chất nào khớp bộ lọc.</div>`;
+  return list.map(c => `
+    <div class="chem-card" id="chem-${c.id}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div class="chem-name">${escapeHtml(c.formula)}</div>
+        <span class="badge ${c.status==='published'?'ok':'off'}">${c.status==='published'?'Đã xuất bản':'Nháp'}</span>
+      </div>
+      <div class="chem-meta">${escapeHtml(c.name)} · mã: ${escapeHtml(c.chemId)}</div>
+      <div class="chem-meta">${c.molWeight?c.molWeight+' g/mol · ':''}${c.atoms.length} nguyên tử · ${c.bonds.length} liên kết${c.polar?' · phân cực':''}</div>
+      <div class="chem-note">${escapeHtml(c.desc||'')}</div>
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <button class="tbl-act-btn" onclick="openChemModal(${c.id})" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn" onclick="toggleChemStatus(${c.id})" title="${c.status==='published'?'Chuyển về nháp':'Xuất bản'}">
+          <i class="fa-solid ${c.status==='published'?'fa-eye-slash':'fa-upload'}"></i>
+        </button>
+        <button class="tbl-act-btn danger" onclick="deleteChem(${c.id})" title="Xoá"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+function _renderChemGrid(){ document.getElementById('chem-grid').innerHTML = renderChemGrid(); }
+
+function _filteredReactions(){
+  const q = _labReactFilter.search.trim().toLowerCase();
+  return _labReactions.filter(r => {
+    if (_labReactFilter.status!=='all' && r.status!==_labReactFilter.status) return false;
+    if (!q) return true;
+    return (r.eq||'').toLowerCase().includes(q) || (r.grp||'').toLowerCase().includes(q);
+  });
+}
+
+function renderReactTable(){
+  const list = _filteredReactions();
+  if (!list.length) return `<tr><td colspan="6" style="text-align:center;color:var(--fg-mute);padding:20px;">Không có phản ứng nào khớp bộ lọc.</td></tr>`;
+  return list.map(r => `
+    <tr>
+      <td style="font-weight:700;font-size:0.87rem;">${escapeHtml(r.eq)}</td>
+      <td><span class="badge off">${escapeHtml(r.type||'—')}</span></td>
+      <td style="font-size:0.82rem;">${escapeHtml(r.grp||'—')}</td>
+      <td style="font-size:0.8rem;max-width:260px;">${escapeHtml(r.obs||'—')}</td>
+      <td><span class="badge ${r.status==='published'?'ok':'off'}">${r.status==='published'?'Đã xuất bản':'Nháp'}</span></td>
+      <td><div style="display:flex;gap:5px;">
+        <button class="tbl-act-btn" onclick="openReactionModal(${r.id})" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn" onclick="toggleReactionStatus(${r.id})" title="${r.status==='published'?'Chuyển về nháp':'Xuất bản'}">
+          <i class="fa-solid ${r.status==='published'?'fa-eye-slash':'fa-upload'}"></i>
+        </button>
+        <button class="tbl-act-btn danger" onclick="deleteReaction(${r.id})" title="Xoá"><i class="fa-solid fa-trash"></i></button>
+      </div></td>
+    </tr>`).join('');
+}
+
+function _renderReactTable(){ document.getElementById('react-tbody').innerHTML = renderReactTable(); }
+
+function _refreshLabCounts(){
+  document.getElementById('tab-chem').innerHTML = `<i class="fa-solid fa-flask"></i> Hóa chất 3D (${_labMolecules.length})`;
+  document.getElementById('tab-react').innerHTML = `<i class="fa-solid fa-bolt"></i> Phản ứng (${_labReactions.length})`;
+}
+
+/* ── Modal: Hóa chất 3D (atoms/bonds nhập dạng JSON, đầy đủ như mô hình gốc) ── */
 function openChemModal(id){
-  const c = id ? _chemicals.find(x=>x.id===id) : null;
+  const c = id ? _labMolecules.find(x=>x.id===id) : null;
   document.getElementById('chem-modal').innerHTML = `
     <div class="mod-head">
-      <div class="mod-title"><i class="fa-solid fa-flask"></i> ${c?'Sửa':'Thêm'} hóa chất</div>
+      <div class="mod-title"><i class="fa-solid fa-flask"></i> ${c?'Sửa':'Thêm'} hóa chất 3D</div>
       <button class="mod-close" onclick="closeModal('chem-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="mod-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="mod-field"><label>Tên hóa chất</label><input id="cm-name" value="${escapeHtml(c?.name||'')}"></div>
-        <div class="mod-field"><label>Khối lượng mol (g/mol)</label><input id="cm-molar" value="${escapeHtml(c?.molar||'')}"></div>
-        <div class="mod-field"><label>Trạng thái</label>
-          <select id="cm-state">
-            ${['rắn','lỏng','khí','khí/lỏng','dung dịch'].map(s=>`<option ${c?.state===s?'selected':''}>${s}</option>`).join('')}
-          </select>
-        </div>
-        <div class="mod-field"><label>Màu đặc trưng</label>
-          <input type="color" id="cm-color" value="${c?.color||'#FFFFFF'}" style="height:42px;cursor:pointer;">
+        <div class="mod-field"><label>Mã hoá chất (chemId, VD: H2SO4)</label><input id="cm-chemid" value="${escapeHtml(c?.chemId||'')}" ${c?'disabled':''}></div>
+        <div class="mod-field"><label>Công thức hiển thị (VD: H₂SO₄)</label><input id="cm-formula" value="${escapeHtml(c?.formula||'')}"></div>
+        <div class="mod-field"><label>Tên tiếng Việt</label><input id="cm-name" value="${escapeHtml(c?.name||'')}"></div>
+        <div class="mod-field"><label>Khối lượng mol (g/mol)</label><input id="cm-molweight" type="number" step="0.01" value="${c?.molWeight??''}"></div>
+        <div class="mod-field"><label>Góc liên kết (độ, để trống nếu không có)</label><input id="cm-bondangle" type="number" step="0.1" value="${c?.bondAngle??''}"></div>
+        <div class="mod-field"><label>Phân cực?</label>
+          <select id="cm-polar"><option value="false" ${!c?.polar?'selected':''}>Không</option><option value="true" ${c?.polar?'selected':''}>Có</option></select>
         </div>
       </div>
-      <div class="mod-field"><label>Cảnh báo nguy hiểm</label>
-        <select id="cm-hazard">
-          <option value="">Không có</option>
-          <option value="⚠️" ${c?.hazard==='⚠️'?'selected':''}>⚠️ Cần thận trọng</option>
-          <option value="☣️" ${c?.hazard==='☣️'?'selected':''}>☣️ Nguy hiểm cao</option>
+      <div class="mod-field"><label>Mô tả liên kết (VD: 2 liên kết S=O (đôi), 2 liên kết S-OH)</label><input id="cm-bondsdesc" value="${escapeHtml(c?.bondsDesc||'')}"></div>
+      <div class="mod-field"><label>Mô tả chi tiết</label><input id="cm-desc" value="${escapeHtml(c?.desc||'')}"></div>
+      <div class="mod-field">
+        <label>Nguyên tử (atoms) — JSON, mỗi nguyên tử {"e":"Ký hiệu","x":0,"y":0,"z":0}</label>
+        <textarea id="cm-atoms" rows="3" style="width:100%;font-family:monospace;font-size:0.8rem;padding:8px;border:1px solid var(--line);border-radius:8px;">${escapeHtml(JSON.stringify(c?.atoms || [{e:'H',x:0,y:0,z:0}]))}</textarea>
+      </div>
+      <div class="mod-field">
+        <label>Liên kết (bonds) — JSON, mỗi liên kết [chỉ_số_ngtử_1, chỉ_số_ngtử_2, bậc_liên_kết]</label>
+        <textarea id="cm-bonds" rows="2" style="width:100%;font-family:monospace;font-size:0.8rem;padding:8px;border:1px solid var(--line);border-radius:8px;">${escapeHtml(JSON.stringify(c?.bonds || []))}</textarea>
+      </div>
+      <div class="mod-field"><label>Trạng thái</label>
+        <select id="cm-status">
+          <option value="draft" ${c?.status==='draft'||!c?'selected':''}>Bản nháp (chưa hiện cho học sinh)</option>
+          <option value="published" ${c?.status==='published'?'selected':''}>Xuất bản (hiện ngay trong lab)</option>
         </select>
       </div>
-      <div class="mod-field"><label>Ghi chú</label><input id="cm-note" value="${escapeHtml(c?.note||'')}"></div>
     </div>
     <div class="mod-foot">
       <button class="mod-btn mod-btn-ghost" onclick="closeModal('chem-modal-overlay')">Hủy</button>
-      <button class="mod-btn mod-btn-primary" onclick="saveChem('${c?.id||''}')">
+      <button class="mod-btn mod-btn-primary" onclick="saveChem(${c?c.id:'null'})">
         <i class="fa-solid fa-floppy-disk"></i> Lưu
       </button>
     </div>`;
   openModal('chem-modal-overlay');
 }
 
-function saveChem(id){
-  const obj = {
-    id: id || 'c'+Date.now(),
-    name:   document.getElementById('cm-name').value.trim(),
-    molar:  document.getElementById('cm-molar').value.trim(),
-    state:  document.getElementById('cm-state').value,
-    color:  document.getElementById('cm-color').value,
-    hazard: document.getElementById('cm-hazard').value,
-    note:   document.getElementById('cm-note').value.trim(),
+async function saveChem(id){
+  let atoms, bonds;
+  try { atoms = JSON.parse(document.getElementById('cm-atoms').value); }
+  catch(e){ alert('Danh sách nguyên tử (atoms) không phải JSON hợp lệ.'); return; }
+  try { bonds = JSON.parse(document.getElementById('cm-bonds').value); }
+  catch(e){ alert('Danh sách liên kết (bonds) không phải JSON hợp lệ.'); return; }
+
+  const payload = {
+    chemId: document.getElementById('cm-chemid').value.trim(),
+    formula: document.getElementById('cm-formula').value.trim(),
+    name: document.getElementById('cm-name').value.trim(),
+    molWeight: document.getElementById('cm-molweight').value ? parseFloat(document.getElementById('cm-molweight').value) : null,
+    bondAngle: document.getElementById('cm-bondangle').value ? parseFloat(document.getElementById('cm-bondangle').value) : null,
+    polar: document.getElementById('cm-polar').value === 'true',
+    bondsDesc: document.getElementById('cm-bondsdesc').value.trim(),
+    desc: document.getElementById('cm-desc').value.trim(),
+    atoms, bonds,
+    status: document.getElementById('cm-status').value,
   };
-  if (!obj.name) { alert('Vui lòng nhập tên hóa chất.'); return; }
-  if (id) { const i = _chemicals.findIndex(x=>x.id===id); if(i>=0) _chemicals[i]=obj; }
-  else _chemicals.push(obj);
-  document.getElementById('chem-grid').innerHTML = renderChemGrid();
-  closeModal('chem-modal-overlay');
-  // Update tab count
-  document.getElementById('tab-chem').innerHTML = `<i class="fa-solid fa-flask"></i> Hóa chất (${_chemicals.length})`;
+  if (!payload.chemId || !payload.name || !payload.formula) { alert('Vui lòng nhập mã, tên và công thức hoá chất.'); return; }
+  if (!Array.isArray(atoms) || !atoms.length) { alert('Cần ít nhất 1 nguyên tử.'); return; }
+
+  try {
+    if (id) {
+      const updated = await _labApi(`/api/admin/lab-molecules/${id}`, { method:'PUT', body: JSON.stringify(payload) });
+      const i = _labMolecules.findIndex(x=>x.id===id); if (i>=0) _labMolecules[i]=updated;
+    } else {
+      const created = await _labApi('/api/admin/lab-molecules', { method:'POST', body: JSON.stringify(payload) });
+      _labMolecules.unshift(created);
+    }
+    _renderChemGrid(); _refreshLabCounts();
+    closeModal('chem-modal-overlay');
+  } catch (e) { alert('Lỗi: ' + e.message); }
 }
 
-function deleteChem(id){
-  if (!confirm('Xóa hóa chất này?')) return;
-  _chemicals = _chemicals.filter(x=>x.id!==id);
-  document.getElementById('chem-grid').innerHTML = renderChemGrid();
-  document.getElementById('tab-chem').innerHTML = `<i class="fa-solid fa-flask"></i> Hóa chất (${_chemicals.length})`;
+async function toggleChemStatus(id){
+  const c = _labMolecules.find(x=>x.id===id); if (!c) return;
+  const newStatus = c.status==='published' ? 'draft' : 'published';
+  try {
+    const updated = await _labApi(`/api/admin/lab-molecules/${id}`, { method:'PUT', body: JSON.stringify({status:newStatus}) });
+    const i = _labMolecules.findIndex(x=>x.id===id); if (i>=0) _labMolecules[i]=updated;
+    _renderChemGrid();
+  } catch (e) { alert('Lỗi: ' + e.message); }
 }
 
+async function deleteChem(id){
+  if (!confirm('Xóa hóa chất này? Học sinh sẽ không còn thấy mô hình 3D này trong lab.')) return;
+  try {
+    await _labApi(`/api/admin/lab-molecules/${id}`, { method:'DELETE' });
+    _labMolecules = _labMolecules.filter(x=>x.id!==id);
+    _renderChemGrid(); _refreshLabCounts();
+  } catch (e) { alert('Lỗi: ' + e.message); }
+}
+
+/* ── Modal: Phản ứng hoá học ── */
 function openReactionModal(id){
-  const r = id ? _reactions.find(x=>x.id===id) : null;
+  const r = id ? _labReactions.find(x=>x.id===id) : null;
   document.getElementById('react-modal').innerHTML = `
     <div class="mod-head">
       <div class="mod-title"><i class="fa-solid fa-bolt"></i> ${r?'Sửa':'Thêm'} phản ứng</div>
       <button class="mod-close" onclick="closeModal('react-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="mod-body">
-      <div class="mod-field"><label>Chất phản ứng (VD: KMnO₄ + HCl)</label><input id="rm-reactants" value="${escapeHtml(r?.reactants||'')}"></div>
-      <div class="mod-field"><label>Sản phẩm (VD: KCl + MnCl₂ + Cl₂↑ + H₂O)</label><input id="rm-products" value="${escapeHtml(r?.products||'')}"></div>
+      <div class="mod-field"><label>Phương trình (VD: Fe + S →(t°) FeS)</label><input id="rm-eq" value="${escapeHtml(r?.eq||'')}"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="mod-field"><label>Loại phản ứng</label>
-          <select id="rm-type">
-            ${['oxi hóa-khử','trao đổi','thế','phân hủy','kết hợp','trung hòa'].map(t=>`<option ${r?.type===t?'selected':''}>${t}</option>`).join('')}
-          </select>
-        </div>
-        <div class="mod-field"><label>pH môi trường</label>
-          <select id="rm-ph">
-            ${['acid','base','neutral'].map(p=>`<option ${r?.ph===p?'selected':''}>${p}</option>`).join('')}
-          </select>
-        </div>
-        <div class="mod-field"><label>Thay đổi màu dung dịch</label><input id="rm-color" value="${escapeHtml(r?.color||'')}"></div>
-        <div class="mod-field"><label>Khí sinh ra (để trống nếu không có)</label><input id="rm-gas" value="${escapeHtml(r?.gas||'')}"></div>
+        <div class="mod-field"><label>Loại phản ứng</label><input id="rm-type" placeholder="VD: Sinh khí, Kết tủa, Đổi màu..." value="${escapeHtml(r?.type||'')}"></div>
+        <div class="mod-field"><label>Nhóm phân loại</label><input id="rm-grp" placeholder="VD: Axit / halogen" value="${escapeHtml(r?.grp||'')}"></div>
+        <div class="mod-field"><label>Điều kiện phản ứng</label><input id="rm-conditions" value="${escapeHtml(r?.conditions||'')}"></div>
+        <div class="mod-field"><label>Dụng cụ cần dùng</label><input id="rm-tools" value="${escapeHtml(r?.tools||'')}"></div>
       </div>
-      <div class="mod-field"><label>Kết tủa (để trống nếu không có)</label><input id="rm-precip" value="${escapeHtml(r?.precip||'')}"></div>
+      <div class="mod-field"><label>Các bước tiến hành</label><input id="rm-steps" value="${escapeHtml(r?.steps||'')}"></div>
+      <div class="mod-field"><label>Hiện tượng quan sát được</label><input id="rm-obs" value="${escapeHtml(r?.obs||'')}"></div>
+      <div class="mod-field"><label>Sản phẩm</label><input id="rm-product" value="${escapeHtml(r?.product||'')}"></div>
+      <div class="mod-field"><label>Trạng thái</label>
+        <select id="rm-status">
+          <option value="draft" ${r?.status==='draft'||!r?'selected':''}>Bản nháp (chưa hiện cho học sinh)</option>
+          <option value="published" ${r?.status==='published'?'selected':''}>Xuất bản (hiện ngay trong lab)</option>
+        </select>
+      </div>
     </div>
     <div class="mod-foot">
       <button class="mod-btn mod-btn-ghost" onclick="closeModal('react-modal-overlay')">Hủy</button>
-      <button class="mod-btn mod-btn-primary" onclick="saveReaction('${r?.id||''}')">
+      <button class="mod-btn mod-btn-primary" onclick="saveReaction(${r?r.id:'null'})">
         <i class="fa-solid fa-floppy-disk"></i> Lưu phản ứng
       </button>
     </div>`;
   openModal('react-modal-overlay');
 }
 
-function saveReaction(id){
-  const obj = {
-    id: id || 'r'+Date.now(),
-    reactants: document.getElementById('rm-reactants').value.trim(),
-    products:  document.getElementById('rm-products').value.trim(),
-    type:      document.getElementById('rm-type').value,
-    ph:        document.getElementById('rm-ph').value,
-    color:     document.getElementById('rm-color').value.trim(),
-    gas:       document.getElementById('rm-gas').value.trim(),
-    precip:    document.getElementById('rm-precip').value.trim(),
+async function saveReaction(id){
+  const payload = {
+    eq: document.getElementById('rm-eq').value.trim(),
+    type: document.getElementById('rm-type').value.trim(),
+    grp: document.getElementById('rm-grp').value.trim(),
+    conditions: document.getElementById('rm-conditions').value.trim(),
+    tools: document.getElementById('rm-tools').value.trim(),
+    steps: document.getElementById('rm-steps').value.trim(),
+    obs: document.getElementById('rm-obs').value.trim(),
+    product: document.getElementById('rm-product').value.trim(),
+    status: document.getElementById('rm-status').value,
   };
-  if (!obj.reactants || !obj.products) { alert('Vui lòng nhập chất phản ứng và sản phẩm.'); return; }
-  if (id) { const i = _reactions.findIndex(x=>x.id===id); if(i>=0) _reactions[i]=obj; }
-  else _reactions.push(obj);
-  document.getElementById('react-tbody').innerHTML = renderReactTable();
-  closeModal('react-modal-overlay');
-  document.getElementById('tab-react').innerHTML = `<i class="fa-solid fa-bolt"></i> Phản ứng (${_reactions.length})`;
+  if (!payload.eq) { alert('Vui lòng nhập phương trình phản ứng.'); return; }
+
+  try {
+    if (id) {
+      const updated = await _labApi(`/api/admin/lab-reactions/${id}`, { method:'PUT', body: JSON.stringify(payload) });
+      const i = _labReactions.findIndex(x=>x.id===id); if (i>=0) _labReactions[i]=updated;
+    } else {
+      const created = await _labApi('/api/admin/lab-reactions', { method:'POST', body: JSON.stringify(payload) });
+      _labReactions.unshift(created);
+    }
+    _renderReactTable(); _refreshLabCounts();
+    closeModal('react-modal-overlay');
+  } catch (e) { alert('Lỗi: ' + e.message); }
 }
 
-function deleteReaction(id){
-  if (!confirm('Xóa phản ứng này?')) return;
-  _reactions = _reactions.filter(x=>x.id!==id);
-  document.getElementById('react-tbody').innerHTML = renderReactTable();
-  document.getElementById('tab-react').innerHTML = `<i class="fa-solid fa-bolt"></i> Phản ứng (${_reactions.length})`;
+async function toggleReactionStatus(id){
+  const r = _labReactions.find(x=>x.id===id); if (!r) return;
+  const newStatus = r.status==='published' ? 'draft' : 'published';
+  try {
+    const updated = await _labApi(`/api/admin/lab-reactions/${id}`, { method:'PUT', body: JSON.stringify({status:newStatus}) });
+    const i = _labReactions.findIndex(x=>x.id===id); if (i>=0) _labReactions[i]=updated;
+    _renderReactTable();
+  } catch (e) { alert('Lỗi: ' + e.message); }
+}
+
+async function deleteReaction(id){
+  if (!confirm('Xóa phản ứng này? Học sinh sẽ không còn thấy phản ứng này trong lab.')) return;
+  try {
+    await _labApi(`/api/admin/lab-reactions/${id}`, { method:'DELETE' });
+    _labReactions = _labReactions.filter(x=>x.id!==id);
+    _renderReactTable(); _refreshLabCounts();
+  } catch (e) { alert('Lỗi: ' + e.message); }
 }
 
 /* ── Thêm CSS cho Lab module ── */
@@ -3587,10 +3726,9 @@ const labCSS = document.createElement('style');
 labCSS.textContent = `
 .lab-tab{padding:9px 18px;border:none;background:none;font-family:inherit;font-size:0.84rem;font-weight:700;color:var(--fg-soft);cursor:pointer;border-radius:10px;transition:all .15s;display:flex;align-items:center;gap:7px;}
 .lab-tab.active{background:linear-gradient(135deg,var(--cyan),var(--indigo));color:#fff;}
-.chem-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
+.chem-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
 .chem-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;box-shadow:var(--sh-1);transition:transform .15s,box-shadow .15s;}
 .chem-card:hover{transform:translateY(-2px);box-shadow:var(--sh-2);}
-.chem-color-dot{width:36px;height:36px;border-radius:50%;border:2px solid var(--line);margin-bottom:10px;box-shadow:var(--sh-1);}
 .chem-name{font-size:1.1rem;font-weight:800;color:var(--fg);margin-bottom:3px;}
 .chem-meta{font-size:0.75rem;color:var(--fg-mute);font-weight:600;margin-bottom:5px;}
 .chem-note{font-size:0.79rem;color:var(--fg-soft);font-weight:500;line-height:1.45;}
