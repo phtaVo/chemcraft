@@ -207,6 +207,33 @@ def init_db():
                     updated_at  REAL
                 );
                 CREATE INDEX IF NOT EXISTS idx_lab_reactions_status ON lab_reactions(status);
+
+                -- ── Lab 3D: Hóa chất trên KỆ (chemDB trong lab.html) ──────────────
+                -- Danh sách hóa chất thật học sinh chọn để pha trộn trong phòng thí
+                -- nghiệm 3D (~163 chất ban đầu, chia 3 kệ qua cột `cat`: 'don' = đơn
+                -- chất, 'voco' = hợp chất vô cơ, 'huuco' = hợp chất hữu cơ). Khác với
+                -- lab_molecules (mô hình 3D phân tử, tính năng riêng).
+                CREATE TABLE IF NOT EXISTS lab_shelf_chemicals (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chem_id        TEXT UNIQUE NOT NULL,
+                    name           TEXT NOT NULL,
+                    desc           TEXT DEFAULT '',
+                    type           TEXT DEFAULT '',   -- axit | bazo | muoi | oxit | kimloai | huuco | chithi | khác
+                    cat            TEXT DEFAULT 'voco', -- don | voco | huuco — quyết định kệ hiển thị
+                    color          TEXT DEFAULT '#ffffff',
+                    ph             REAL,
+                    solid          INTEGER DEFAULT 0,
+                    is_gas         INTEGER DEFAULT 0,
+                    is_paper       INTEGER DEFAULT 0,
+                    opacity        REAL,
+                    allowed_states TEXT DEFAULT '[]',  -- JSON, VD ["solid","liquid"]
+                    status         TEXT DEFAULT 'draft',
+                    created_by     TEXT DEFAULT '',
+                    created_at     REAL,
+                    updated_at     REAL
+                );
+                CREATE INDEX IF NOT EXISTS idx_lab_shelf_chemicals_status ON lab_shelf_chemicals(status);
+                CREATE INDEX IF NOT EXISTS idx_lab_shelf_chemicals_cat ON lab_shelf_chemicals(cat);
             ''')
             # Migration for DBs created before duration_sec existed on quiz_answers
             # (Quiz Analytics needs real per-question timing — see quiz_answer
