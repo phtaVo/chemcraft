@@ -1253,6 +1253,32 @@
             { id: 'C2H6', name: 'C₂H₆', desc: 'Etan (khí)', type: 'huuco', cat: 'huuco', color: '#ffffff', op: 0.05, isGas: true }
         ];
 
+        // ── Lab 3D: nạp thêm hóa chất trên kệ do admin tạo (lab_bank.py) ─────
+        // chemDB được buildRoomFurnituresAndEquipments() đọc đồng bộ ngay khi
+        // dựng cảnh 3D lúc tải trang, nên phải nạp xong TRƯỚC thời điểm đó —
+        // dùng XHR đồng bộ (chỉ 1 lần, payload nhỏ) thay vì fetch bất đồng bộ
+        // để tránh tình trạng race condition (kệ dựng xong trước khi có dữ liệu).
+        (function loadAdminShelfChemicals(){
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', '/api/lab/shelf-chemicals', false); // false = đồng bộ
+                xhr.send(null);
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    const data = JSON.parse(xhr.responseText);
+                    (data.chemicals || []).forEach(c => {
+                        if (!chemDB.some(x => x.id === c.chemId)) {
+                            chemDB.push({
+                                id: c.chemId, name: c.name, desc: c.desc, type: c.type,
+                                cat: c.cat, color: c.color, ph: c.ph, solid: c.solid,
+                                isGas: c.isGas, isPaper: c.isPaper, op: c.opacity,
+                                allowedStates: c.allowedStates,
+                            });
+                        }
+                    });
+                }
+            } catch (e) { /* im lặng bỏ qua — lab vẫn chạy với danh sách có sẵn */ }
+        })();
+
         // Trạng thái mặc định + danh sách các trạng thái cho phép (để chọn khi thêm)
         function getDefaultState(chem) {
             if (chem.isGas) return 'gas';
