@@ -3477,7 +3477,7 @@ function _renderLabBody(){
         <button class="mod-btn mod-btn-primary" onclick="openReactionModal()"><i class="fa-solid fa-plus"></i> Thêm phản ứng</button>
       </div>
       <div class="a-table-wrap"><table class="a-table">
-        <thead><tr><th>Phương trình</th><th>Loại</th><th>Nhóm</th><th>Hiện tượng</th><th>Trạng thái</th><th></th></tr></thead>
+        <thead><tr><th>Phương trình</th><th>Loại</th><th>Nhóm</th><th>Hiện tượng</th><th>Chạy 3D?</th><th>Trạng thái</th><th></th></tr></thead>
         <tbody id="react-tbody">${renderReactTable()}</tbody>
       </table></div>
     </div>
@@ -3545,40 +3545,36 @@ function _renderShelfGrid(){ document.getElementById('shelf-grid').innerHTML = r
 
 function openShelfModal(id){
   const c = id ? _labShelfChems.find(x=>x.id===id) : null;
+  const states = c?.allowedStates || [];
   document.getElementById('shelf-modal').innerHTML = `
     <div class="mod-head">
-      <div class="mod-title"><i class="fa-solid fa-boxes-stacked"></i> ${c?'Sửa':'Thêm'} hóa chất lên kệ</div>
+      <div class="mod-title"><i class="fa-solid fa-boxes-stacked"></i> ${c?'Sửa':'Thêm'} hóa chất</div>
       <button class="mod-close" onclick="closeModal('shelf-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="mod-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="mod-field"><label>Mã hoá chất (chemId, VD: CuSO4)</label><input id="sm-chemid" value="${escapeHtml(c?.chemId||'')}" ${c?'disabled':''}></div>
-        <div class="mod-field"><label>Tên hiển thị (VD: CuSO₄)</label><input id="sm-name" value="${escapeHtml(c?.name||'')}"></div>
-        <div class="mod-field"><label>Kệ</label>
-          <select id="sm-cat">
-            <option value="don" ${c?.cat==='don'?'selected':''}>Kệ đơn chất</option>
-            <option value="voco" ${!c||c?.cat==='voco'?'selected':''}>Kệ hợp chất vô cơ</option>
-            <option value="huuco" ${c?.cat==='huuco'?'selected':''}>Kệ hợp chất hữu cơ</option>
-          </select>
-        </div>
-        <div class="mod-field"><label>Loại (type)</label>
-          <select id="sm-type">
-            ${['axit','bazo','muoi','oxit','kimloai','huuco','chithi','khác'].map(t=>`<option ${c?.type===t?'selected':''}>${t}</option>`).join('')}
-          </select>
-        </div>
-        <div class="mod-field"><label>Màu chai</label><input type="color" id="sm-color" value="${c?.color||'#ffffff'}" style="height:42px;cursor:pointer;"></div>
-        <div class="mod-field"><label>pH (để trống nếu không áp dụng)</label><input id="sm-ph" type="number" step="0.1" value="${c?.ph??''}"></div>
+        <div class="mod-field"><label>Mã hoá chất</label><input id="sm-chemid" placeholder="VD: CuSO4" value="${escapeHtml(c?.chemId||'')}" ${c?'disabled':''}></div>
+        <div class="mod-field"><label>Tên hiển thị</label><input id="sm-name" placeholder="VD: CuSO₄" value="${escapeHtml(c?.name||'')}"></div>
       </div>
-      <div class="mod-field"><label>Mô tả</label><input id="sm-desc" value="${escapeHtml(c?.desc||'')}"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-solid" ${c?.solid?'checked':''}> Chất rắn</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-gas" ${c?.isGas?'checked':''}> Chất khí</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-paper" ${c?.isPaper?'checked':''}> Giấy chỉ thị</label>
+      <div class="mod-field"><label>Loại</label>
+        <select id="sm-type">
+          ${['axit','bazo','muoi','oxit','kimloai','huuco','chithi','khác'].map(t=>`<option ${c?.type===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="mod-field"><label>Mô tả</label>
+        <textarea id="sm-desc" rows="2" placeholder="VD: Đồng Sunfat, dung dịch màu xanh lam đặc trưng. Dùng trong các phản ứng trao đổi với bazơ, kim loại mạnh hơn Cu..." style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;">${escapeHtml(c?.desc||'')}</textarea>
+      </div>
+      <div class="mod-field"><label>Trạng thái vật lý (học sinh có thể chọn khi thêm vào cốc)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-solid" ${states.includes('solid')?'checked':''}> Rắn</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-liquid" ${states.includes('liquid')?'checked':''}> Lỏng</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-gas" ${states.includes('gas')?'checked':''}> Khí</label>
+        </div>
       </div>
       <div class="mod-field"><label>Trạng thái</label>
         <select id="sm-status">
           <option value="draft" ${c?.status==='draft'||!c?'selected':''}>Bản nháp (chưa hiện cho học sinh)</option>
-          <option value="published" ${c?.status==='published'?'selected':''}>Xuất bản (hiện ngay trên kệ)</option>
+          <option value="published" ${c?.status==='published'?'selected':''}>Xuất bản (đưa vào phòng lab)</option>
         </select>
       </div>
     </div>
@@ -3592,17 +3588,19 @@ function openShelfModal(id){
 }
 
 async function saveShelfChem(id){
+  const allowedStates = [];
+  if (document.getElementById('sm-solid').checked) allowedStates.push('solid');
+  if (document.getElementById('sm-liquid').checked) allowedStates.push('liquid');
+  if (document.getElementById('sm-gas').checked) allowedStates.push('gas');
+
   const payload = {
     chemId: document.getElementById('sm-chemid').value.trim(),
     name: document.getElementById('sm-name').value.trim(),
-    cat: document.getElementById('sm-cat').value,
     type: document.getElementById('sm-type').value,
-    color: document.getElementById('sm-color').value,
-    ph: document.getElementById('sm-ph').value ? parseFloat(document.getElementById('sm-ph').value) : null,
     desc: document.getElementById('sm-desc').value.trim(),
-    solid: document.getElementById('sm-solid').checked,
-    isGas: document.getElementById('sm-gas').checked,
-    isPaper: document.getElementById('sm-paper').checked,
+    solid: allowedStates.includes('solid'),
+    isGas: allowedStates.includes('gas'),
+    allowedStates,
     status: document.getElementById('sm-status').value,
   };
   if (!payload.chemId || !payload.name) { alert('Vui lòng nhập mã và tên hoá chất.'); return; }
@@ -3683,13 +3681,14 @@ function _filteredReactions(){
 
 function renderReactTable(){
   const list = _filteredReactions();
-  if (!list.length) return `<tr><td colspan="6" style="text-align:center;color:var(--fg-mute);padding:20px;">Không có phản ứng nào khớp bộ lọc.</td></tr>`;
+  if (!list.length) return `<tr><td colspan="7" style="text-align:center;color:var(--fg-mute);padding:20px;">Không có phản ứng nào khớp bộ lọc.</td></tr>`;
   return list.map(r => `
     <tr>
       <td style="font-weight:700;font-size:0.87rem;">${escapeHtml(r.eq)}</td>
       <td><span class="badge off">${escapeHtml(r.type||'—')}</span></td>
       <td style="font-size:0.82rem;">${escapeHtml(r.grp||'—')}</td>
       <td style="font-size:0.8rem;max-width:260px;">${escapeHtml(r.obs||'—')}</td>
+      <td>${r.participants && r.participants.length ? '<span class="badge ok" title="Có chất tham gia — chạy animation thật trong lab"><i class="fa-solid fa-cube"></i> Chạy 3D</span>' : '<span class="badge off" title="Chỉ hiển thị dạng thẻ nhiệm vụ">Thẻ nhiệm vụ</span>'}</td>
       <td><span class="badge ${r.status==='published'?'ok':'off'}">${r.status==='published'?'Đã xuất bản':'Nháp'}</span></td>
       <td><div style="display:flex;gap:5px;">
         <button class="tbl-act-btn" onclick="openReactionModal(${r.id})" title="Sửa"><i class="fa-solid fa-pen"></i></button>
@@ -3809,24 +3808,49 @@ async function deleteChem(id){
 }
 
 /* ── Modal: Phản ứng hoá học ── */
+let _rmParticipants = [];
+
+function _chemOptionsHtml(selectedId){
+  const all = [..._labShelfChems.map(c=>({id:c.chemId,name:c.name})), ..._labMolecules.map(c=>({id:c.chemId,name:c.formula}))];
+  const seen = new Set();
+  const uniq = all.filter(c => c.id && !seen.has(c.id) && seen.add(c.id));
+  uniq.sort((a,b)=>a.id.localeCompare(b.id));
+  return `<option value="">— chọn hoá chất —</option>` +
+    uniq.map(c => `<option value="${escapeHtml(c.id)}" ${c.id===selectedId?'selected':''}>${escapeHtml(c.id)} (${escapeHtml(c.name||'')})</option>`).join('');
+}
+
 function openReactionModal(id){
   const r = id ? _labReactions.find(x=>x.id===id) : null;
+  _rmParticipants = r?.participants?.length ? r.participants.map(p=>({...p})) : [{chemId:'',catalyst:false},{chemId:'',catalyst:false}];
+
   document.getElementById('react-modal').innerHTML = `
     <div class="mod-head">
       <div class="mod-title"><i class="fa-solid fa-bolt"></i> ${r?'Sửa':'Thêm'} phản ứng</div>
       <button class="mod-close" onclick="closeModal('react-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="mod-body">
-      <div class="mod-field"><label>Phương trình (VD: Fe + S →(t°) FeS)</label><input id="rm-eq" value="${escapeHtml(r?.eq||'')}"></div>
+      <div class="mod-field"><label>Phương trình phản ứng</label><input id="rm-eq" placeholder="VD: Fe + S →(t°) FeS" value="${escapeHtml(r?.eq||'')}"></div>
+
+      <div class="mod-field">
+        <label>Chất tham gia phản ứng (bao gồm cả chất xúc tác nếu có)</label>
+        <div id="rm-participants-list"></div>
+        <button type="button" class="mod-btn mod-btn-ghost" style="margin-top:8px;font-size:0.8rem;padding:6px 12px;" onclick="_rmAddParticipant()"><i class="fa-solid fa-plus"></i> Thêm chất</button>
+      </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div class="mod-field"><label>Loại phản ứng</label><input id="rm-type" placeholder="VD: Sinh khí, Kết tủa, Đổi màu..." value="${escapeHtml(r?.type||'')}"></div>
         <div class="mod-field"><label>Nhóm phân loại</label><input id="rm-grp" placeholder="VD: Axit / halogen" value="${escapeHtml(r?.grp||'')}"></div>
-        <div class="mod-field"><label>Điều kiện phản ứng</label><input id="rm-conditions" value="${escapeHtml(r?.conditions||'')}"></div>
-        <div class="mod-field"><label>Dụng cụ cần dùng</label><input id="rm-tools" value="${escapeHtml(r?.tools||'')}"></div>
       </div>
-      <div class="mod-field"><label>Các bước tiến hành</label><input id="rm-steps" value="${escapeHtml(r?.steps||'')}"></div>
-      <div class="mod-field"><label>Hiện tượng quan sát được</label><input id="rm-obs" value="${escapeHtml(r?.obs||'')}"></div>
-      <div class="mod-field"><label>Sản phẩm</label><input id="rm-product" value="${escapeHtml(r?.product||'')}"></div>
+
+      <div class="mod-field"><label>Điều kiện phản ứng</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="rm-needsheat" ${r?.needsHeat?'checked':''}> Cần đun nóng để phản ứng xảy ra</label>
+      </div>
+
+      <div class="mod-field"><label style="font-weight:800;">Mô tả phản ứng (chạy 3D)</label></div>
+      ${_rmPhaseBlock('before', 'Trước phản ứng', r?.beforeColor, r?.beforePhenomenon)}
+      ${_rmPhaseBlock('during', 'Đang phản ứng', r?.duringColor, r?.duringPhenomenon)}
+      ${_rmPhaseBlock('after', 'Sau phản ứng', r?.afterColor, r?.afterPhenomenon)}
+
       <div class="mod-field"><label>Trạng thái</label>
         <select id="rm-status">
           <option value="draft" ${r?.status==='draft'||!r?'selected':''}>Bản nháp (chưa hiện cho học sinh)</option>
@@ -3840,22 +3864,74 @@ function openReactionModal(id){
         <i class="fa-solid fa-floppy-disk"></i> Lưu phản ứng
       </button>
     </div>`;
+  _rmRenderParticipants();
   openModal('react-modal-overlay');
 }
 
+function _rmPhaseBlock(phase, label, color, phenomenon){
+  return `
+    <div class="mod-field" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <label style="font-weight:700;">${label}</label>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;margin-top:6px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:0.8rem;color:var(--fg-mute);">Màu:</span>
+          <input type="color" id="rm-${phase}-color" value="${color||'#ffffff'}" style="height:36px;width:56px;cursor:pointer;">
+        </div>
+        <select id="rm-${phase}-pheno">
+          <option value="" ${!phenomenon?'selected':''}>Không có hiện tượng</option>
+          <option value="sủi" ${phenomenon==='sủi'?'selected':''}>Sủi bọt</option>
+          <option value="khí" ${phenomenon==='khí'?'selected':''}>Sinh khí</option>
+          <option value="kết tủa" ${phenomenon==='kết tủa'?'selected':''}>Kết tủa</option>
+        </select>
+      </div>
+    </div>`;
+}
+
+function _rmAddParticipant(){
+  _rmParticipants.push({chemId:'',catalyst:false});
+  _rmRenderParticipants();
+}
+
+function _rmRemoveParticipant(idx){
+  if (_rmParticipants.length <= 2) { alert('Cần ít nhất 2 chất tham gia phản ứng.'); return; }
+  _rmParticipants.splice(idx,1);
+  _rmRenderParticipants();
+}
+
+function _rmRenderParticipants(){
+  const el = document.getElementById('rm-participants-list');
+  if (!el) return;
+  el.innerHTML = _rmParticipants.map((p,idx) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+      <span style="font-size:0.8rem;color:var(--fg-mute);min-width:52px;">Chất ${idx+1}:</span>
+      <select style="flex:1;" onchange="_rmParticipants[${idx}].chemId=this.value">
+        ${_chemOptionsHtml(p.chemId)}
+      </select>
+      <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;white-space:nowrap;">
+        <input type="checkbox" ${p.catalyst?'checked':''} onchange="_rmParticipants[${idx}].catalyst=this.checked"> Xúc tác
+      </label>
+      <button type="button" class="tbl-act-btn danger" onclick="_rmRemoveParticipant(${idx})" title="Xoá"><i class="fa-solid fa-xmark"></i></button>
+    </div>`).join('');
+}
+
 async function saveReaction(id){
+  const participants = _rmParticipants.filter(p => p.chemId);
   const payload = {
     eq: document.getElementById('rm-eq').value.trim(),
     type: document.getElementById('rm-type').value.trim(),
     grp: document.getElementById('rm-grp').value.trim(),
-    conditions: document.getElementById('rm-conditions').value.trim(),
-    tools: document.getElementById('rm-tools').value.trim(),
-    steps: document.getElementById('rm-steps').value.trim(),
-    obs: document.getElementById('rm-obs').value.trim(),
-    product: document.getElementById('rm-product').value.trim(),
+    participants,
+    needsHeat: document.getElementById('rm-needsheat').checked,
+    beforeColor: document.getElementById('rm-before-color').value,
+    beforePhenomenon: document.getElementById('rm-before-pheno').value,
+    duringColor: document.getElementById('rm-during-color').value,
+    duringPhenomenon: document.getElementById('rm-during-pheno').value,
+    afterColor: document.getElementById('rm-after-color').value,
+    afterPhenomenon: document.getElementById('rm-after-pheno').value,
     status: document.getElementById('rm-status').value,
   };
   if (!payload.eq) { alert('Vui lòng nhập phương trình phản ứng.'); return; }
+  if (participants.length < 2) { alert('Cần chọn ít nhất 2 chất tham gia phản ứng.'); return; }
 
   try {
     if (id) {
