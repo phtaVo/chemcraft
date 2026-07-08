@@ -1279,6 +1279,23 @@
             } catch (e) { /* im lặng bỏ qua — lab vẫn chạy với danh sách có sẵn */ }
         })();
 
+        // ── Lab 3D: nạp phản ứng do admin tạo (đầy đủ, dùng cho evaluateReaction()) ──
+        // Khác với REACTIONS (mảng "task cards" hiển thị mô tả, ở cuối file) — đây là
+        // dữ liệu ĐẦY ĐỦ (chất tham gia, điều kiện nhiệt, màu/hiện tượng 3 giai đoạn)
+        // để engine phản ứng 3D (evaluateReaction()) thực sự kích hoạt animation.
+        window._adminReactions = [];
+        (function loadAdminReactionsFull(){
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', '/api/lab/reactions-full', false); // false = đồng bộ
+                xhr.send(null);
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    const data = JSON.parse(xhr.responseText);
+                    window._adminReactions = data.reactions || [];
+                }
+            } catch (e) { /* im lặng bỏ qua */ }
+        })();
+
         // Trạng thái mặc định + danh sách các trạng thái cho phép (để chọn khi thêm)
         function getDefaultState(chem) {
             if (chem.isGas) return 'gas';
@@ -3454,6 +3471,33 @@
             const hasAcid = has('HCl') || has('H2SO4') || has('HNO3') || has('CH3COOH');
             let res = { hasReaction: false, type: 'none', color: '#ffffff', hasSmoke: false, hasLitmus: false, litmusColor: null, litmusText: '', eq: 'Hòa trộn dung dịch', desc: 'Không có hiện tượng hóa học nào rõ rệt xảy ra.' };
 
+            // ── Lab 3D: Phản ứng do admin tạo (lab_bank.py) — kiểm tra TRƯỚC bộ quy
+            // tắc có sẵn, để admin có thể thêm phản ứng mới mà không đụng code cũ.
+            // Khớp khi TẤT CẢ chất tham gia (kể cả xúc tác) đều có trong cốc, và điều
+            // kiện nhiệt độ (needsHeat) khớp với globalIsHeating.
+            if (window._adminReactions && window._adminReactions.length) {
+                const _phenoMap = { 'sủi': 'bubble', 'khí': 'bubble', 'kết tủa': 'precipitate' };
+                for (const ar of window._adminReactions) {
+                    const parts = ar.participants || [];
+                    if (!parts.length) continue;
+                    const allPresent = parts.every(p => has(p.chemId));
+                    const heatOk = !ar.needsHeat || globalIsHeating;
+                    if (allPresent && heatOk) {
+                        res.hasReaction = true;
+                        res.type = _phenoMap[ar.duringPhenomenon] || 'color_change';
+                        res.color = ar.duringColor || '#ffffff';
+                        res.eq = ar.eq || res.eq;
+                        res.desc = ar.desc || `Phản ứng: ${ar.eq}`;
+                        res.beforeColor = ar.beforeColor || null;
+                        res.afterColor = ar.afterColor || null;
+                        res.beforePhenomenon = ar.beforePhenomenon || null;
+                        res.afterPhenomenon = ar.afterPhenomenon || null;
+                        return res;
+                    }
+                }
+            }
+
+
             // ================================================================
             // === BỘ HỖ TRỢ TỰ ĐỘNG SINH CÔNG THỨC MUỐI ĐÚNG (Lab20 v5.1) ====
             // ================================================================
@@ -4410,6 +4454,8 @@
                 _3dBoilRipples = [];
 
                 let baseColor = 0xdddddd;
+                // Lab 3D: hoá chất/phản ứng do admin tạo — áp màu "Trước phản ứng" ngay lập tức
+                if (res.beforeColor) { baseColor = new THREE.Color(res.beforeColor).getHex(); }
                 // Giai đoạn 2: nội suy màu theo nồng độ (đồng bộ với Canvas2D._COLOR_DB)
                 (function(){
                     const _DB3D = {
@@ -4539,6 +4585,11 @@
                             // Generic color_change: animate từ màu hiện tại → màu kết quả
                             endHex = new THREE.Color(res.color).getHex();
                             endOp = 0.7; dur = 3.2; del = 0.6;
+                        } else if (res.afterColor) {
+                            // Lab 3D: phản ứng do admin tạo — chuyển từ màu "Trước" (đã set ở baseColor)
+                            // sang màu "Sau phản ứng" theo đúng cài đặt của admin.
+                            endHex = new THREE.Color(res.afterColor).getHex();
+                            endOp = 0.75; dur = 3.0; del = 0.8;
                         } else if (beakerState.some(i=>i.id==='Phenol')) {
                             let aC3d3 = 0, bC3d3 = 0;
                             beakerState.forEach(it => { if(it.data.type==='axit') aC3d3+=it.amount; if(it.data.type==='bazo') bC3d3+=it.amount; });
