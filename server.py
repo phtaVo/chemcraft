@@ -781,6 +781,18 @@ def public_lab_reactions():
     return jsonify({'reactions': lab_bank.list_reactions(status='published')})
 
 
+# lab.html's evaluateReaction() engine (the code that actually decides what color/
+# bubble/precipitate to show when chemicals are mixed) needs the FULL structured
+# data — participants, heat condition, before/during/after phases — not just the
+# task-card text above. Only reactions with participants defined are returned,
+# since those are the only ones evaluateReaction() can match against.
+@app.route('/api/lab/reactions-full', methods=['GET'])
+def public_lab_reactions_full():
+    reactions = lab_bank.list_reactions(status='published')
+    reactions = [r for r in reactions if r.get('participants')]
+    return jsonify({'reactions': reactions})
+
+
 # Admin: CRUD hoá chất (mô hình 3D) cho tab "Lab 3D" trong trang quản trị.
 @app.route('/api/admin/lab-molecules', methods=['GET'])
 def admin_list_lab_molecules():
@@ -860,8 +872,19 @@ def admin_create_lab_reaction():
     body = request.get_json(silent=True) or {}
     eq = (body.get('eq') or '').strip()
     status = body.get('status') or 'draft'
+    participants = body.get('participants') or []
+    _PHENOMENA = ('', 'sủi', 'khí', 'kết tủa')
+
     if not eq:
         return jsonify({'error': 'Vui lòng nhập phương trình phản ứng.'}), 400
+    if not isinstance(participants, list) or len(participants) < 2:
+        return jsonify({'error': 'Cần ít nhất 2 chất tham gia phản ứng.'}), 400
+    for p in participants:
+        if not isinstance(p, dict) or not (p.get('chemId') or '').strip():
+            return jsonify({'error': 'Mỗi chất tham gia cần chọn một hoá chất hợp lệ.'}), 400
+    for key in ('beforePhenomenon', 'duringPhenomenon', 'afterPhenomenon'):
+        if body.get(key, '') not in _PHENOMENA:
+            return jsonify({'error': f'Hiện tượng không hợp lệ: {body.get(key)!r}'}), 400
     if status not in ('draft', 'published'):
         status = 'draft'
 
@@ -869,6 +892,10 @@ def admin_create_lab_reaction():
         eq, type_=body.get('type', ''), conditions=body.get('conditions', ''),
         tools=body.get('tools', ''), steps=body.get('steps', ''), obs=body.get('obs', ''),
         product=body.get('product', ''), grp=body.get('grp', ''),
+        participants=participants, needs_heat=bool(body.get('needsHeat')),
+        before_color=body.get('beforeColor', '#ffffff'), before_phenomenon=body.get('beforePhenomenon', ''),
+        during_color=body.get('duringColor', '#ffffff'), during_phenomenon=body.get('duringPhenomenon', ''),
+        after_color=body.get('afterColor', '#ffffff'), after_phenomenon=body.get('afterPhenomenon', ''),
         status=status, created_by=session['username'],
     )
     return jsonify(lab_bank.get_reaction(rid)), 201
@@ -883,8 +910,14 @@ def admin_update_lab_reaction(rid):
     body = request.get_json(silent=True) or {}
     if 'status' in body and body['status'] not in ('draft', 'published'):
         return jsonify({'error': 'Trạng thái không hợp lệ.'}), 400
+    if 'participants' in body:
+        parts = body['participants']
+        if not isinstance(parts, list) or len(parts) < 2:
+            return jsonify({'error': 'Cần ít nhất 2 chất tham gia phản ứng.'}), 400
     fields = {k: v for k, v in body.items()
-              if k in ('eq', 'type', 'conditions', 'tools', 'steps', 'obs', 'product', 'grp', 'status')}
+              if k in ('eq', 'type', 'conditions', 'tools', 'steps', 'obs', 'product', 'grp', 'status',
+                        'participants', 'needsHeat', 'beforeColor', 'beforePhenomenon',
+                        'duringColor', 'duringPhenomenon', 'afterColor', 'afterPhenomenon')}
     lab_bank.update_reaction(rid, **fields)
     return jsonify(lab_bank.get_reaction(rid))
 
@@ -923,22 +956,21 @@ def admin_create_lab_shelf_chemical():
     body = request.get_json(silent=True) or {}
     chem_id = (body.get('chemId') or '').strip()
     name = (body.get('name') or '').strip()
-    cat = (body.get('cat') or '').strip()
     status = body.get('status') or 'draft'
 
     if not chem_id or not name:
         return jsonify({'error': 'Vui lòng nhập mã hoá chất và tên.'}), 400
-    if cat not in ('don', 'voco', 'huuco'):
-        return jsonify({'error': 'Kệ (cat) phải là một trong: don, voco, huuco.'}), 400
     if status not in ('draft', 'published'):
         status = 'draft'
 
     try:
+        # Hóa chất mới đi thẳng vào máy cấp hóa chất (tìm được qua toàn bộ chemDB),
+        # không cần gán lên kệ vật lý cụ thể — nên cat để trống ('').
         sid = lab_bank.create_shelf_chemical(
-            chem_id, name, cat, desc=body.get('desc', ''), type_=body.get('type', ''),
-            color=body.get('color', '#ffffff'), ph=body.get('ph'), solid=bool(body.get('solid')),
-            is_gas=bool(body.get('isGas')), is_paper=bool(body.get('isPaper')),
-            opacity=body.get('opacity'), allowed_states=body.get('allowedStates'),
+            chem_id, name, cat='', desc=body.get('desc', ''), type_=body.get('type', ''),
+            color='#ffffff', ph=None, solid=bool(body.get('solid')),
+            is_gas=bool(body.get('isGas')), is_paper=False,
+            opacity=None, allowed_states=body.get('allowedStates'),
             status=status, created_by=session['username'],
         )
     except Exception:
