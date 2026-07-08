@@ -35,6 +35,9 @@ if _seeded_molecules:
 _seeded_reactions = lab_bank.seed_default_reactions()
 if _seeded_reactions:
     print(f'📦 Seeded {_seeded_reactions} legacy reactions into lab_reactions table.')
+_seeded_shelf_chems = lab_bank.seed_default_shelf_chemicals()
+if _seeded_shelf_chems:
+    print(f'📦 Seeded {_seeded_shelf_chems} legacy shelf chemicals into lab_shelf_chemicals table.')
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
@@ -893,6 +896,78 @@ def admin_delete_lab_reaction(rid):
     ok = lab_bank.delete_reaction(rid)
     if not ok:
         return jsonify({'error': 'Không tìm thấy phản ứng.'}), 404
+    return jsonify({'ok': True})
+
+
+## ── Lab 3D: Hóa chất trên KỆ (chemDB) ───────────────────────────────────────
+# Public: lab.html gọi ĐỒNG BỘ (XHR) lúc dựng cảnh 3D lúc tải trang, để hóa
+# chất admin thêm xuất hiện ngay trên kệ cùng lượt tải, không cần load 2 lần.
+@app.route('/api/lab/shelf-chemicals', methods=['GET'])
+def public_lab_shelf_chemicals():
+    return jsonify({'chemicals': lab_bank.list_shelf_chemicals(status='published')})
+
+
+# Admin: CRUD hóa chất trên kệ cho tab "Lab 3D" trong trang quản trị.
+@app.route('/api/admin/lab-shelf-chemicals', methods=['GET'])
+def admin_list_lab_shelf_chemicals():
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    return jsonify({'chemicals': lab_bank.list_shelf_chemicals()})
+
+
+@app.route('/api/admin/lab-shelf-chemicals', methods=['POST'])
+def admin_create_lab_shelf_chemical():
+    session = _require_admin()
+    if not session:
+        return jsonify({'error': 'unauthorized'}), 401
+    body = request.get_json(silent=True) or {}
+    chem_id = (body.get('chemId') or '').strip()
+    name = (body.get('name') or '').strip()
+    cat = (body.get('cat') or '').strip()
+    status = body.get('status') or 'draft'
+
+    if not chem_id or not name:
+        return jsonify({'error': 'Vui lòng nhập mã hoá chất và tên.'}), 400
+    if cat not in ('don', 'voco', 'huuco'):
+        return jsonify({'error': 'Kệ (cat) phải là một trong: don, voco, huuco.'}), 400
+    if status not in ('draft', 'published'):
+        status = 'draft'
+
+    try:
+        sid = lab_bank.create_shelf_chemical(
+            chem_id, name, cat, desc=body.get('desc', ''), type_=body.get('type', ''),
+            color=body.get('color', '#ffffff'), ph=body.get('ph'), solid=bool(body.get('solid')),
+            is_gas=bool(body.get('isGas')), is_paper=bool(body.get('isPaper')),
+            opacity=body.get('opacity'), allowed_states=body.get('allowedStates'),
+            status=status, created_by=session['username'],
+        )
+    except Exception:
+        return jsonify({'error': 'Mã hoá chất đã tồn tại hoặc dữ liệu không hợp lệ.'}), 400
+    return jsonify(lab_bank.get_shelf_chemical(sid)), 201
+
+
+@app.route('/api/admin/lab-shelf-chemicals/<int:sid>', methods=['PUT'])
+def admin_update_lab_shelf_chemical(sid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    if not lab_bank.get_shelf_chemical(sid):
+        return jsonify({'error': 'Không tìm thấy hoá chất.'}), 404
+    body = request.get_json(silent=True) or {}
+    if 'status' in body and body['status'] not in ('draft', 'published'):
+        return jsonify({'error': 'Trạng thái không hợp lệ.'}), 400
+    if 'cat' in body and body['cat'] not in ('don', 'voco', 'huuco'):
+        return jsonify({'error': 'Kệ (cat) phải là một trong: don, voco, huuco.'}), 400
+    lab_bank.update_shelf_chemical(sid, **body)
+    return jsonify(lab_bank.get_shelf_chemical(sid))
+
+
+@app.route('/api/admin/lab-shelf-chemicals/<int:sid>', methods=['DELETE'])
+def admin_delete_lab_shelf_chemical(sid):
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    ok = lab_bank.delete_shelf_chemical(sid)
+    if not ok:
+        return jsonify({'error': 'Không tìm thấy hoá chất.'}), 404
     return jsonify({'ok': True})
 
 
