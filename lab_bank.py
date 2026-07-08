@@ -267,3 +267,136 @@ def delete_reaction(rid: int) -> bool:
     with db.tx() as conn:
         cur = conn.execute('DELETE FROM lab_reactions WHERE id = ?', (rid,))
         return cur.rowcount > 0
+
+
+# ── Hóa chất trên kệ Lab 3D (chemDB trong lab.html) ─────────────────────────
+# Đây mới là danh sách hóa chất THẬT mà học sinh nhìn thấy và chọn để pha
+# trộn trong phòng thí nghiệm 3D (~163 chất, chia 3 kệ: đơn chất / hợp chất vô
+# cơ / hợp chất hữu cơ) — khác với LAB_MOLECULE_DATA (mô hình 3D phân tử, chỉ
+# 13 chất, dùng cho tính năng xem cấu trúc phân tử riêng). Admin thêm hóa chất
+# ở đây là thêm chai mới lên kệ, học sinh dùng được ngay trong phản ứng.
+_SEED_SHELF_CHEMICALS_JSON = r'''[{"id":"HCl","name":"HCl","desc":"Axit Clohidric","type":"axit","cat":"voco","color":"#ffffff","ph":1,"allowedStates":["liquid","gas"]},{"id":"H2SO4","name":"H₂SO₄","desc":"Axit Sunfuric","type":"axit","cat":"voco","color":"#ffffff","ph":1},{"id":"HNO3","name":"HNO₃","desc":"Axit Nitric","type":"axit","cat":"voco","color":"#ffffe0","ph":1},{"id":"H2CO3","name":"H₂CO₃","desc":"Axit Cacbonic","type":"axit","cat":"voco","color":"#ffffff","ph":4},{"id":"H3PO4","name":"H₃PO₄","desc":"Axit Photphoric","type":"axit","cat":"voco","color":"#ffffff","ph":2},{"id":"HF","name":"HF","desc":"Axit Flohidric","type":"axit","cat":"voco","color":"#ffffff","ph":3},{"id":"HClO","name":"HClO","desc":"Axit Hipoclorơ","type":"axit","cat":"voco","color":"#fffde7","ph":4},{"id":"NaOH","name":"NaOH","desc":"Natri Hidroxit","type":"bazo","cat":"voco","color":"#ffffff","solid":true,"ph":14,"allowedStates":["solid","liquid"]},{"id":"KOH","name":"KOH","desc":"Kali Hidroxit","type":"bazo","cat":"voco","color":"#ffffff","solid":true,"ph":14,"allowedStates":["solid","liquid"]},{"id":"CaOH2","name":"Ca(OH)₂","desc":"Canxi Hidroxit","type":"bazo","cat":"voco","color":"#f5f5f5","solid":true,"ph":12,"allowedStates":["solid","liquid"]},{"id":"BaOH2","name":"Ba(OH)₂","desc":"Bari Hidroxit","type":"bazo","cat":"voco","color":"#ffffff","solid":true,"ph":13,"allowedStates":["solid","liquid"]},{"id":"NH3","name":"NH₃","desc":"Amoniac","type":"bazo","cat":"voco","color":"#ffffff","ph":11,"allowedStates":["liquid","gas"]},{"id":"MgOH2","name":"Mg(OH)₂","desc":"Magie Hidroxit","type":"bazo","cat":"voco","color":"#ffffff","solid":true,"ph":10},{"id":"AlOH3","name":"Al(OH)₃","desc":"Nhôm Hidroxit","type":"bazo","cat":"voco","color":"#f8f9fa","solid":true,"ph":9},{"id":"FeOH3","name":"Fe(OH)₃","desc":"Sắt(III) Hidroxit","type":"bazo","cat":"voco","color":"#b85c2c","solid":true,"ph":9},{"id":"NaCl","name":"NaCl","desc":"Natri Clorua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"Na2CO3","name":"Na₂CO₃","desc":"Natri Cacbonat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":11,"allowedStates":["solid","liquid"]},{"id":"NaHCO3","name":"NaHCO₃","desc":"Baking Soda","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":9,"allowedStates":["solid","liquid"]},{"id":"AgNO3","name":"AgNO₃","desc":"Bạc Nitrat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"Ag2O","name":"Ag₂O","desc":"Bạc(I) Oxit","type":"oxit","cat":"voco","color":"#3a3a3a","solid":true,"ph":8,"allowedStates":["solid"]},{"id":"CuSO4","name":"CuSO₄","desc":"Đồng Sunfat","type":"muoi","cat":"voco","color":"#00bfff","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"FeSO4","name":"FeSO₄","desc":"Sắt(II) Sunfat","type":"muoi","cat":"voco","color":"#a8e6cf","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"FeCl3","name":"FeCl₃","desc":"Sắt(III) Clorua","type":"muoi","cat":"voco","color":"#d4a373","solid":true,"ph":3,"allowedStates":["solid","liquid"]},{"id":"BaCl2","name":"BaCl₂","desc":"Bari Clorua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"CaCO3","name":"CaCO₃","desc":"Đá vôi","type":"muoi","cat":"voco","color":"#f5f5f5","solid":true,"ph":7},{"id":"KMnO4","name":"KMnO₄","desc":"Thuốc tím","type":"muoi","cat":"voco","color":"#4a148c","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"KCl","name":"KCl","desc":"Kali Clorua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"KI","name":"KI","desc":"Kali Iotua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"KBr","name":"KBr","desc":"Kali Bromua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"NaBr","name":"NaBr","desc":"Natri Bromua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"NaI","name":"NaI","desc":"Natri Iotua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"Na2SO4","name":"Na₂SO₄","desc":"Natri Sunfat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"K2SO4","name":"K₂SO₄","desc":"Kali Sunfat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"CaCl2","name":"CaCl₂","desc":"Canxi Clorua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"MgCl2","name":"MgCl₂","desc":"Magie Clorua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":6,"allowedStates":["solid","liquid"]},{"id":"MgSO4","name":"MgSO₄","desc":"Magie Sunfat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":6,"allowedStates":["solid","liquid"]},{"id":"ZnSO4","name":"ZnSO₄","desc":"Kẽm Sunfat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"ZnCl2","name":"ZnCl₂","desc":"Kẽm Clorua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"PbNO32","name":"Pb(NO₃)₂","desc":"Chì(II) Nitrat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":4,"allowedStates":["solid","liquid"]},{"id":"KNO3","name":"KNO₃","desc":"Kali Nitrat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"NaNO3","name":"NaNO₃","desc":"Natri Nitrat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"NH4Cl","name":"NH₄Cl","desc":"Amoni Clorua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"NH4NO3","name":"NH₄NO₃","desc":"Amoni Nitrat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"Na2S","name":"Na₂S","desc":"Natri Sunfua","type":"muoi","cat":"voco","color":"#fff8e1","solid":true,"ph":12,"allowedStates":["solid","liquid"]},{"id":"Na2SO3","name":"Na₂SO₃","desc":"Natri Sunfit","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":9,"allowedStates":["solid","liquid"]},{"id":"NaClO","name":"NaClO","desc":"Nước Javen","type":"muoi","cat":"voco","color":"#fffde7","ph":11},{"id":"K2CrO4","name":"K₂CrO₄","desc":"Kali Cromat","type":"muoi","cat":"voco","color":"#fff176","solid":true,"ph":9,"allowedStates":["solid","liquid"]},{"id":"K2Cr2O7","name":"K₂Cr₂O₇","desc":"Kali Đicromat","type":"muoi","cat":"voco","color":"#ff6f00","solid":true,"ph":4,"allowedStates":["solid","liquid"]},{"id":"FeCl2","name":"FeCl₂","desc":"Sắt(II) Clorua","type":"muoi","cat":"voco","color":"#a5d6a7","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"CaO","name":"CaO","desc":"Vôi sống","type":"khác","cat":"voco","color":"#fafafa","solid":true},{"id":"CaC2","name":"CaC₂","desc":"Đất đèn","type":"khác","cat":"voco","color":"#5d4037","solid":true},{"id":"CuO","name":"CuO","desc":"Đồng(II) Oxit","type":"khác","cat":"voco","color":"#1a1a1a","solid":true},{"id":"Fe2O3","name":"Fe₂O₃","desc":"Sắt(III) Oxit","type":"khác","cat":"voco","color":"#7b2d1a","solid":true},{"id":"MnO2","name":"MnO₂","desc":"Mangan Đioxit","type":"khác","cat":"voco","color":"#1c1c1c","solid":true},{"id":"H2O","name":"Nước Cất","desc":"H₂O","type":"khác","cat":"voco","color":"#ffffff","ph":7,"allowedStates":["liquid","gas"]},{"id":"CO2","name":"CO₂ (Khí)","desc":"Cacbonic","type":"khác","cat":"voco","color":"#ffffff","op":0.05,"isGas":true},{"id":"NH3g","name":"NH₃ (Khí)","desc":"Amoniac khí","type":"khác","cat":"voco","color":"#ffffff","op":0.05,"isGas":true},{"id":"H2S","name":"H₂S (Khí)","desc":"Hiđro Sunfua","type":"khác","cat":"voco","color":"#fff9c4","op":0.05,"isGas":true},{"id":"SO2","name":"SO₂ (Khí)","desc":"Lưu huỳnh Đioxit","type":"khác","cat":"voco","color":"#fffde7","op":0.08,"isGas":true},{"id":"Phenol","name":"Phenolphtalein","desc":"Chỉ thị (Hữu cơ)","type":"chithi","cat":"huuco","color":"#ffffff","ph":7,"allowedStates":["liquid"]},{"id":"MethylO","name":"Methyl Orange","desc":"Chỉ thị Cam","type":"chithi","cat":"voco","color":"#ff9800","isPaper":true},{"id":"QuyTim","name":"Giấy Quỳ Tím","desc":"Hộp que thử","type":"chithi","cat":"voco","color":"#9d00ff","isPaper":true},{"id":"pHPaper","name":"Giấy pH","desc":"Cuộn giấy pH","type":"chithi","cat":"voco","color":"#ffeb3b","isPaper":true},{"id":"Zn","name":"Kẽm (Zn)","desc":"Kim loại viên","type":"kimloai","cat":"don","color":"#b0bec5","solid":true},{"id":"Fe","name":"Sắt (Fe)","desc":"Bột sắt","type":"kimloai","cat":"don","color":"#455a64","solid":true},{"id":"Cu","name":"Đồng (Cu)","desc":"Phôi đồng","type":"kimloai","cat":"don","color":"#d84315","solid":true},{"id":"Al","name":"Nhôm (Al)","desc":"Bột nhôm","type":"kimloai","cat":"don","color":"#eceff1","solid":true},{"id":"Mg","name":"Magiê (Mg)","desc":"Sợi Magiê","type":"kimloai","cat":"don","color":"#cfd8dc","solid":true},{"id":"Na","name":"Natri (Na)","desc":"Kim loại kiềm","type":"kimloai","cat":"don","color":"#cfd8dc","solid":true},{"id":"K","name":"Kali (K)","desc":"Kim loại kiềm","type":"kimloai","cat":"don","color":"#b0bec5","solid":true},{"id":"Ca","name":"Canxi (Ca)","desc":"Kim loại kiềm thổ","type":"kimloai","cat":"don","color":"#e0e0e0","solid":true},{"id":"Ag","name":"Bạc (Ag)","desc":"Kim loại quý","type":"kimloai","cat":"don","color":"#e0e0e0","solid":true},{"id":"Pb","name":"Chì (Pb)","desc":"Kim loại nặng","type":"kimloai","cat":"don","color":"#78909c","solid":true},{"id":"Sn","name":"Thiếc (Sn)","desc":"Kim loại","type":"kimloai","cat":"don","color":"#cfd8dc","solid":true},{"id":"S","name":"Lưu huỳnh (S)","desc":"Bột S","type":"khác","cat":"don","color":"#ffff00","solid":true},{"id":"P","name":"Photpho đỏ (P)","desc":"Bột P","type":"khác","cat":"don","color":"#b71c1c","solid":true},{"id":"C","name":"Cacbon (C)","desc":"Bột than","type":"khác","cat":"don","color":"#212121","solid":true},{"id":"I2","name":"Iot (I₂)","desc":"Tinh thể tím đen","type":"khác","cat":"don","color":"#4a148c","solid":true,"allowedStates":["solid","gas"]},{"id":"Br2","name":"Brom (Br₂)","desc":"Lỏng nâu đỏ","type":"khác","cat":"don","color":"#8d4a2a","op":0.7,"allowedStates":["liquid","gas"]},{"id":"O2","name":"O₂ (Khí)","desc":"Oxy","type":"khác","cat":"don","color":"#ffffff","op":0.05,"isGas":true},{"id":"H2","name":"H₂ (Khí)","desc":"Hidro","type":"khác","cat":"don","color":"#ffffff","op":0.05,"isGas":true},{"id":"Cl2","name":"Cl₂ (Khí)","desc":"Khí Clo","type":"khác","cat":"don","color":"#ccff90","op":0.4,"isGas":true},{"id":"N2","name":"N₂ (Khí)","desc":"Nitơ","type":"khác","cat":"don","color":"#ffffff","op":0.05,"isGas":true},{"id":"CH4","name":"CH₄","desc":"Metan (khí)","type":"huuco","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true},{"id":"C2H4","name":"C₂H₄","desc":"Etilen (khí)","type":"huuco","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true},{"id":"C2H2","name":"C₂H₂","desc":"Axetilen (khí)","type":"huuco","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true},{"id":"C2H5OH","name":"C₂H₅OH","desc":"Cồn Etylic","type":"huuco","cat":"huuco","color":"#ffffff","ph":7,"allowedStates":["liquid","gas"]},{"id":"CH3OH","name":"CH₃OH","desc":"Metanol","type":"huuco","cat":"huuco","color":"#ffffff","ph":7,"allowedStates":["liquid","gas"]},{"id":"CH3COOH","name":"CH₃COOH","desc":"Axit Axetic (Giấm)","type":"axit","cat":"huuco","color":"#ffffff","ph":3,"allowedStates":["liquid","gas"]},{"id":"HCOOH","name":"HCOOH","desc":"Axit Fomic","type":"axit","cat":"huuco","color":"#ffffff","ph":3,"allowedStates":["liquid","gas"]},{"id":"CH3CHO","name":"CH₃CHO","desc":"Anđehit Axetic","type":"huuco","cat":"huuco","color":"#ffffff","ph":7,"allowedStates":["liquid","gas"]},{"id":"HCHO","name":"HCHO","desc":"Fomanđehit (Fomalin)","type":"huuco","cat":"huuco","color":"#ffffff","ph":7,"allowedStates":["liquid","gas"]},{"id":"C6H6","name":"C₆H₆","desc":"Benzen","type":"huuco","cat":"huuco","color":"#fff9c4","ph":7,"allowedStates":["liquid","gas"]},{"id":"C6H5OH","name":"C₆H₅OH","desc":"Phenol","type":"huuco","cat":"huuco","color":"#ffe0b2","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"C6H5NH2","name":"C₆H₅NH₂","desc":"Anilin","type":"huuco","cat":"huuco","color":"#ffe0b2","ph":8},{"id":"C3H5OH3","name":"C₃H₅(OH)₃","desc":"Glixerol","type":"huuco","cat":"huuco","color":"#ffffff","ph":7},{"id":"CH3COOC2H5","name":"CH₃COOC₂H₅","desc":"Etyl Axetat (Este)","type":"huuco","cat":"huuco","color":"#ffffff","ph":7,"allowedStates":["liquid","gas"]},{"id":"Glucose","name":"Glucozơ","desc":"C₆H₁₂O₆","type":"huuco","cat":"huuco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"Fructose","name":"Fructozơ","desc":"C₆H₁₂O₆","type":"huuco","cat":"huuco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"Sugar","name":"Saccarozơ","desc":"C₁₂H₂₂O₁₁","type":"huuco","cat":"huuco","color":"#ffffff","solid":true,"allowedStates":["solid","liquid"]},{"id":"Starch","name":"Hồ Tinh Bột","desc":"(C₆H₁₀O₅)ₙ","type":"huuco","cat":"huuco","color":"#f5f5f5","op":0.6,"allowedStates":["solid","liquid"]},{"id":"C17H35COOH","name":"C₁₇H₃₅COOH","desc":"Axit Stearic","type":"huuco","cat":"huuco","color":"#fafafa","solid":true,"ph":5},{"id":"Urea","name":"(NH₂)₂CO","desc":"Urê (Phân đạm)","type":"huuco","cat":"huuco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"C2H5ONa","name":"C₂H₅ONa","desc":"Natri Etylat","type":"huuco","cat":"huuco","color":"#ffffff","solid":true,"ph":13},{"id":"Ba","name":"Bari (Ba)","desc":"Kim loại kiềm thổ","type":"kimloai","cat":"don","color":"#cfd8dc","solid":true},{"id":"Mn","name":"Mangan (Mn)","desc":"Kim loại chuyển tiếp","type":"kimloai","cat":"don","color":"#9e9e9e","solid":true},{"id":"Li","name":"Liti (Li)","desc":"Kim loại kiềm nhẹ","type":"kimloai","cat":"don","color":"#eceff1","solid":true},{"id":"Cr","name":"Crom (Cr)","desc":"Kim loại cứng","type":"kimloai","cat":"don","color":"#b0bec5","solid":true},{"id":"Ni","name":"Niken (Ni)","desc":"Kim loại từ tính","type":"kimloai","cat":"don","color":"#cfd8dc","solid":true},{"id":"Hg","name":"Thủy ngân (Hg)","desc":"Lỏng bạc","type":"kimloai","cat":"don","color":"#bdbdbd","op":0.95,"allowedStates":["liquid"]},{"id":"F2","name":"F₂ (Khí)","desc":"Flo - halogen mạnh nhất","type":"khác","cat":"don","color":"#fff59d","op":0.3,"isGas":true},{"id":"HBr","name":"HBr","desc":"Axit Bromhidric","type":"axit","cat":"voco","color":"#ffffff","ph":1,"allowedStates":["liquid","gas"]},{"id":"HI","name":"HI","desc":"Axit Iothidric","type":"axit","cat":"voco","color":"#ffffff","ph":1,"allowedStates":["liquid","gas"]},{"id":"H2SO3","name":"H₂SO₃","desc":"Axit Sunfurơ","type":"axit","cat":"voco","color":"#ffffff","ph":2},{"id":"H2C2O4","name":"H₂C₂O₄","desc":"Axit Oxalic","type":"axit","cat":"voco","color":"#ffffff","solid":true,"ph":2},{"id":"H3BO3","name":"H₃BO₃","desc":"Axit Boric","type":"axit","cat":"voco","color":"#ffffff","solid":true,"ph":5},{"id":"H2SiO3","name":"H₂SiO₃","desc":"Axit Silicic","type":"axit","cat":"voco","color":"#f5f5f5","solid":true,"ph":5},{"id":"FeOH2","name":"Fe(OH)₂","desc":"Sắt(II) Hidroxit","type":"bazo","cat":"voco","color":"#a5d6a7","solid":true,"ph":9},{"id":"CuOH2","name":"Cu(OH)₂","desc":"Đồng(II) Hidroxit","type":"bazo","cat":"voco","color":"#1976d2","solid":true,"ph":9},{"id":"ZnOH2","name":"Zn(OH)₂","desc":"Kẽm Hidroxit (lưỡng tính)","type":"bazo","cat":"voco","color":"#fafafa","solid":true,"ph":8},{"id":"LiOH","name":"LiOH","desc":"Liti Hidroxit","type":"bazo","cat":"voco","color":"#ffffff","solid":true,"ph":13,"allowedStates":["solid","liquid"]},{"id":"SO3","name":"SO₃","desc":"Lưu huỳnh Trioxit","type":"oxit","cat":"voco","color":"#fffde7","op":0.1,"isGas":true},{"id":"Al2O3","name":"Al₂O₃","desc":"Nhôm Oxit (lưỡng tính)","type":"oxit","cat":"voco","color":"#eceff1","solid":true},{"id":"MgO","name":"MgO","desc":"Magie Oxit","type":"oxit","cat":"voco","color":"#fafafa","solid":true},{"id":"ZnO","name":"ZnO","desc":"Kẽm Oxit (lưỡng tính)","type":"oxit","cat":"voco","color":"#ffffff","solid":true},{"id":"CO","name":"CO (Khí)","desc":"Cacbon monoxit","type":"oxit","cat":"voco","color":"#ffffff","op":0.05,"isGas":true},{"id":"NO","name":"NO (Khí)","desc":"Nitơ monoxit","type":"oxit","cat":"voco","color":"#ffffff","op":0.05,"isGas":true},{"id":"NO2","name":"NO₂ (Khí)","desc":"Nitơ đioxit (nâu đỏ)","type":"oxit","cat":"voco","color":"#d84315","op":0.5,"isGas":true},{"id":"Na2O","name":"Na₂O","desc":"Natri Oxit","type":"oxit","cat":"voco","color":"#fafafa","solid":true},{"id":"K2O","name":"K₂O","desc":"Kali Oxit","type":"oxit","cat":"voco","color":"#fafafa","solid":true},{"id":"BaO","name":"BaO","desc":"Bari Oxit","type":"oxit","cat":"voco","color":"#fafafa","solid":true},{"id":"FeO","name":"FeO","desc":"Sắt(II) Oxit","type":"oxit","cat":"voco","color":"#1a1a1a","solid":true},{"id":"Fe3O4","name":"Fe₃O₄","desc":"Oxit sắt từ","type":"oxit","cat":"voco","color":"#212121","solid":true},{"id":"P2O5","name":"P₂O₅","desc":"Photpho pentaoxit","type":"oxit","cat":"voco","color":"#ffffff","solid":true},{"id":"SiO2","name":"SiO₂","desc":"Silic đioxit (cát)","type":"oxit","cat":"voco","color":"#fff9c4","solid":true},{"id":"Cr2O3","name":"Cr₂O₃","desc":"Crom(III) Oxit","type":"oxit","cat":"voco","color":"#2e7d32","solid":true},{"id":"KClO3","name":"KClO₃","desc":"Kali Clorat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":7,"allowedStates":["solid","liquid"]},{"id":"Na3PO4","name":"Na₃PO₄","desc":"Natri Photphat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":12,"allowedStates":["solid","liquid"]},{"id":"CaSO4","name":"CaSO₄","desc":"Thạch cao","type":"muoi","cat":"voco","color":"#fafafa","solid":true,"ph":7},{"id":"Al2SO43","name":"Al₂(SO₄)₃","desc":"Nhôm Sunfat (phèn)","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":4,"allowedStates":["solid","liquid"]},{"id":"NaF","name":"NaF","desc":"Natri Florua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":8,"allowedStates":["solid","liquid"]},{"id":"AlCl3","name":"AlCl₃","desc":"Nhôm Clorua","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":4,"allowedStates":["solid","liquid"]},{"id":"CuCl2","name":"CuCl₂","desc":"Đồng(II) Clorua","type":"muoi","cat":"voco","color":"#a5d6a7","solid":true,"ph":5,"allowedStates":["solid","liquid"]},{"id":"NH4HCO3","name":"NH₄HCO₃","desc":"Amoni Hidrocacbonat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":8,"allowedStates":["solid","liquid"]},{"id":"NaHSO4","name":"NaHSO₄","desc":"Natri Hidrosunfat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":2,"allowedStates":["solid","liquid"]},{"id":"AgCl","name":"AgCl","desc":"Bạc Clorua (kết tủa trắng)","type":"muoi","cat":"voco","color":"#fafafa","solid":true,"ph":7},{"id":"AgBr","name":"AgBr","desc":"Bạc Bromua (vàng nhạt)","type":"muoi","cat":"voco","color":"#fff9c4","solid":true,"ph":7},{"id":"AgI","name":"AgI","desc":"Bạc Iotua (vàng đậm)","type":"muoi","cat":"voco","color":"#fdd835","solid":true,"ph":7},{"id":"BaSO4","name":"BaSO₄","desc":"Bari Sunfat (kết tủa trắng)","type":"muoi","cat":"voco","color":"#fafafa","solid":true,"ph":7},{"id":"NaAlO2","name":"NaAlO₂","desc":"Natri Aluminat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":12,"allowedStates":["solid","liquid"]},{"id":"CH3COONa","name":"CH₃COONa","desc":"Natri Axetat","type":"muoi","cat":"voco","color":"#ffffff","solid":true,"ph":9,"allowedStates":["solid","liquid"]},{"id":"C3H8","name":"C₃H₈","desc":"Propan (khí)","type":"huuco","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true},{"id":"C4H10","name":"C₄H₁₀","desc":"Butan (khí gas)","type":"huuco","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true},{"id":"C3H6","name":"C₃H₆","desc":"Propilen (khí)","type":"huuco","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true},{"id":"C7H8","name":"C₇H₈","desc":"Toluen","type":"huuco","cat":"huuco","color":"#ffffff","ph":7,"allowedStates":["liquid","gas"]},{"id":"CH3COCH3","name":"CH₃COCH₃","desc":"Axeton","type":"huuco","cat":"huuco","color":"#ffffff","ph":7,"allowedStates":["liquid","gas"]},{"id":"Glyxin","name":"NH₂CH₂COOH","desc":"Glyxin (amino axit)","type":"huuco","cat":"huuco","color":"#ffffff","solid":true,"ph":6,"allowedStates":["solid","liquid"]},{"id":"CHCl3","name":"CHCl₃","desc":"Clorofom","type":"huuco","cat":"huuco","color":"#ffffff","op":0.9,"allowedStates":["liquid"]},{"id":"CH2CHCl","name":"CH₂=CHCl","desc":"Vinyl Clorua","type":"huuco","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true},{"id":"C6H5COOH","name":"C₆H₅COOH","desc":"Axit Benzoic","type":"axit","cat":"huuco","color":"#fafafa","solid":true,"ph":3},{"id":"C17H35COONa","name":"C₁₇H₃₅COONa","desc":"Xà phòng (Natri Stearat)","type":"muoi","cat":"huuco","color":"#fffde7","solid":true,"ph":9},{"id":"CH3NH2","name":"CH₃NH₂","desc":"Metylamin (bazơ hữu cơ)","type":"bazo","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true,"ph":11},{"id":"C2H6","name":"C₂H₆","desc":"Etan (khí)","type":"huuco","cat":"huuco","color":"#ffffff","op":0.05,"isGas":true}]'''
+
+
+def _row_to_shelf_chemical(row) -> dict:
+    return {
+        'id': row['id'],
+        'chemId': row['chem_id'],
+        'name': row['name'],
+        'desc': row['desc'],
+        'type': row['type'],
+        'cat': row['cat'],
+        'color': row['color'],
+        'ph': row['ph'],
+        'solid': bool(row['solid']),
+        'isGas': bool(row['is_gas']),
+        'isPaper': bool(row['is_paper']),
+        'opacity': row['opacity'],
+        'allowedStates': json.loads(row['allowed_states'] or '[]'),
+        'status': row['status'],
+        'createdBy': row['created_by'],
+        'createdAt': row['created_at'],
+        'updatedAt': row['updated_at'],
+    }
+
+
+def seed_default_shelf_chemicals() -> int:
+    conn = db.get_conn()
+    try:
+        count = conn.execute('SELECT COUNT(*) c FROM lab_shelf_chemicals').fetchone()['c']
+    finally:
+        conn.close()
+    if count > 0:
+        return 0
+    items = json.loads(_SEED_SHELF_CHEMICALS_JSON)
+    ts = time.time()
+    with db.tx() as conn:
+        for it in items:
+            conn.execute(
+                'INSERT INTO lab_shelf_chemicals (chem_id, name, desc, type, cat, color, ph, '
+                'solid, is_gas, is_paper, opacity, allowed_states, status, created_by, created_at, updated_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (
+                    it['id'], it.get('name', it['id']), it.get('desc', ''), it.get('type', ''),
+                    it.get('cat', 'voco'), it.get('color', '#ffffff'), it.get('ph'),
+                    1 if it.get('solid') else 0, 1 if it.get('isGas') else 0, 1 if it.get('isPaper') else 0,
+                    it.get('op'), json.dumps(it.get('allowedStates', []), ensure_ascii=False),
+                    'published', 'system_seed', ts, ts,
+                )
+            )
+    return len(items)
+
+
+def list_shelf_chemicals(status: str = None) -> list[dict]:
+    conn = db.get_conn()
+    try:
+        if status:
+            rows = conn.execute(
+                'SELECT * FROM lab_shelf_chemicals WHERE status = ? ORDER BY id DESC', (status,)
+            ).fetchall()
+        else:
+            rows = conn.execute('SELECT * FROM lab_shelf_chemicals ORDER BY id DESC').fetchall()
+    finally:
+        conn.close()
+    return [_row_to_shelf_chemical(r) for r in rows]
+
+
+def get_shelf_chemical(sid: int) -> dict | None:
+    conn = db.get_conn()
+    try:
+        row = conn.execute('SELECT * FROM lab_shelf_chemicals WHERE id = ?', (sid,)).fetchone()
+    finally:
+        conn.close()
+    return _row_to_shelf_chemical(row) if row else None
+
+
+def create_shelf_chemical(chem_id: str, name: str, cat: str, desc: str = '', type_: str = '',
+                           color: str = '#ffffff', ph=None, solid: bool = False, is_gas: bool = False,
+                           is_paper: bool = False, opacity=None, allowed_states: list = None,
+                           status: str = 'draft', created_by: str = '') -> int:
+    ts = time.time()
+    with db.tx() as conn:
+        cur = conn.execute(
+            'INSERT INTO lab_shelf_chemicals (chem_id, name, desc, type, cat, color, ph, solid, '
+            'is_gas, is_paper, opacity, allowed_states, status, created_by, created_at, updated_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (chem_id, name, desc, type_, cat, color, ph, 1 if solid else 0, 1 if is_gas else 0,
+             1 if is_paper else 0, opacity, json.dumps(allowed_states or [], ensure_ascii=False),
+             status, created_by, ts, ts)
+        )
+        return cur.lastrowid
+
+
+def update_shelf_chemical(sid: int, **fields) -> bool:
+    existing = get_shelf_chemical(sid)
+    if not existing:
+        return False
+    mapping = {
+        'chemId': 'chem_id', 'name': 'name', 'desc': 'desc', 'type': 'type', 'cat': 'cat',
+        'color': 'color', 'ph': 'ph', 'solid': 'solid', 'isGas': 'is_gas', 'isPaper': 'is_paper',
+        'opacity': 'opacity', 'allowedStates': 'allowed_states', 'status': 'status',
+    }
+    sets, vals = [], []
+    for key, col in mapping.items():
+        if key in fields and fields[key] is not None:
+            v = fields[key]
+            if key in ('solid', 'isGas', 'isPaper'):
+                v = 1 if v else 0
+            elif key == 'allowedStates':
+                v = json.dumps(v, ensure_ascii=False)
+            sets.append(f'{col} = ?')
+            vals.append(v)
+    if not sets:
+        return True
+    sets.append('updated_at = ?')
+    vals.append(time.time())
+    vals.append(sid)
+    with db.tx() as conn:
+        conn.execute(f'UPDATE lab_shelf_chemicals SET {", ".join(sets)} WHERE id = ?', vals)
+    return True
+
+
+def delete_shelf_chemical(sid: int) -> bool:
+    with db.tx() as conn:
+        cur = conn.execute('DELETE FROM lab_shelf_chemicals WHERE id = ?', (sid,))
+        return cur.rowcount > 0
