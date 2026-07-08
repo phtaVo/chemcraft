@@ -3372,10 +3372,12 @@ function _labToken(){ return window.__adminToken || sessionStorage.getItem('cc_a
 
 let _labMolecules = [];
 let _labReactions = [];
+let _labShelfChems = [];
 let _labLoaded = false;
-let _labTab = 'chem';
+let _labTab = 'shelf';
 let _labChemFilter = { search:'', status:'all' };
 let _labReactFilter = { search:'', status:'all', grp:'all' };
+let _labShelfFilter = { search:'', status:'all', cat:'all' };
 
 async function _labApi(path, opts = {}) {
   const res = await fetch(path, {
@@ -3392,15 +3394,17 @@ async function renderLabManage(){
   document.getElementById('page-root').innerHTML = `
     <div class="a-page-head">
       <div><div class="a-page-title">Quản lý Lab 3D</div>
-      <div class="a-page-desc">Thêm hoá chất mới (mô hình 3D) và phản ứng — xuất bản là học sinh dùng được ngay trong lab.</div></div>
+      <div class="a-page-desc">Thêm hoá chất lên kệ, mô hình phân tử 3D và phản ứng — xuất bản là học sinh dùng được ngay trong lab.</div></div>
     </div>
     <div id="lab-page-body"><div class="mod-note"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải dữ liệu Lab 3D...</div></div>
   `;
   try {
-    const [chemData, reactData] = await Promise.all([
+    const [shelfData, chemData, reactData] = await Promise.all([
+      _labApi('/api/admin/lab-shelf-chemicals'),
       _labApi('/api/admin/lab-molecules'),
       _labApi('/api/admin/lab-reactions'),
     ]);
+    _labShelfChems = shelfData.chemicals || [];
     _labMolecules = chemData.molecules || [];
     _labReactions = reactData.reactions || [];
     _labLoaded = true;
@@ -3415,9 +3419,32 @@ async function renderLabManage(){
 function _renderLabBody(){
   const body = document.getElementById('lab-page-body');
   body.innerHTML = `
-    <div style="display:flex;gap:0;margin-bottom:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:4px;width:fit-content;">
-      <button class="lab-tab ${_labTab==='chem'?'active':''}" id="tab-chem" onclick="switchLabTab('chem')"><i class="fa-solid fa-flask"></i> Hóa chất 3D (${_labMolecules.length})</button>
+    <div style="display:flex;gap:0;margin-bottom:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:4px;width:fit-content;flex-wrap:wrap;">
+      <button class="lab-tab ${_labTab==='shelf'?'active':''}" id="tab-shelf" onclick="switchLabTab('shelf')"><i class="fa-solid fa-boxes-stacked"></i> Hóa chất kệ Lab (${_labShelfChems.length})</button>
+      <button class="lab-tab ${_labTab==='chem'?'active':''}" id="tab-chem" onclick="switchLabTab('chem')"><i class="fa-solid fa-cube"></i> Mô hình phân tử 3D (${_labMolecules.length})</button>
       <button class="lab-tab ${_labTab==='react'?'active':''}" id="tab-react" onclick="switchLabTab('react')"><i class="fa-solid fa-bolt"></i> Phản ứng (${_labReactions.length})</button>
+    </div>
+
+    <div id="lab-shelf-panel" style="display:${_labTab==='shelf'?'block':'none'};">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="shelf-search" placeholder="Tìm theo tên, mã, mô tả..." value="${escapeHtml(_labShelfFilter.search)}"
+            oninput="_labShelfFilter.search=this.value; _renderShelfGrid();" style="min-width:220px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;">
+          <select onchange="_labShelfFilter.cat=this.value; _renderShelfGrid();" style="padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;">
+            <option value="all">Tất cả kệ</option>
+            <option value="don">Kệ đơn chất</option>
+            <option value="voco">Kệ hợp chất vô cơ</option>
+            <option value="huuco">Kệ hợp chất hữu cơ</option>
+          </select>
+          <select onchange="_labShelfFilter.status=this.value; _renderShelfGrid();" style="padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:inherit;">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="published">Đã xuất bản</option>
+            <option value="draft">Bản nháp</option>
+          </select>
+        </div>
+        <button class="mod-btn mod-btn-primary" onclick="openShelfModal()"><i class="fa-solid fa-plus"></i> Thêm hóa chất lên kệ</button>
+      </div>
+      <div class="chem-grid" id="shelf-grid">${renderShelfGrid()}</div>
     </div>
 
     <div id="lab-chem-panel" style="display:${_labTab==='chem'?'block':'none'};">
@@ -3431,7 +3458,7 @@ function _renderLabBody(){
             <option value="draft">Bản nháp</option>
           </select>
         </div>
-        <button class="mod-btn mod-btn-primary" onclick="openChemModal()"><i class="fa-solid fa-plus"></i> Thêm hóa chất 3D</button>
+        <button class="mod-btn mod-btn-primary" onclick="openChemModal()"><i class="fa-solid fa-plus"></i> Thêm mô hình phân tử 3D</button>
       </div>
       <div class="chem-grid" id="chem-grid">${renderChemGrid()}</div>
     </div>
@@ -3455,6 +3482,9 @@ function _renderLabBody(){
       </table></div>
     </div>
 
+    <div class="mod-overlay" id="shelf-modal-overlay" onclick="if(event.target===this)closeModal('shelf-modal-overlay')">
+      <div class="mod-panel" id="shelf-modal" style="max-width:560px;"></div>
+    </div>
     <div class="mod-overlay" id="chem-modal-overlay" onclick="if(event.target===this)closeModal('chem-modal-overlay')">
       <div class="mod-panel" id="chem-modal" style="max-width:640px;"></div>
     </div>
@@ -3466,10 +3496,147 @@ function _renderLabBody(){
 
 function switchLabTab(tab){
   _labTab = tab;
+  document.getElementById('lab-shelf-panel').style.display = tab==='shelf'?'block':'none';
   document.getElementById('lab-chem-panel').style.display  = tab==='chem'?'block':'none';
   document.getElementById('lab-react-panel').style.display = tab==='react'?'block':'none';
+  document.getElementById('tab-shelf').classList.toggle('active', tab==='shelf');
   document.getElementById('tab-chem').classList.toggle('active',  tab==='chem');
   document.getElementById('tab-react').classList.toggle('active', tab==='react');
+}
+
+const _CAT_LABEL = { don:'Kệ đơn chất', voco:'Kệ hợp chất vô cơ', huuco:'Kệ hợp chất hữu cơ' };
+
+function _filteredShelfChems(){
+  const q = _labShelfFilter.search.trim().toLowerCase();
+  return _labShelfChems.filter(c => {
+    if (_labShelfFilter.status!=='all' && c.status!==_labShelfFilter.status) return false;
+    if (_labShelfFilter.cat!=='all' && c.cat!==_labShelfFilter.cat) return false;
+    if (!q) return true;
+    return (c.name||'').toLowerCase().includes(q) || (c.chemId||'').toLowerCase().includes(q) || (c.desc||'').toLowerCase().includes(q);
+  });
+}
+
+function renderShelfGrid(){
+  const list = _filteredShelfChems();
+  if (!list.length) return `<div class="mod-note">Không có hóa chất nào khớp bộ lọc.</div>`;
+  return list.map(c => `
+    <div class="chem-card" id="shelf-${c.id}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="chem-color-dot" style="width:22px;height:22px;background:${c.color||'#fff'};border:1px solid var(--line);border-radius:50%;"></div>
+          <div class="chem-name">${escapeHtml(c.name)}</div>
+        </div>
+        <span class="badge ${c.status==='published'?'ok':'off'}">${c.status==='published'?'Đã xuất bản':'Nháp'}</span>
+      </div>
+      <div class="chem-meta">mã: ${escapeHtml(c.chemId)} · ${_CAT_LABEL[c.cat]||c.cat}</div>
+      <div class="chem-meta">${escapeHtml(c.type||'')}${c.ph!=null?' · pH '+c.ph:''}${c.isGas?' · khí':''}${c.solid?' · rắn':''}</div>
+      <div class="chem-note">${escapeHtml(c.desc||'')}</div>
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <button class="tbl-act-btn" onclick="openShelfModal(${c.id})" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn" onclick="toggleShelfStatus(${c.id})" title="${c.status==='published'?'Chuyển về nháp':'Xuất bản'}">
+          <i class="fa-solid ${c.status==='published'?'fa-eye-slash':'fa-upload'}"></i>
+        </button>
+        <button class="tbl-act-btn danger" onclick="deleteShelfChem(${c.id})" title="Xoá"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+function _renderShelfGrid(){ document.getElementById('shelf-grid').innerHTML = renderShelfGrid(); }
+
+function openShelfModal(id){
+  const c = id ? _labShelfChems.find(x=>x.id===id) : null;
+  document.getElementById('shelf-modal').innerHTML = `
+    <div class="mod-head">
+      <div class="mod-title"><i class="fa-solid fa-boxes-stacked"></i> ${c?'Sửa':'Thêm'} hóa chất lên kệ</div>
+      <button class="mod-close" onclick="closeModal('shelf-modal-overlay')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="mod-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="mod-field"><label>Mã hoá chất (chemId, VD: CuSO4)</label><input id="sm-chemid" value="${escapeHtml(c?.chemId||'')}" ${c?'disabled':''}></div>
+        <div class="mod-field"><label>Tên hiển thị (VD: CuSO₄)</label><input id="sm-name" value="${escapeHtml(c?.name||'')}"></div>
+        <div class="mod-field"><label>Kệ</label>
+          <select id="sm-cat">
+            <option value="don" ${c?.cat==='don'?'selected':''}>Kệ đơn chất</option>
+            <option value="voco" ${!c||c?.cat==='voco'?'selected':''}>Kệ hợp chất vô cơ</option>
+            <option value="huuco" ${c?.cat==='huuco'?'selected':''}>Kệ hợp chất hữu cơ</option>
+          </select>
+        </div>
+        <div class="mod-field"><label>Loại (type)</label>
+          <select id="sm-type">
+            ${['axit','bazo','muoi','oxit','kimloai','huuco','chithi','khác'].map(t=>`<option ${c?.type===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="mod-field"><label>Màu chai</label><input type="color" id="sm-color" value="${c?.color||'#ffffff'}" style="height:42px;cursor:pointer;"></div>
+        <div class="mod-field"><label>pH (để trống nếu không áp dụng)</label><input id="sm-ph" type="number" step="0.1" value="${c?.ph??''}"></div>
+      </div>
+      <div class="mod-field"><label>Mô tả</label><input id="sm-desc" value="${escapeHtml(c?.desc||'')}"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-solid" ${c?.solid?'checked':''}> Chất rắn</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-gas" ${c?.isGas?'checked':''}> Chất khí</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;"><input type="checkbox" id="sm-paper" ${c?.isPaper?'checked':''}> Giấy chỉ thị</label>
+      </div>
+      <div class="mod-field"><label>Trạng thái</label>
+        <select id="sm-status">
+          <option value="draft" ${c?.status==='draft'||!c?'selected':''}>Bản nháp (chưa hiện cho học sinh)</option>
+          <option value="published" ${c?.status==='published'?'selected':''}>Xuất bản (hiện ngay trên kệ)</option>
+        </select>
+      </div>
+    </div>
+    <div class="mod-foot">
+      <button class="mod-btn mod-btn-ghost" onclick="closeModal('shelf-modal-overlay')">Hủy</button>
+      <button class="mod-btn mod-btn-primary" onclick="saveShelfChem(${c?c.id:'null'})">
+        <i class="fa-solid fa-floppy-disk"></i> Lưu
+      </button>
+    </div>`;
+  openModal('shelf-modal-overlay');
+}
+
+async function saveShelfChem(id){
+  const payload = {
+    chemId: document.getElementById('sm-chemid').value.trim(),
+    name: document.getElementById('sm-name').value.trim(),
+    cat: document.getElementById('sm-cat').value,
+    type: document.getElementById('sm-type').value,
+    color: document.getElementById('sm-color').value,
+    ph: document.getElementById('sm-ph').value ? parseFloat(document.getElementById('sm-ph').value) : null,
+    desc: document.getElementById('sm-desc').value.trim(),
+    solid: document.getElementById('sm-solid').checked,
+    isGas: document.getElementById('sm-gas').checked,
+    isPaper: document.getElementById('sm-paper').checked,
+    status: document.getElementById('sm-status').value,
+  };
+  if (!payload.chemId || !payload.name) { alert('Vui lòng nhập mã và tên hoá chất.'); return; }
+
+  try {
+    if (id) {
+      const updated = await _labApi(`/api/admin/lab-shelf-chemicals/${id}`, { method:'PUT', body: JSON.stringify(payload) });
+      const i = _labShelfChems.findIndex(x=>x.id===id); if (i>=0) _labShelfChems[i]=updated;
+    } else {
+      const created = await _labApi('/api/admin/lab-shelf-chemicals', { method:'POST', body: JSON.stringify(payload) });
+      _labShelfChems.unshift(created);
+    }
+    _renderShelfGrid(); _refreshLabCounts();
+    closeModal('shelf-modal-overlay');
+  } catch (e) { alert('Lỗi: ' + e.message); }
+}
+
+async function toggleShelfStatus(id){
+  const c = _labShelfChems.find(x=>x.id===id); if (!c) return;
+  const newStatus = c.status==='published' ? 'draft' : 'published';
+  try {
+    const updated = await _labApi(`/api/admin/lab-shelf-chemicals/${id}`, { method:'PUT', body: JSON.stringify({status:newStatus}) });
+    const i = _labShelfChems.findIndex(x=>x.id===id); if (i>=0) _labShelfChems[i]=updated;
+    _renderShelfGrid();
+  } catch (e) { alert('Lỗi: ' + e.message); }
+}
+
+async function deleteShelfChem(id){
+  if (!confirm('Xóa hóa chất này khỏi kệ? Học sinh sẽ không còn thấy chai này trong lab.')) return;
+  try {
+    await _labApi(`/api/admin/lab-shelf-chemicals/${id}`, { method:'DELETE' });
+    _labShelfChems = _labShelfChems.filter(x=>x.id!==id);
+    _renderShelfGrid(); _refreshLabCounts();
+  } catch (e) { alert('Lỗi: ' + e.message); }
 }
 
 function _filteredChems(){
@@ -3537,7 +3704,8 @@ function renderReactTable(){
 function _renderReactTable(){ document.getElementById('react-tbody').innerHTML = renderReactTable(); }
 
 function _refreshLabCounts(){
-  document.getElementById('tab-chem').innerHTML = `<i class="fa-solid fa-flask"></i> Hóa chất 3D (${_labMolecules.length})`;
+  document.getElementById('tab-shelf').innerHTML = `<i class="fa-solid fa-boxes-stacked"></i> Hóa chất kệ Lab (${_labShelfChems.length})`;
+  document.getElementById('tab-chem').innerHTML = `<i class="fa-solid fa-cube"></i> Mô hình phân tử 3D (${_labMolecules.length})`;
   document.getElementById('tab-react').innerHTML = `<i class="fa-solid fa-bolt"></i> Phản ứng (${_labReactions.length})`;
 }
 
