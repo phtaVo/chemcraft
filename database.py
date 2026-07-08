@@ -201,6 +201,16 @@ def init_db():
                     obs         TEXT DEFAULT '',
                     product     TEXT DEFAULT '',
                     grp         TEXT DEFAULT '',
+                    -- ── Dữ liệu có cấu trúc để engine 3D (evaluateReaction()) thực sự
+                    -- kích hoạt animation, thay vì chỉ hiển thị dạng "thẻ nhiệm vụ" ──
+                    participants        TEXT DEFAULT '[]',  -- JSON [{chemId, catalyst}, ...]
+                    needs_heat          INTEGER DEFAULT 0,
+                    before_color        TEXT DEFAULT '#ffffff',
+                    before_phenomenon   TEXT DEFAULT '',     -- 'sủi' | 'khí' | 'kết tủa' | ''
+                    during_color        TEXT DEFAULT '#ffffff',
+                    during_phenomenon   TEXT DEFAULT '',
+                    after_color         TEXT DEFAULT '#ffffff',
+                    after_phenomenon    TEXT DEFAULT '',
                     status      TEXT DEFAULT 'draft',
                     created_by  TEXT DEFAULT '',
                     created_at  REAL,
@@ -242,6 +252,19 @@ def init_db():
             cols = [r['name'] for r in conn.execute('PRAGMA table_info(quiz_answers)').fetchall()]
             if 'duration_sec' not in cols:
                 conn.execute('ALTER TABLE quiz_answers ADD COLUMN duration_sec REAL')
+
+            # Migration: lab_reactions may pre-date the structured participants/phase
+            # columns (added for the Lab 3D reaction engine hookup).
+            react_cols = [r['name'] for r in conn.execute('PRAGMA table_info(lab_reactions)').fetchall()]
+            _new_react_cols = [
+                ('participants', "TEXT DEFAULT '[]'"), ('needs_heat', 'INTEGER DEFAULT 0'),
+                ('before_color', "TEXT DEFAULT '#ffffff'"), ('before_phenomenon', "TEXT DEFAULT ''"),
+                ('during_color', "TEXT DEFAULT '#ffffff'"), ('during_phenomenon', "TEXT DEFAULT ''"),
+                ('after_color', "TEXT DEFAULT '#ffffff'"), ('after_phenomenon', "TEXT DEFAULT ''"),
+            ]
+            for col_name, col_def in _new_react_cols:
+                if col_name not in react_cols:
+                    conn.execute(f'ALTER TABLE lab_reactions ADD COLUMN {col_name} {col_def}')
             conn.commit()
         finally:
             conn.close()
