@@ -63,6 +63,14 @@ def _row_to_reaction(row) -> dict:
         'obs': row['obs'],
         'product': row['product'],
         'grp': row['grp'],
+        'participants': json.loads(row['participants'] or '[]'),
+        'needsHeat': bool(row['needs_heat']),
+        'beforeColor': row['before_color'],
+        'beforePhenomenon': row['before_phenomenon'],
+        'duringColor': row['during_color'],
+        'duringPhenomenon': row['during_phenomenon'],
+        'afterColor': row['after_color'],
+        'afterPhenomenon': row['after_phenomenon'],
         'status': row['status'],
         'createdBy': row['created_by'],
         'createdAt': row['created_at'],
@@ -229,13 +237,22 @@ def get_reaction(rid: int) -> dict | None:
 
 def create_reaction(eq: str, type_: str = '', conditions: str = '', tools: str = '',
                      steps: str = '', obs: str = '', product: str = '', grp: str = '',
+                     participants: list = None, needs_heat: bool = False,
+                     before_color: str = '#ffffff', before_phenomenon: str = '',
+                     during_color: str = '#ffffff', during_phenomenon: str = '',
+                     after_color: str = '#ffffff', after_phenomenon: str = '',
                      status: str = 'draft', created_by: str = '') -> int:
     ts = time.time()
     with db.tx() as conn:
         cur = conn.execute(
             'INSERT INTO lab_reactions (eq, type, conditions, tools, steps, obs, product, grp, '
-            'status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (eq, type_, conditions, tools, steps, obs, product, grp, status, created_by, ts, ts)
+            'participants, needs_heat, before_color, before_phenomenon, during_color, '
+            'during_phenomenon, after_color, after_phenomenon, status, created_by, created_at, updated_at) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (eq, type_, conditions, tools, steps, obs, product, grp,
+             json.dumps(participants or [], ensure_ascii=False), 1 if needs_heat else 0,
+             before_color, before_phenomenon, during_color, during_phenomenon,
+             after_color, after_phenomenon, status, created_by, ts, ts)
         )
         return cur.lastrowid
 
@@ -247,12 +264,21 @@ def update_reaction(rid: int, **fields) -> bool:
     mapping = {
         'eq': 'eq', 'type': 'type', 'conditions': 'conditions', 'tools': 'tools',
         'steps': 'steps', 'obs': 'obs', 'product': 'product', 'grp': 'grp', 'status': 'status',
+        'participants': 'participants', 'needsHeat': 'needs_heat',
+        'beforeColor': 'before_color', 'beforePhenomenon': 'before_phenomenon',
+        'duringColor': 'during_color', 'duringPhenomenon': 'during_phenomenon',
+        'afterColor': 'after_color', 'afterPhenomenon': 'after_phenomenon',
     }
     sets, vals = [], []
     for key, col in mapping.items():
         if key in fields and fields[key] is not None:
+            v = fields[key]
+            if key == 'participants':
+                v = json.dumps(v, ensure_ascii=False)
+            elif key == 'needsHeat':
+                v = 1 if v else 0
             sets.append(f'{col} = ?')
-            vals.append(fields[key])
+            vals.append(v)
     if not sets:
         return True
     sets.append('updated_at = ?')
