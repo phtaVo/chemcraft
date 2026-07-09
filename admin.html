@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChemCraft for Admin — Trung tâm điều hành</title>
+<title>ChemCraft forAdmin — Trung tâm điều hành</title>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -470,8 +470,6 @@ table.a-table{width:100%; border-collapse:collapse;}
         <div class="a-nav-item" data-page="courses"><i class="fa-solid fa-book-open"></i><span>Khóa học &amp; bài học</span></div>
         <div class="a-nav-item" data-page="quiz"><i class="fa-solid fa-list-check"></i><span>Quiz</span></div>
         <div class="a-nav-item" data-page="lab"><i class="fa-solid fa-vial-circle-check"></i><span>Lab 3D<span class="a-nav-badge">CORE</span></span></div>
-        <div class="a-nav-item" data-page="reactions"><i class="fa-solid fa-database"></i><span>DB phản ứng</span></div>
-        <div class="a-nav-item" data-page="media"><i class="fa-solid fa-photo-film"></i><span>Media</span></div>
       </div>
 
       <div class="a-nav-group">
@@ -485,7 +483,6 @@ table.a-table{width:100%; border-collapse:collapse;}
         <div class="a-nav-label">Hệ thống</div>
         <div class="a-nav-item" data-page="notifications"><i class="fa-solid fa-bell"></i><span>Thông báo</span></div>
         <div class="a-nav-item" data-page="roles"><i class="fa-solid fa-user-shield"></i><span>Phân quyền</span></div>
-        <div class="a-nav-item" data-page="logs"><i class="fa-solid fa-clock-rotate-left"></i><span>Nhật ký hệ thống</span></div>
         <div class="a-nav-item" data-page="settings"><i class="fa-solid fa-gear"></i><span>Cài đặt</span></div>
       </div>
     </nav>
@@ -679,18 +676,14 @@ const PAGES = {
   sub:   'Top thí nghiệm • Top Quiz • Top báo cáo lỗi',
   render: () => Rankings.render(),
   },
-  courses:    { title:'Khóa học & bài học', sub:'CRUD chương, bài học, video, PDF, công thức, animation', render: () => renderStub('fa-book-open','Quản lý khóa học',
-      'CRUD đầy đủ cho chương, bài học, video, hình ảnh, file PDF, công thức, animation — kèm trình soạn thảo Rich Text hỗ trợ kéo thả.', ['Rich Text Editor','Kéo thả nội dung','Quản lý chương/bài']) },
+  courses:    { title:'Khóa học & bài học', sub:'CRUD chương, bài học, video, PDF, công thức, animation', render: () => renderStub('fa-book-open','Khóa học & bài học',
+      'CRUD đầy đủ cho chương, bài học, video, hình ảnh, file PDF, công thức, animation — kèm trình soạn thảo Rich Text hỗ trợ kéo thả.', ['Rich Text Editor','Kéo thả nội dung','Quản lý chương/bài'], 'Sớm được phát triển') },
   quiz:       { title:'Quản lý Quiz', sub:'Tạo câu hỏi & phân tích kết quả theo từng câu', render: () => renderStub('fa-list-check','Quản lý Quiz',
       'Tạo trắc nghiệm, điền đáp án, kéo thả, ghép đôi, câu hỏi hình ảnh. Phân tích tỉ lệ đúng/sai theo từng câu, độ khó, thời gian làm bài, tỉ lệ làm lại — để phát hiện câu hỏi quá khó hoặc nội dung chưa rõ.',
       ['Tỉ lệ đúng/sai theo câu','Độ khó','Thời gian làm bài','Tỉ lệ làm lại']) },
   lab:        { title:'Quản lý Lab 3D', sub:'Hóa chất, dụng cụ, phản ứng, mô hình 3D — không cần code', render: () => renderStub('fa-vial-circle-check','Quản lý Lab 3D',
       'Module quan trọng nhất: quản lý hóa chất, dụng cụ, phản ứng, file mô hình 3D, animation, particle, shader và database phản ứng qua giao diện trực quan — admin chỉ cần nhập dữ liệu (hóa chất mới, phản ứng mới, kết tủa, khí, chỉ thị màu, ion màu, dữ liệu pH), hệ thống tự cập nhật, không cần sửa code.',
       ['Hóa chất & dụng cụ','Phản ứng & kết tủa','Chỉ thị màu / pH','Mô hình 3D & shader']) },
-  reactions:  { title:'Cơ sở dữ liệu phản ứng', sub:'Import/Export Excel, kiểm tra & so sánh dữ liệu', render: () => renderStub('fa-database','DB phản ứng',
-      'Đọc trực tiếp từ Excel/Database. Giao diện Import/Export Excel, kiểm tra dữ liệu, cảnh báo trùng lặp, so sánh phiên bản và chỉnh sửa từng phản ứng.', ['Import / Export Excel','Cảnh báo trùng dữ liệu','So sánh phiên bản']) },
-  media:      { title:'Quản lý Media', sub:'Ảnh, video, PDF, mô hình 3D, texture, HDRI, âm thanh', render: () => renderStub('fa-photo-film','Quản lý Media',
-      'Quản lý ảnh, video, PDF, mô hình 3D, texture, HDRI, âm thanh — hỗ trợ upload, preview, version, folder và tag.', ['Upload & Preview','Version & Folder','Gắn Tag']) },
   'ai-analytics': { title:'AI Assistant', sub:'Câu hỏi thật, tần suất sử dụng, từ khóa, phản hồi học sinh', render: () => renderStub('fa-robot','AI Assistant',
       'Tổng hợp câu hỏi thật học sinh đã hỏi AI (giải bài tập + trợ lý AI trong Lab 3D), tên/email người hỏi, tần suất sử dụng, từ khóa phổ biến, và trình soạn email phản hồi.', ['Danh sách câu hỏi thật','Tần suất & từ khóa','Soạn email phản hồi']) },
   'learning-analytics': { title:'Learning Analytics', sub:'User Growth, Retention, Churn, Funnel, Leaderboard', render: () => renderStub('fa-chart-line','Learning Analytics',
@@ -700,9 +693,7 @@ const PAGES = {
       ['Sankey Diagram','Drop-off Analysis','Step Completion']) },
   notifications: { title:'Thông báo', sub:'Danh sách báo cáo lỗi từ học sinh (thời gian thực)', render: () => NotifPage.render() },
   roles:      { title:'Phân quyền', sub:'Super Admin, Admin, Teacher, Content/Lab Manager, Data Analyst', render: () => renderStub('fa-user-shield','Phân quyền',
-      'Quản lý vai trò Super Admin, Admin, Teacher, Content Manager, Lab Manager, Data Analyst — mỗi quyền chỉ truy cập các module được cấp.', ['6 nhóm vai trò','Giới hạn module theo quyền']) },
-  logs:       { title:'Nhật ký hệ thống', sub:'Audit log: ai sửa gì, khi nào, thiết bị, IP', render: () => renderStub('fa-clock-rotate-left','Nhật ký hệ thống',
-      'Lưu lại ai sửa gì, khi nào, từ thiết bị/IP nào, và các lỗi phát sinh — dưới dạng Audit Log đầy đủ.', ['Audit Log','Theo dõi IP/thiết bị','Lịch sử lỗi']) },
+      'Quản lý vai trò Super Admin, Admin, Teacher, Content Manager, Lab Manager, Data Analyst — mỗi quyền chỉ truy cập các module được cấp.', ['6 nhóm vai trò','Giới hạn module theo quyền'], 'Sớm được phát triển') },
   settings:   { title:'Cài đặt', sub:'Cấu hình chung hệ thống Admin', render: () => renderStub('fa-gear','Cài đặt hệ thống',
       'Cấu hình chung cho hệ thống Admin: thông tin nền tảng, tích hợp, sao lưu dữ liệu.', ['Thông tin nền tảng','Tích hợp & API','Sao lưu dữ liệu']) },
 };
@@ -724,14 +715,14 @@ function navigateTo(key){
 /* ════════════════════════════════════════════════════════════
    STUB RENDERER (cho các module sẽ xây tiếp theo)
    ════════════════════════════════════════════════════════════ */
-function renderStub(icon, title, desc, chips){
+function renderStub(icon, title, desc, chips, badgeText){
   document.getElementById('page-root').innerHTML = `
     <div class="stub-wrap">
       <div class="stub-icon"><i class="fa-solid ${icon}"></i></div>
       <h3>${title}</h3>
       <p>${desc}</p>
       <div class="stub-list">${(chips||[]).map(c => `<div class="stub-chip">${c}</div>`).join('')}</div>
-      <div class="stub-badge"><i class="fa-solid fa-hammer"></i> Module sẵn sàng để phát triển tiếp</div>
+      <div class="stub-badge"><i class="fa-solid fa-hammer"></i> ${badgeText || 'Module sẵn sàng để phát triển tiếp'}</div>
     </div>`;
 }
 
@@ -3986,88 +3977,6 @@ labCSS.textContent = `
 .chem-note{font-size:0.79rem;color:var(--fg-soft);font-weight:500;line-height:1.45;}
 `;
 document.head.appendChild(labCSS);
-
-/* ═══════════════════════════════════════════════════════════════
-   MODULE: COURSES (Quản lý khóa học)
-   ═══════════════════════════════════════════════════════════════ */
-PAGES['courses'] = { title:'Khóa học & bài học', sub:'CRUD chương, bài học, video, PDF, công thức', render: renderCourses };
-
-const MOCK_COURSES = [
-  {id:'co1', title:'Hóa học 10', chapters:6, lessons:24, status:'published', updated:'2026-05-10'},
-  {id:'co2', title:'Hóa học 11', chapters:7, lessons:28, status:'published', updated:'2026-05-22'},
-  {id:'co3', title:'Hóa học 12', chapters:8, lessons:32, status:'draft',     updated:'2026-06-01'},
-  {id:'co4', title:'Hóa hữu cơ nâng cao', chapters:4, lessons:16, status:'draft', updated:'2026-06-20'},
-];
-
-function renderCourses(){
-  document.getElementById('page-root').innerHTML = `
-    <div class="a-page-head">
-      <div><div class="a-page-title">Khóa học & bài học</div>
-      <div class="a-page-desc">Quản lý chương, bài học, video, PDF, công thức và animation.</div></div>
-      <button class="mod-btn mod-btn-primary"><i class="fa-solid fa-plus"></i> Thêm khóa học</button>
-    </div>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
-      ${MOCK_COURSES.map(c=>`
-        <div class="kpi-card" style="cursor:pointer;" onclick="renderCourseDetail('${c.id}')">
-          <div class="kpi-top">
-            <div class="kpi-icon" style="background:var(--indigo)"><i class="fa-solid fa-book-open"></i></div>
-            <span class="badge ${c.status==='published'?'ok':'off'}">${c.status==='published'?'Đã xuất bản':'Nháp'}</span>
-          </div>
-          <div style="font-size:1.04rem;font-weight:800;color:var(--fg);margin-top:8px;">${escapeHtml(c.title)}</div>
-          <div style="font-size:0.8rem;color:var(--fg-soft);margin-top:4px;font-weight:600;">
-            ${c.chapters} chương · ${c.lessons} bài học
-          </div>
-          <div style="font-size:0.75rem;color:var(--fg-mute);margin-top:6px;">Cập nhật: ${c.updated}</div>
-          <div style="display:flex;gap:7px;margin-top:12px;" onclick="event.stopPropagation()">
-            <button class="tbl-act-btn" onclick="renderCourseDetail('${c.id}')"><i class="fa-solid fa-eye"></i></button>
-            <button class="tbl-act-btn"><i class="fa-solid fa-pen"></i></button>
-            <button class="tbl-act-btn danger"><i class="fa-solid fa-trash"></i></button>
-          </div>
-        </div>`).join('')}
-    </div>
-
-    <div class="mod-note">
-      Rich Text Editor (Quill/TipTap), kéo thả bài học và upload file sẽ được tích hợp trong phiên bản tiếp theo. Hiện tại có thể quản lý cấu trúc khóa học và trạng thái xuất bản.
-    </div>
-  `;
-}
-
-function renderCourseDetail(id){
-  const c = MOCK_COURSES.find(x=>x.id===id);
-  if (!c) return;
-  const chapters = Array.from({length:c.chapters},(_,i)=>({
-    n:i+1, title:`Chương ${i+1}`, lessons: Math.ceil(c.lessons/c.chapters)
-  }));
-  document.getElementById('page-root').innerHTML = `
-    <button class="mod-btn mod-btn-ghost" onclick="renderCourses()" style="margin-bottom:16px;"><i class="fa-solid fa-arrow-left"></i> Quay lại</button>
-    <div class="a-page-head">
-      <div><div class="a-page-title">${escapeHtml(c.title)}</div>
-      <div class="a-page-desc">${c.chapters} chương · ${c.lessons} bài học · Cập nhật ${c.updated}</div></div>
-      <span class="badge ${c.status==='published'?'ok':'off'}" style="font-size:0.85rem;padding:7px 14px;">${c.status==='published'?'Đã xuất bản':'Nháp'}</span>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      ${chapters.map(ch=>`
-        <div class="panel">
-          <div class="panel-head">
-            <div class="panel-title"><i class="fa-solid fa-folder" style="color:var(--gold);margin-right:8px;"></i>${ch.title}</div>
-            <div style="display:flex;gap:6px;">
-              <button class="tbl-act-btn"><i class="fa-solid fa-plus"></i></button>
-              <button class="tbl-act-btn"><i class="fa-solid fa-pen"></i></button>
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            ${Array.from({length:ch.lessons},(_,j)=>`
-              <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface-2);border-radius:10px;">
-                <i class="fa-solid fa-file-lines" style="color:var(--indigo);font-size:0.85rem;"></i>
-                <span style="flex:1;font-size:0.86rem;font-weight:600;">Bài ${j+1+ch.lessons*(ch.n-1)}: Nội dung bài học</span>
-                <span class="badge ok" style="font-size:0.68rem;">Video</span>
-                <button class="tbl-act-btn"><i class="fa-solid fa-pen"></i></button>
-              </div>`).join('')}
-          </div>
-        </div>`).join('')}
-    </div>`;
-}
 
 /* ─── Settings module ─── */
 PAGES['settings'] = { title:'Cài đặt hệ thống', sub:'Tài khoản admin, cấu hình chung', render: renderSettings };
