@@ -14,6 +14,7 @@ import database as db
 import admin_auth
 import quiz_bank
 import lab_bank
+import firestore_db as fsdb
 
 load_dotenv()
 
@@ -23,9 +24,6 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 db.init_db()
 admin_auth.bootstrap_default_admin()
-_migrated = db.migrate_jsonl_events(os.getenv('EVENT_LOG_PATH', 'events.jsonl'))
-if _migrated:
-    print(f'📦 Migrated {_migrated} legacy events from events.jsonl into SQLite.')
 _seeded_questions = quiz_bank.seed_default_questions()
 if _seeded_questions:
     print(f'📦 Seeded {_seeded_questions} legacy quiz questions into quiz_questions table.')
@@ -38,6 +36,18 @@ if _seeded_reactions:
 _seeded_shelf_chems = lab_bank.seed_default_shelf_chemicals()
 if _seeded_shelf_chems:
     print(f'📦 Seeded {_seeded_shelf_chems} legacy shelf chemicals into lab_shelf_chemicals table.')
+
+# ── Firestore: lưu bền vững toàn bộ dữ liệu tracking (events, ai_*, quiz_*,
+# lab_*) — thay cho phần tương ứng của SQLite, vốn bị xoá sạch mỗi khi Render
+# free tier redeploy/restart. Không crash cả server nếu thiếu cấu hình — chỉ
+# các endpoint tracking sẽ trả lỗi rõ ràng, để /api/admin/quiz-questions,
+# /api/admin-login, v.v. (vẫn dùng SQLite) không bị ảnh hưởng.
+try:
+    fsdb.init()
+    print('✅ Firestore (tracking data) đã kết nối.')
+except Exception as e:
+    print(f'⚠️  Firestore CHƯA sẵn sàng: {e}')
+    print('   → Mọi tính năng thu thập dữ liệu (event, AI chat log, quiz, lab) sẽ lỗi cho tới khi cấu hình xong.')
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
@@ -216,17 +226,7 @@ def chat():
 
     # Ensure a conversation row exists so multi-turn chats are threaded,
     # not just isolated question/answer events like before.
-    with db.tx() as conn:
-        if conversation_id:
-            row = conn.execute('SELECT id FROM ai_conversations WHERE id = ?', (conversation_id,)).fetchone()
-        else:
-            row = None
-        if not row:
-            cur = conn.execute(
-                'INSERT INTO ai_conversations (user_id, ip, started_at, topic) VALUES (?, ?, ?, ?)',
-                (user_id, ip, time.time(), topic)
-            )
-            conversation_id = cur.lastrowid
+    conversation_id = fsdb.create_conversation(user_id, ip, topic, conversation_id)
 
     try:
         last_msg = messages[-1]
@@ -251,12 +251,7 @@ def chat():
                         b64 = data_url.split(',', 1)[1]
                         parts.append({'inlineData': {'mimeType': mime_type, 'data': b64}})
 
-        with db.tx() as conn:
-            conn.execute(
-                'INSERT INTO ai_messages (conversation_id, role, content, has_image, ok, ts) '
-                'VALUES (?, ?, ?, ?, 1, ?)',
-                (conversation_id, 'user', question_text.strip()[:2000], int(has_image), time.time())
-            )
+        fsdb.add_message(conversation_id, 'user', question_text.strip()[:2000], has_image=has_image)
 
         contents = [{'role': 'user', 'parts': parts}]
         full_text, finish_reason = _call_gemini_once(contents, system_prompt)
@@ -276,14 +271,9 @@ def chat():
         with _runtime_lock:
             _runtime['chat_ok'] += 1
 
-        with db.tx() as conn:
-            conn.execute(
-                'INSERT INTO ai_messages (conversation_id, role, content, latency_ms, ok, ts) '
-                'VALUES (?, ?, ?, ?, 1, ?)',
-                (conversation_id, 'model', full_text[:4000], latency_ms, time.time())
-            )
+        fsdb.add_message(conversation_id, 'model', full_text[:4000], latency_ms=latency_ms)
 
-        db.record_event('ai_chat', {
+        fsdb.record_event('ai_chat', {
             'question': question_text.strip()[:500],
             'topic': topic,
             'ok': True,
@@ -298,25 +288,21 @@ def chat():
         with _runtime_lock:
             _runtime['chat_errors'] += 1
             _runtime['gemini_errors'] += 1
-        with db.tx() as conn:
-            conn.execute(
-                'INSERT INTO ai_messages (conversation_id, role, ok, error_msg, ts) VALUES (?, ?, 0, ?, ?)',
-                (conversation_id, 'model', msg, time.time())
-            )
-        db.record_event('ai_error', {'error': msg, 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
+        fsdb.add_message(conversation_id, 'model', ok=False, error_msg=msg)
+        fsdb.record_event('ai_error', {'error': msg, 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
         if msg == 'RATE_LIMIT':
             return jsonify({'error': 'Hệ thống AI đang bận. Vui lòng thử lại sau vài giây.'}), 429
         return jsonify({'error': msg}), 500
     except requests.exceptions.Timeout:
         with _runtime_lock:
             _runtime['chat_errors'] += 1
-        db.record_event('ai_error', {'error': 'timeout', 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
+        fsdb.record_event('ai_error', {'error': 'timeout', 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
         return jsonify({'error': 'Yêu cầu mất quá nhiều thời gian. Vui lòng thử lại.'}), 504
     except Exception as e:
         app.logger.error('Chat error: %s', e)
         with _runtime_lock:
             _runtime['chat_errors'] += 1
-        db.record_event('ai_error', {'error': str(e), 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
+        fsdb.record_event('ai_error', {'error': str(e), 'conversation_id': conversation_id}, user_id=user_id, ip=ip)
         return jsonify({'error': 'Đã xảy ra lỗi. Vui lòng thử lại.'}), 500
 
 
@@ -379,7 +365,7 @@ def admin_send_reply_email():
         app.logger.error('send_admin_email error: %s', e)
         return jsonify({'error': f'Gửi email thất bại: {e}'}), 500
 
-    db.record_event('admin_reply_email_sent', {
+    fsdb.record_event('admin_reply_email_sent', {
         'to': to_email,
         'subject': subject,
         'conversationId': conversation_id,
@@ -424,12 +410,13 @@ def log_event():
 
     user_id = body.get('userId', '')
     payload = {k: v for k, v in body.items() if k not in ('type', 'userId')}
-    db.record_event(ev_type, payload, user_id=user_id, ip=ip)
+    fsdb.record_event(ev_type, payload, user_id=user_id, ip=ip)
 
-    # Structured side-tables for the event types that feed dedicated analytics.
-    # Returns the new row id for session/attempt-opening events so the client
-    # can thread subsequent events (lab_reaction_result, quiz_answer, ...)
-    # back to the right session/attempt — see tracker.js ccLab / ccQuiz.
+    # Structured side-collections for the event types that feed dedicated
+    # analytics. Returns the new Firestore doc id (string) for session/
+    # attempt-opening events so the client can thread subsequent events
+    # (lab_reaction_result, quiz_answer, ...) back to the right session/
+    # attempt — see tracker.js ccLab / ccQuiz.
     new_id = _fanout_structured_tables(ev_type, payload, user_id)
 
     resp = {'ok': True}
@@ -441,56 +428,35 @@ def log_event():
 
 
 def _fanout_structured_tables(ev_type: str, payload: dict, user_id: str):
-    """Write into the typed tables (quiz_attempts, lab_sessions, ...) so
-    analytics queries are simple SQL instead of scanning the generic event
-    log every time. Called synchronously — cheap, single-row inserts.
-    Returns the new row id when the event type opens a session/attempt."""
-    ts = time.time()
-    with db.tx() as conn:
-        if ev_type == 'quiz_start':
-            cur = conn.execute(
-                'INSERT INTO quiz_attempts (user_id, started_at, total_q) VALUES (?, ?, ?)',
-                (user_id, ts, payload.get('totalQuestions'))
+    """Ghi vào các collection Firestore có cấu trúc (quiz_attempts,
+    lab_sessions, ...) để các endpoint phân tích không phải quét toàn bộ
+    `events` mỗi lần. Trả về id document mới (string) khi loại event này mở
+    1 session/attempt mới."""
+    if ev_type == 'quiz_start':
+        return fsdb.create_quiz_attempt(user_id, payload.get('totalQuestions'))
+    elif ev_type == 'quiz_answer':
+        attempt_id = payload.get('attemptId')
+        if attempt_id:
+            fsdb.record_quiz_answer(
+                attempt_id, payload.get('questionId', ''), payload.get('questionText', ''),
+                bool(payload.get('correct')), payload.get('retryCount', 0), payload.get('durationSec')
             )
-            return cur.lastrowid
-        elif ev_type == 'quiz_answer':
-            attempt_id = payload.get('attemptId')
-            if attempt_id:
-                conn.execute(
-                    'INSERT INTO quiz_answers (attempt_id, question_id, question_text, is_correct, '
-                    'retry_count, duration_sec, answered_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    (attempt_id, payload.get('questionId', ''), payload.get('questionText', ''),
-                     int(bool(payload.get('correct'))), payload.get('retryCount', 0),
-                     payload.get('durationSec'), ts)
-                )
-        elif ev_type == 'quiz_complete':
-            attempt_id = payload.get('attemptId')
-            if attempt_id:
-                conn.execute(
-                    'UPDATE quiz_attempts SET finished_at = ?, correct_q = ?, duration_sec = ? WHERE id = ?',
-                    (ts, payload.get('correctCount'), payload.get('durationSec'), attempt_id)
-                )
-        elif ev_type == 'lab_open':
-            cur = conn.execute(
-                'INSERT INTO lab_sessions (user_id, started_at) VALUES (?, ?)', (user_id, ts)
-            )
-            return cur.lastrowid
-        elif ev_type == 'lab_close':
-            session_id = payload.get('sessionId')
-            if session_id:
-                conn.execute(
-                    'UPDATE lab_sessions SET ended_at = ?, duration_sec = ? WHERE id = ?',
-                    (ts, payload.get('durationSec'), session_id)
-                )
-        elif ev_type == 'lab_reaction_result':
-            conn.execute(
-                'INSERT INTO lab_reaction_runs (session_id, user_id, reaction_eq, chemicals, equipment, '
-                'outcome, error_reason, duration_sec, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (payload.get('sessionId', 0), user_id, payload.get('reactionEq', ''),
-                 payload.get('chemicals', '[]'), payload.get('equipment', '[]'),
-                 payload.get('outcome', 'unknown'), payload.get('errorReason'),
-                 payload.get('durationSec'), ts)
-            )
+    elif ev_type == 'quiz_complete':
+        attempt_id = payload.get('attemptId')
+        if attempt_id:
+            fsdb.complete_quiz_attempt(attempt_id, payload.get('correctCount'), payload.get('durationSec'))
+    elif ev_type == 'lab_open':
+        return fsdb.create_lab_session(user_id)
+    elif ev_type == 'lab_close':
+        session_id = payload.get('sessionId')
+        if session_id:
+            fsdb.close_lab_session(session_id, payload.get('durationSec'))
+    elif ev_type == 'lab_reaction_result':
+        fsdb.record_lab_reaction_run(
+            payload.get('sessionId', ''), user_id, payload.get('reactionEq', ''),
+            payload.get('chemicals', '[]'), payload.get('equipment', '[]'),
+            payload.get('outcome', 'unknown'), payload.get('errorReason'), payload.get('durationSec')
+        )
     return None
 
 
@@ -499,7 +465,6 @@ def _fanout_structured_tables(ev_type: str, payload: dict, user_id: str):
 def admin_metrics():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
-    conn = db.get_conn()
     now = time.time()
 
     with _runtime_lock:
@@ -507,43 +472,41 @@ def admin_metrics():
         chat_total, chat_ok, chat_errors = _runtime['chat_total'], _runtime['chat_ok'], _runtime['chat_errors']
         gemini_errors, rate_limit_hits = _runtime['gemini_errors'], _runtime['rate_limit_hits']
 
-    ai_chats      = db.count_events('ai_chat')
-    lessons_done  = db.count_events('lesson_complete')
-    quiz_done     = db.count_events('quiz_complete')
-    lab_open      = db.count_events('lab_open')
-    lab_completed = db.count_events('lab_complete')
+    ai_chats      = fsdb.count_events('ai_chat')
+    lessons_done  = fsdb.count_events('lesson_complete')
+    quiz_done     = fsdb.count_events('quiz_complete')
+    lab_open      = fsdb.count_events('lab_open')
+    lab_completed = fsdb.count_events('lab_complete')
     lab_completion = round(100 * lab_completed / max(1, lab_open)) if lab_open else 0
-    events_total  = conn.execute('SELECT COUNT(*) c FROM events').fetchone()['c']
 
-    daily_activity = db.bucket_by_day('page_view', 7)
-    daily_ai       = db.bucket_by_day('ai_chat', 7)
-    daily_lab      = db.bucket_by_day('lab_open', 7)
-    daily_lesson   = db.bucket_by_day('lesson_complete', 7)
+    all_evs = fsdb.all_events()
+    events_total = len(all_evs)
+
+    daily_activity = fsdb.bucket_by_day('page_view', 7)
+    daily_ai       = fsdb.bucket_by_day('ai_chat', 7)
+    daily_lab      = fsdb.bucket_by_day('lab_open', 7)
+    daily_lesson   = fsdb.bucket_by_day('lesson_complete', 7)
 
     donut = {'Bài học': lessons_done, 'Quiz': quiz_done, 'Lab 3D': lab_open, 'AI': ai_chats}
 
-    # Top AI questions — real query against ai_messages, not the old
-    # event-payload scan.
-    q_rows = conn.execute(
-        "SELECT content, COUNT(*) c FROM ai_messages WHERE role='user' AND length(content) > 8 "
-        "GROUP BY content ORDER BY c DESC LIMIT 10"
-    ).fetchall()
-    top_questions = [(r['content'][:120], r['c']) for r in q_rows]
+    # Top AI questions — quét ai_messages (role='user'), gộp theo nội dung.
+    user_msgs = fsdb.list_all_messages(role='user')
+    content_counter = Counter(m['content'] for m in user_msgs if m.get('content') and len(m['content']) > 8)
+    top_questions = content_counter.most_common(10)
+    top_questions = [(c[:120], n) for c, n in top_questions]
 
     stop = set('và của là ở có cho một các những này đó khi được với thì để làm như từ trong về hay hoặc '
                'thế nào tại sao gì bao nhiêu the a an of is are and or to in on for how why what which'.split())
     words = Counter()
-    for r in conn.execute("SELECT content FROM ai_messages WHERE role='user'").fetchall():
-        for w in (r['content'] or '').split():
+    for m in user_msgs:
+        for w in (m.get('content') or '').split():
             w = w.strip('.,?!:;()[]"\'').lower()
             if len(w) >= 3 and w not in stop:
                 words[w] += 1
     word_cloud = words.most_common(30)
 
-    # Heatmap hour x weekday, last 28 days — real SQL over `events`
-    heat_rows = conn.execute(
-        "SELECT ts FROM events WHERE ts >= ?", (now - 28 * 86400,)
-    ).fetchall()
+    # Heatmap hour x weekday, last 28 days
+    heat_rows = [e for e in all_evs if e.get('ts', 0) >= now - 28 * 86400]
     heatmap = [[0] * 24 for _ in range(7)]
     for r in heat_rows:
         d = datetime.fromtimestamp(r['ts'])
@@ -572,7 +535,6 @@ def admin_metrics():
     })
 
 
-# ── /api/admin-events — raw event query (now backed by SQL, not a deque) ───
 @app.route('/api/admin-events', methods=['GET'])
 def admin_events():
     if not _require_admin():
@@ -580,7 +542,7 @@ def admin_events():
     ev_type = request.args.get('type', '')
     limit   = min(int(request.args.get('limit', 200)), 2000)
     since   = float(request.args.get('since', 0))
-    events = db.query_events(ev_type, since, limit)
+    events = fsdb.query_events(ev_type, since, limit)
     return jsonify({'events': events, 'total': len(events)})
 
 
@@ -596,61 +558,59 @@ def admin_events():
 def analytics_quiz():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
-    conn = db.get_conn()
 
-    total_attempts = conn.execute('SELECT COUNT(*) c FROM quiz_attempts').fetchone()['c']
-    finished_attempts = conn.execute(
-        'SELECT COUNT(*) c FROM quiz_attempts WHERE finished_at IS NOT NULL'
-    ).fetchone()['c']
-    avg_score = conn.execute(
-        'SELECT AVG(1.0 * correct_q / NULLIF(total_q, 0)) a FROM quiz_attempts WHERE finished_at IS NOT NULL'
-    ).fetchone()['a']
-    avg_attempt_duration = conn.execute(
-        'SELECT AVG(duration_sec) a FROM quiz_attempts WHERE finished_at IS NOT NULL'
-    ).fetchone()['a']
+    attempts = fsdb.list_quiz_attempts()
+    answers = fsdb.list_quiz_answers()
 
-    rows = conn.execute('''
-        SELECT
-            question_id,
-            question_text,
-            COUNT(*)                                            AS attempts,
-            SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END)      AS correct_n,
-            SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END)      AS wrong_n,
-            AVG(duration_sec)                                    AS avg_time,
-            AVG(retry_count)                                     AS avg_retries
-        FROM quiz_answers
-        WHERE question_id IS NOT NULL AND question_id != ''
-        GROUP BY question_id, question_text
-    ''').fetchall()
+    total_attempts = len(attempts)
+    finished = [a for a in attempts if a.get('finished_at') is not None]
+    finished_attempts = len(finished)
+    score_ratios = [
+        a['correct_q'] / a['total_q'] for a in finished
+        if a.get('total_q') and a.get('correct_q') is not None
+    ]
+    avg_score = sum(score_ratios) / len(score_ratios) if score_ratios else 0
+    attempt_durations = [a['duration_sec'] for a in finished if a.get('duration_sec') is not None]
+    avg_attempt_duration = sum(attempt_durations) / len(attempt_durations) if attempt_durations else None
 
-    bank_difficulty = {}
-    try:
-        bank_rows = conn.execute('SELECT id, difficulty FROM quiz_questions').fetchall()
-        bank_difficulty = {str(r['id']): r['difficulty'] for r in bank_rows}
-    except Exception:
-        pass
+    # Gộp câu trả lời theo (question_id, question_text)
+    grouped = defaultdict(lambda: {'attempts': 0, 'correct_n': 0, 'wrong_n': 0, 'times': [], 'retries': []})
+    for a in answers:
+        qid = a.get('question_id')
+        if not qid:
+            continue
+        key = (qid, a.get('question_text'))
+        g = grouped[key]
+        g['attempts'] += 1
+        if a.get('is_correct'):
+            g['correct_n'] += 1
+        else:
+            g['wrong_n'] += 1
+        if a.get('duration_sec') is not None:
+            g['times'].append(a['duration_sec'])
+        g['retries'].append(a.get('retry_count') or 0)
+
+    bank_difficulty = {str(q['id']): q['difficulty'] for q in quiz_bank.list_questions()}
 
     questions = []
-    for r in rows:
-        attempts = r['attempts'] or 0
-        correct_n = r['correct_n'] or 0
-        wrong_n = r['wrong_n'] or 0
+    for (qid, qtext), g in grouped.items():
+        attempts_n = g['attempts']
         questions.append({
-            'question_id':  r['question_id'],
-            'text':         r['question_text'],
-            'attempts':     attempts,
-            'correct_pct':  round(100.0 * correct_n / attempts, 1) if attempts else 0,
-            'wrong_pct':    round(100.0 * wrong_n / attempts, 1) if attempts else 0,
-            'avg_time_sec': round(r['avg_time'], 1) if r['avg_time'] is not None else None,
-            'avg_retries':  round(r['avg_retries'], 2) if r['avg_retries'] is not None else 0,
-            'difficulty':   bank_difficulty.get(str(r['question_id'])),
+            'question_id':  qid,
+            'text':         qtext,
+            'attempts':     attempts_n,
+            'correct_pct':  round(100.0 * g['correct_n'] / attempts_n, 1) if attempts_n else 0,
+            'wrong_pct':    round(100.0 * g['wrong_n'] / attempts_n, 1) if attempts_n else 0,
+            'avg_time_sec': round(sum(g['times']) / len(g['times']), 1) if g['times'] else None,
+            'avg_retries':  round(sum(g['retries']) / len(g['retries']), 2) if g['retries'] else 0,
+            'difficulty':   bank_difficulty.get(str(qid)),
         })
     questions.sort(key=lambda q: q['wrong_pct'], reverse=True)
 
-    overall_avg_time = conn.execute(
-        'SELECT AVG(duration_sec) a FROM quiz_answers WHERE duration_sec IS NOT NULL'
-    ).fetchone()['a']
-    overall_avg_retries = conn.execute('SELECT AVG(retry_count) a FROM quiz_answers').fetchone()['a']
+    overall_times = [a['duration_sec'] for a in answers if a.get('duration_sec') is not None]
+    overall_retries = [a.get('retry_count') or 0 for a in answers]
+    overall_avg_time = sum(overall_times) / len(overall_times) if overall_times else None
+    overall_avg_retries = sum(overall_retries) / len(overall_retries) if overall_retries else 0
 
     return jsonify({
         'total_attempts':          total_attempts,
@@ -1007,35 +967,47 @@ def admin_delete_lab_shelf_chemical(sid):
 def analytics_lab():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
-    conn = db.get_conn()
     now = time.time()
     day_sec = 86400
 
-    popular = conn.execute(
-        'SELECT reaction_eq, COUNT(*) runs, '
-        'SUM(CASE WHEN outcome="success" THEN 1 ELSE 0 END) successes, '
-        'SUM(CASE WHEN outcome="failure" OR outcome="error" THEN 1 ELSE 0 END) failures, '
-        'AVG(duration_sec) avg_duration '
-        'FROM lab_reaction_runs GROUP BY reaction_eq ORDER BY runs DESC LIMIT 20'
-    ).fetchall()
-    most_failed = conn.execute(
-        'SELECT reaction_eq, COUNT(*) failures FROM lab_reaction_runs '
-        'WHERE outcome IN ("failure","error") GROUP BY reaction_eq ORDER BY failures DESC LIMIT 15'
-    ).fetchall()
-    avg_session = conn.execute(
-        'SELECT AVG(duration_sec) a FROM lab_sessions WHERE duration_sec IS NOT NULL'
-    ).fetchone()['a']
+    runs = fsdb.list_lab_reaction_runs()
+    sessions = fsdb.list_lab_sessions()
+
+    by_eq = defaultdict(lambda: {'runs': 0, 'successes': 0, 'failures': 0, 'durations': []})
+    for r in runs:
+        eq = r.get('reaction_eq') or ''
+        g = by_eq[eq]
+        g['runs'] += 1
+        if r.get('outcome') == 'success':
+            g['successes'] += 1
+        elif r.get('outcome') in ('failure', 'error'):
+            g['failures'] += 1
+        if r.get('duration_sec') is not None:
+            g['durations'].append(r['duration_sec'])
+
+    popular = [
+        {'reaction_eq': eq, 'runs': g['runs'], 'successes': g['successes'], 'failures': g['failures'],
+         'avg_duration': (sum(g['durations']) / len(g['durations'])) if g['durations'] else None}
+        for eq, g in by_eq.items()
+    ]
+    popular.sort(key=lambda x: x['runs'], reverse=True)
+    popular = popular[:20]
+
+    most_failed = [{'reaction_eq': eq, 'failures': g['failures']} for eq, g in by_eq.items() if g['failures'] > 0]
+    most_failed.sort(key=lambda x: x['failures'], reverse=True)
+    most_failed = most_failed[:15]
+
+    session_durations = [s['duration_sec'] for s in sessions if s.get('duration_sec') is not None]
+    avg_session = sum(session_durations) / len(session_durations) if session_durations else 0
 
     # ── KPI tổng quan: lượt vào Lab, tỉ lệ hoàn thành nhiệm vụ ──────────
-    lab_opened = db.count_events('lab_open')
-    lab_completed = db.count_events('lab_complete')
-    lab_no_reaction = db.count_events('lab_error')  # thử phản ứng nhưng không có hiện tượng gì (xem lab.html)
+    lab_opened = fsdb.count_events('lab_open')
+    lab_completed = fsdb.count_events('lab_complete')
+    lab_no_reaction = fsdb.count_events('lab_error')
     completion_rate_pct = round(100 * lab_completed / lab_opened) if lab_opened else 0
 
-    # ── Phân phối điểm đánh giá AI (A-F) — event 'lab_ai_grade', ghi khi
-    # học sinh bấm "🎯 Đánh Giá AI" trong lab.html và nhận kết quả chấm điểm
-    # thật từ Gemini (xem runAIAssessment()/renderAssessment() trong lab.html).
-    grade_events = db.query_events('lab_ai_grade', since=0, limit=5000)
+    # ── Phân phối điểm đánh giá AI (A-F) — event 'lab_ai_grade' ─────────
+    grade_events = fsdb.query_events('lab_ai_grade', since=0, limit=5000)
     grade_counts = Counter()
     scores = []
     for ev in grade_events:
@@ -1050,7 +1022,6 @@ def analytics_lab():
     c_to_f_pct = round(100 * c_to_f / total_graded, 1) if total_graded else 0
     avg_ai_score = round(sum(scores) / len(scores), 1) if scores else 0
 
-    # Xu hướng điểm C-F theo ngày (14 ngày gần nhất) — để vẽ biểu đồ xu hướng
     days = 14
     cf_by_day = [0] * days
     graded_by_day = [0] * days
@@ -1064,11 +1035,7 @@ def analytics_lab():
             if (ev.get('grade') or '').strip().upper() in ('C', 'D', 'F'):
                 cf_by_day[idx] += 1
 
-    # ── Phản ứng hoàn thành nhiều nhất — từ event 'lab_complete' (payload.eq),
-    # vì bảng lab_reaction_runs hiện chưa được ghi (lab.html chưa gọi
-    # ccLab.result()/lab_reaction_result). Đây là nguồn dữ liệu thật duy nhất
-    # hiện có cho "phản ứng phổ biến nhất".
-    complete_events = db.query_events('lab_complete', since=0, limit=5000)
+    complete_events = fsdb.query_events('lab_complete', since=0, limit=5000)
     eq_counter = Counter()
     for ev in complete_events:
         eq = (ev.get('eq') or '').strip()
@@ -1093,8 +1060,8 @@ def analytics_lab():
         },
         'cf_trend_14d': {'graded': graded_by_day, 'c_to_f': cf_by_day},
         'top_completed_reactions': top_completed_reactions,
-        'popular_reactions': [dict(r) for r in popular],
-        'most_failed_reactions': [dict(r) for r in most_failed],
+        'popular_reactions': popular,
+        'most_failed_reactions': most_failed,
         'avg_session_duration_sec': round(avg_session or 0, 1),
     })
 
@@ -1103,64 +1070,50 @@ def analytics_lab():
 def analytics_ai():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
-    conn = db.get_conn()
     now = time.time()
 
-    # 'admin_reply_draft' = admin dùng nút "AI viết lại chuyên nghiệp hơn" trong
-    # modal Phản hồi (AI Assistant module) — không phải câu hỏi của học sinh nên
-    # loại khỏi mọi số liệu thống kê bên dưới.
-    total_conversations = conn.execute(
-        "SELECT COUNT(*) c FROM ai_conversations WHERE topic != 'admin_reply_draft'"
-    ).fetchone()['c']
-    total_questions = conn.execute(
-        "SELECT COUNT(*) c FROM ai_messages m JOIN ai_conversations c ON c.id = m.conversation_id "
-        "WHERE m.role='user' AND c.topic != 'admin_reply_draft'"
-    ).fetchone()['c']
-    unique_users = conn.execute(
-        "SELECT COUNT(DISTINCT user_id) c FROM ai_conversations "
-        "WHERE user_id != '' AND topic != 'admin_reply_draft'"
-    ).fetchone()['c']
-    avg_latency = conn.execute(
-        "SELECT AVG(latency_ms) a FROM ai_messages WHERE role='model' AND ok=1"
-    ).fetchone()['a']
-    error_rate = conn.execute(
-        "SELECT 1.0 * SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) / COUNT(*) r FROM ai_messages WHERE role='model'"
-    ).fetchone()['r']
-    by_topic = conn.execute(
-        "SELECT COALESCE(NULLIF(topic,''),'(chưa gắn nguồn)') topic, COUNT(*) c "
-        "FROM ai_conversations WHERE topic != 'admin_reply_draft' GROUP BY topic ORDER BY c DESC LIMIT 15"
-    ).fetchall()
+    # 'admin_reply_draft' = admin dùng nút "AI viết lại chuyên nghiệp hơn" —
+    # đã bị loại sẵn bởi list_conversations_all()/list_all_messages().
+    conversations = fsdb.list_conversations_all()
+    total_conversations = len(conversations)
+    unique_users = len({c['user_id'] for c in conversations if c.get('user_id')})
 
-    # Tần suất sử dụng AI theo ngày (14 ngày gần nhất) — đếm số CÂU HỎI thật
-    # (ai_messages role='user'), không dùng event 'ai_chat' vì event đó chỉ được
-    # ghi khi Gemini trả lời thành công, sẽ thiếu các lượt hỏi bị lỗi.
+    user_messages = fsdb.list_all_messages(role='user')
+    model_messages = fsdb.list_all_messages(role='model')
+    total_questions = len(user_messages)
+
+    ok_model = [m for m in model_messages if m.get('ok')]
+    latencies = [m['latency_ms'] for m in ok_model if m.get('latency_ms') is not None]
+    avg_latency = sum(latencies) / len(latencies) if latencies else 0
+    error_rate = (sum(1 for m in model_messages if not m.get('ok')) / len(model_messages)) if model_messages else 0
+
+    topic_counter = Counter(c.get('topic') or '(chưa gắn nguồn)' for c in conversations)
+    by_topic = [{'topic': t, 'c': n} for t, n in topic_counter.most_common(15)]
+
+    # Tần suất sử dụng AI theo ngày (14 ngày) — đếm câu hỏi thật (role=user),
+    # không dùng event 'ai_chat' vì event đó chỉ ghi khi Gemini trả lời OK.
     days = 14
     day_sec = 86400
     buckets = [0] * days
-    day_rows = conn.execute(
-        "SELECT m.ts ts FROM ai_messages m JOIN ai_conversations c ON c.id = m.conversation_id "
-        "WHERE m.role='user' AND m.ts >= ? AND c.topic != 'admin_reply_draft'",
-        (now - days * day_sec,)
-    ).fetchall()
-    for r in day_rows:
-        age = now - r['ts']
+    for m in user_messages:
+        ts = m.get('ts', 0)
+        age = now - ts
+        if age < 0 or age > days * day_sec:
+            continue
         idx = days - 1 - int(age // day_sec)
         if 0 <= idx < days:
             buckets[idx] += 1
 
-    # Từ khóa phổ biến — chỉ quét các nguồn là câu hỏi tự nhiên của học sinh,
-    # bỏ qua lab_reaction_predict/lab_ai_assessment (prompt kỹ thuật/JSON nội bộ,
-    # không phản ánh học sinh đang thắc mắc về nội dung gì).
+    # Từ khóa phổ biến — chỉ các nguồn là câu hỏi tự nhiên của học sinh.
     stop = set('và của là ở có cho một các những này đó khi được với thì để làm như từ trong về hay hoặc '
                'thế nào tại sao gì bao nhiêu bạn tôi em ạ nhé nha mình cái con giúp hãy vậy nữa rồi '
                'the a an of is are and or to in on for how why what which'.split())
     words = Counter()
-    kw_rows = conn.execute(
-        "SELECT m.content content FROM ai_messages m JOIN ai_conversations c ON c.id = m.conversation_id "
-        "WHERE m.role='user' AND c.topic IN ('ai_solver','lab_molecule_chat','lab_assistant_chat','')"
-    ).fetchall()
-    for r in kw_rows:
-        for w in (r['content'] or '').split():
+    kw_topics = {'ai_solver', 'lab_molecule_chat', 'lab_assistant_chat', ''}
+    for m in user_messages:
+        if m.get('topic') not in kw_topics:
+            continue
+        for w in (m.get('content') or '').split():
             w = w.strip('.,?!:;()[]{}"\'“”‘’').lower()
             if len(w) >= 3 and w not in stop and not w.isdigit():
                 words[w] += 1
@@ -1172,7 +1125,7 @@ def analytics_ai():
         'unique_users': unique_users,
         'avg_latency_ms': round(avg_latency or 0),
         'error_rate_pct': round((error_rate or 0) * 100, 2),
-        'by_topic': [dict(r) for r in by_topic],
+        'by_topic': by_topic,
         'daily_questions_14d': buckets,
         'top_keywords': top_keywords,
     })
@@ -1185,7 +1138,6 @@ def analytics_ai():
 def admin_ai_conversations():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
-    conn = db.get_conn()
 
     try:
         page = max(1, int(request.args.get('page', 1)))
@@ -1195,70 +1147,55 @@ def admin_ai_conversations():
         limit = min(100, max(1, int(request.args.get('limit', 20))))
     except (TypeError, ValueError):
         limit = 20
-    offset = (page - 1) * limit
     search = (request.args.get('search') or '').strip()
     topic = (request.args.get('topic') or '').strip()
 
-    where = ["c.topic != 'admin_reply_draft'"]
-    params = []
+    conversations = fsdb.list_conversations_all()
+
     if topic and topic != 'all':
-        where.append('c.topic = ?')
-        params.append(topic)
+        conversations = [c for c in conversations if c.get('topic') == topic]
     if search:
-        where.append(
-            "EXISTS (SELECT 1 FROM ai_messages m WHERE m.conversation_id = c.id "
-            "AND m.role='user' AND m.content LIKE ?)"
-        )
-        params.append(f'%{search}%')
-    where_sql = ' AND '.join(where)
+        matching_ids = fsdb.search_conversation_ids(search)
+        conversations = [c for c in conversations if c['id'] in matching_ids]
 
-    total = conn.execute(f'SELECT COUNT(*) c FROM ai_conversations c WHERE {where_sql}', params).fetchone()['c']
+    topics_counter = Counter(c.get('topic') or '(chưa gắn nguồn)' for c in fsdb.list_conversations_all())
+    topics = [{'topic': t, 'c': n} for t, n in topics_counter.most_common()]
 
-    rows = conn.execute(f'''
-        SELECT
-            c.id, c.user_id, c.ip, c.started_at, c.topic,
-            (SELECT content FROM ai_messages m WHERE m.conversation_id = c.id AND m.role='user'
-             ORDER BY m.ts ASC LIMIT 1) AS first_question,
-            (SELECT COUNT(*) FROM ai_messages m WHERE m.conversation_id = c.id) AS message_count,
-            (SELECT MAX(ts) FROM ai_messages m WHERE m.conversation_id = c.id) AS last_ts,
-            (SELECT MAX(has_image) FROM ai_messages m WHERE m.conversation_id = c.id AND m.role='user') AS has_image,
-            (SELECT SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) FROM ai_messages m
-             WHERE m.conversation_id = c.id AND m.role='model') AS error_count
-        FROM ai_conversations c
-        WHERE {where_sql}
-        ORDER BY last_ts DESC
-        LIMIT ? OFFSET ?
-    ''', params + [limit, offset]).fetchall()
+    conversations.sort(key=lambda c: c.get('last_ts', 0), reverse=True)
+    total = len(conversations)
+    offset = (page - 1) * limit
+    page_items = conversations[offset:offset + limit]
 
-    topics = conn.execute(
-        "SELECT COALESCE(NULLIF(topic,''),'(chưa gắn nguồn)') topic, COUNT(*) c FROM ai_conversations "
-        "WHERE topic != 'admin_reply_draft' GROUP BY topic ORDER BY c DESC"
-    ).fetchall()
+    items = [{
+        'id': c['id'], 'user_id': c.get('user_id', ''), 'ip': c.get('ip', ''),
+        'started_at': c.get('started_at'), 'topic': c.get('topic', ''),
+        'first_question': c.get('first_question', ''),
+        'message_count': c.get('message_count', 0),
+        'last_ts': c.get('last_ts'),
+        'has_image': c.get('has_image', False),
+        'error_count': c.get('error_count', 0),
+    } for c in page_items]
 
     return jsonify({
-        'items': [dict(r) for r in rows],
+        'items': items,
         'total': total,
         'page': page,
         'limit': limit,
-        'topics': [dict(r) for r in topics],
+        'topics': topics,
     })
 
 
 # ── Admin: chi tiết đầy đủ 1 cuộc hội thoại — dùng khi admin bấm "Xem" hoặc
 # "Phản hồi" để đọc lại toàn bộ ngữ cảnh trước khi soạn email.
-@app.route('/api/admin/ai-conversations/<int:cid>', methods=['GET'])
+@app.route('/api/admin/ai-conversations/<cid>', methods=['GET'])
 def admin_ai_conversation_detail(cid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
-    conn = db.get_conn()
-    conv = conn.execute('SELECT * FROM ai_conversations WHERE id = ?', (cid,)).fetchone()
+    conv = fsdb.get_conversation(cid)
     if not conv:
         return jsonify({'error': 'Không tìm thấy cuộc hội thoại.'}), 404
-    msgs = conn.execute(
-        'SELECT role, content, has_image, ok, error_msg, latency_ms, ts FROM ai_messages '
-        'WHERE conversation_id = ? ORDER BY ts ASC', (cid,)
-    ).fetchall()
-    return jsonify({'conversation': dict(conv), 'messages': [dict(m) for m in msgs]})
+    msgs = fsdb.list_messages(cid)
+    return jsonify({'conversation': conv, 'messages': msgs})
 
 
 # ── Static file serving (unchanged) ─────────────────────────────────────────
@@ -1310,13 +1247,9 @@ ALLOWED_EVENT_TYPES = ALLOWED_EVENT_TYPES | {
 
 
 def _events_snapshot():
-    """Trả về toàn bộ sự kiện (đã phẳng hoá) từ SQLite, dùng cho các hàm
-    tổng hợp (xếp hạng, hoạt động, hồ sơ...). Trước đây dùng biến in-memory
-    `_events_mem`/`_event_lock` nhưng 2 biến này chưa từng được khởi tạo ở
-    đâu trong file, gây NameError (lỗi 500) mỗi khi endpoint liên quan được
-    gọi — nay đọc thẳng từ database.py (nguồn dữ liệu thật, đã ghi bởi
-    log_event()/db.record_event())."""
-    return db.all_events()
+    """Trả về toàn bộ sự kiện (đã phẳng hoá) từ Firestore, dùng cho các hàm
+    tổng hợp (xếp hạng, hoạt động, hồ sơ...)."""
+    return fsdb.all_events()
 
 
 def _uid_of(ev):
@@ -1623,39 +1556,31 @@ def admin_user_profile():
 def analytics_learning():
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
-    conn = db.get_conn()
     now = time.time()
     day_sec = 86400
 
-    def _distinct_users(sql, params=()):
-        rows = conn.execute(sql, params).fetchall()
-        return {r[0] for r in rows if r[0]}
+    events = fsdb.all_events()
+    quiz_attempts = fsdb.list_quiz_attempts()
+    lab_sessions = fsdb.list_lab_sessions()
+
+    def _distinct_users(evs):
+        return {e.get('user_id') for e in evs if e.get('user_id')}
 
     # ── KPI tổng quan ────────────────────────────────────────────────────
-    total_students = len(_distinct_users("SELECT DISTINCT user_id FROM events WHERE user_id != ''"))
-    active_7d = len(_distinct_users(
-        "SELECT DISTINCT user_id FROM events WHERE user_id != '' AND ts >= ?", (now - 7 * day_sec,)
-    ))
-    active_30d = len(_distinct_users(
-        "SELECT DISTINCT user_id FROM events WHERE user_id != '' AND ts >= ?", (now - 30 * day_sec,)
-    ))
-    lessons_completed = db.count_events('lesson_complete')
-    quiz_completed = conn.execute(
-        'SELECT COUNT(*) c FROM quiz_attempts WHERE finished_at IS NOT NULL'
-    ).fetchone()['c']
-    lab_opened = db.count_events('lab_open')
-    lab_completed = db.count_events('lab_complete')
+    total_students = len(_distinct_users(events))
+    active_7d = len(_distinct_users([e for e in events if e.get('ts', 0) >= now - 7 * day_sec]))
+    active_30d = len(_distinct_users([e for e in events if e.get('ts', 0) >= now - 30 * day_sec]))
+    lessons_completed = sum(1 for e in events if e.get('type') == 'lesson_complete')
+    quiz_completed = sum(1 for a in quiz_attempts if a.get('finished_at') is not None)
+    lab_opened = sum(1 for e in events if e.get('type') == 'lab_open')
+    lab_completed = sum(1 for e in events if e.get('type') == 'lab_complete')
 
-    # ── Funnel theo user thật (không phải % giả định) ───────────────────
-    users_logged_in = _distinct_users("SELECT DISTINCT user_id FROM events WHERE user_id != ''")
-    users_lesson = _distinct_users(
-        "SELECT DISTINCT user_id FROM events WHERE user_id != '' AND type IN ('lesson_start','lesson_open','lesson_complete')"
-    )
-    users_quiz = _distinct_users("SELECT DISTINCT user_id FROM quiz_attempts WHERE user_id != ''")
-    users_lab = _distinct_users("SELECT DISTINCT user_id FROM lab_sessions WHERE user_id != ''")
-    users_done = _distinct_users(
-        "SELECT DISTINCT user_id FROM events WHERE user_id != '' AND type = 'lab_complete'"
-    )
+    # ── Funnel theo user thật ────────────────────────────────────────────
+    users_logged_in = _distinct_users(events)
+    users_lesson = _distinct_users([e for e in events if e.get('type') in ('lesson_start', 'lesson_open', 'lesson_complete')])
+    users_quiz = {a.get('user_id') for a in quiz_attempts if a.get('user_id')}
+    users_lab = {s.get('user_id') for s in lab_sessions if s.get('user_id')}
+    users_done = _distinct_users([e for e in events if e.get('type') == 'lab_complete'])
     base = max(1, len(users_logged_in))
     funnel = [
         {'label': 'Đăng nhập',  'count': len(users_logged_in), 'pct': 100},
@@ -1667,17 +1592,22 @@ def analytics_learning():
 
     # ── Tăng trưởng người dùng: ngày xuất hiện lần đầu của mỗi user_id ──
     growth_days = 30
-    first_seen_rows = conn.execute(
-        "SELECT user_id, MIN(ts) first_ts FROM events WHERE user_id != '' GROUP BY user_id"
-    ).fetchall()
+    first_seen = {}
+    for e in events:
+        uid = e.get('user_id')
+        if not uid:
+            continue
+        ts = e.get('ts', 0)
+        if uid not in first_seen or ts < first_seen[uid]:
+            first_seen[uid] = ts
     users_before_window = 0
     new_by_day = [0] * growth_days
     window_start = now - growth_days * day_sec
-    for r in first_seen_rows:
-        if r['first_ts'] < window_start:
+    for first_ts in first_seen.values():
+        if first_ts < window_start:
             users_before_window += 1
             continue
-        age = now - r['first_ts']
+        age = now - first_ts
         idx = growth_days - 1 - int(age // day_sec)
         if 0 <= idx < growth_days:
             new_by_day[idx] += 1
@@ -1692,23 +1622,24 @@ def analytics_learning():
         cumulative.append(running)
 
     # ── Phân phối thời gian học (phút/session), tách session theo gap 30' ──
-    session_rows = conn.execute(
-        "SELECT user_id, ts FROM events WHERE user_id != '' AND type != 'heartbeat' AND ts >= ? "
-        "ORDER BY user_id, ts", (now - 60 * day_sec,)
-    ).fetchall()
+    session_events = sorted(
+        (e for e in events if e.get('user_id') and e.get('type') != 'heartbeat' and e.get('ts', 0) >= now - 60 * day_sec),
+        key=lambda e: (e['user_id'], e['ts'])
+    )
     GAP = 30 * 60
     durations_min = []
     cur_uid, seg_start, prev_ts = None, None, None
-    for r in session_rows:
-        if r['user_id'] != cur_uid:
+    for e in session_events:
+        uid, ts = e['user_id'], e['ts']
+        if uid != cur_uid:
             if cur_uid is not None and prev_ts is not None and seg_start is not None:
                 durations_min.append((prev_ts - seg_start) / 60.0)
-            cur_uid, seg_start, prev_ts = r['user_id'], r['ts'], r['ts']
+            cur_uid, seg_start, prev_ts = uid, ts, ts
             continue
-        if r['ts'] - prev_ts > GAP:
+        if ts - prev_ts > GAP:
             durations_min.append((prev_ts - seg_start) / 60.0)
-            seg_start = r['ts']
-        prev_ts = r['ts']
+            seg_start = ts
+        prev_ts = ts
     if cur_uid is not None and prev_ts is not None and seg_start is not None:
         durations_min.append((prev_ts - seg_start) / 60.0)
 
@@ -1723,9 +1654,7 @@ def analytics_learning():
     avg_session_min = round(sum(durations_min) / len(durations_min), 1) if durations_min else 0
 
     # ── Heatmap giờ × ngày trong tuần, 28 ngày gần nhất (bỏ heartbeat) ──
-    heat_rows = conn.execute(
-        "SELECT ts FROM events WHERE ts >= ? AND type != 'heartbeat'", (now - 28 * day_sec,)
-    ).fetchall()
+    heat_rows = [e for e in events if e.get('ts', 0) >= now - 28 * day_sec and e.get('type') != 'heartbeat']
     heatmap = [[0] * 24 for _ in range(7)]
     for r in heat_rows:
         d = datetime.fromtimestamp(r['ts'])
