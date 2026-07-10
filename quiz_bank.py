@@ -5,8 +5,11 @@ Trước đây 34 câu trắc nghiệm (+ 2 câu thực hành) nằm CỨNG tron
 `quizData` ở lesson.html — admin không thể thêm/sửa/xóa, và học sinh nào
 cũng làm đúng 1 bộ đề y hệt theo thứ tự y hệt.
 
-Module này chuyển 34 câu trắc nghiệm đó vào bảng `quiz_questions` (SQLite,
-xem database.py) và cung cấp:
+Module này lưu ngân hàng câu hỏi vào Firestore (collection `quiz_questions_bank`
+— khác với collection tracking `quiz_attempts`/`quiz_answers` trong
+firestore_db.py) thay vì SQLite, vì đây là NỘI DUNG admin biên tập (thêm/sửa/
+xóa câu hỏi) và cần sống sót qua các lần Render restart/redeploy, chứ không
+chỉ là dữ liệu tracking.
 
   - seed_default_questions()      : chạy 1 lần lúc khởi động server, chỉ
                                      insert 34 câu gốc NẾU bảng đang trống,
@@ -16,7 +19,6 @@ xem database.py) và cung cấp:
   - create_question(...)
   - update_question(qid, ...)
   - delete_question(qid)          : xóa hẳn khỏi ngân hàng
-  - set_active(qid, active)       : ẩn/hiện mà không xóa
   - random_questions(count)       : rút ngẫu nhiên `count` câu đang active
                                      (dùng cho /api/quiz-questions)
 
@@ -25,10 +27,12 @@ KHÔNG đưa vào đây vì chúng gắn với DOM/JS đặc thù của lesson.h
 phải dạng "câu hỏi + đáp án" — lesson.html vẫn giữ 2 câu đó cố định và nối
 thêm vào cuối bộ đề random lấy từ API này.
 """
-import json
+import random
 import time
 
-import database as db
+import firestore_db as fsdb
+
+_COLLECTION = 'quiz_questions_bank'
 
 # ── 34 câu trắc nghiệm gốc (di trú từ quizData trong lesson.html) ─────────
 _LEGACY_QUESTIONS = [
@@ -71,112 +75,100 @@ _LEGACY_QUESTIONS = [
 ]
 
 
-def _row_to_dict(row) -> dict:
+def _doc_to_dict(doc) -> dict:
+    d = doc.to_dict()
     return {
-        'id': row['id'],
-        'question': row['question'],
-        'options': json.loads(row['options'] or '[]'),
-        'answerIndex': row['answer_index'],
-        'difficulty': row['difficulty'],
-        'active': bool(row['active']),
-        'createdBy': row['created_by'],
-        'createdAt': row['created_at'],
-        'updatedAt': row['updated_at'],
+        'id': doc.id,
+        'question': d.get('question', ''),
+        'options': d.get('options', []),
+        'answerIndex': d.get('answer_index'),
+        'difficulty': d.get('difficulty', 'TB'),
+        'active': bool(d.get('active', True)),
+        'createdBy': d.get('created_by', ''),
+        'createdAt': d.get('created_at'),
+        'updatedAt': d.get('updated_at'),
     }
 
 
-def seed_default_questions():
-    """Chạy 1 lần lúc khởi động: nếu bảng quiz_questions đang trống, nạp 34
-    câu gốc vào để admin thấy ngay và học sinh không bị mất đề đang có."""
-    conn = db.get_conn()
-    try:
-        count = conn.execute('SELECT COUNT(*) c FROM quiz_questions').fetchone()['c']
-    finally:
-        conn.close()
-    if count > 0:
+def seed_default_questions() -> int:
+    """Chạy 1 lần lúc khởi động: nếu ngân hàng đang trống, nạp 34 câu gốc
+    vào để admin thấy ngay và học sinh không bị mất đề đang có."""
+    col = fsdb.collection(_COLLECTION)
+    existing = list(col.limit(1).stream())
+    if existing:
         return 0
     ts = time.time()
-    with db.tx() as conn:
-        for item in _LEGACY_QUESTIONS:
-            conn.execute(
-                'INSERT INTO quiz_questions (question, options, answer_index, difficulty, active, '
-                'created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)',
-                (item['q'], json.dumps(item['opts'], ensure_ascii=False), item['ans'],
-                 'TB', 'system_seed', ts, ts)
-            )
+    for item in _LEGACY_QUESTIONS:
+        col.add({
+            'question': item['q'], 'options': item['opts'], 'answer_index': item['ans'],
+            'difficulty': 'TB', 'active': True, 'created_by': 'system_seed',
+            'created_at': ts, 'updated_at': ts,
+        })
     return len(_LEGACY_QUESTIONS)
 
 
 def list_questions(include_inactive: bool = True) -> list[dict]:
-    conn = db.get_conn()
-    try:
-        if include_inactive:
-            rows = conn.execute('SELECT * FROM quiz_questions ORDER BY id DESC').fetchall()
-        else:
-            rows = conn.execute(
-                'SELECT * FROM quiz_questions WHERE active = 1 ORDER BY id DESC'
-            ).fetchall()
-    finally:
-        conn.close()
-    return [_row_to_dict(r) for r in rows]
+    col = fsdb.collection(_COLLECTION)
+    q = col if include_inactive else col.where('active', '==', True)
+    docs = list(q.stream())
+    items = [_doc_to_dict(d) for d in docs]
+    items.sort(key=lambda x: x.get('createdAt') or 0, reverse=True)
+    return items
 
 
-def get_question(qid: int) -> dict | None:
-    conn = db.get_conn()
-    try:
-        row = conn.execute('SELECT * FROM quiz_questions WHERE id = ?', (qid,)).fetchone()
-    finally:
-        conn.close()
-    return _row_to_dict(row) if row else None
+def get_question(qid: str) -> dict | None:
+    doc = fsdb.collection(_COLLECTION).document(str(qid)).get()
+    return _doc_to_dict(doc) if doc.exists else None
 
 
 def create_question(question: str, options: list[str], answer_index: int,
-                     difficulty: str = 'TB', created_by: str = '') -> int:
+                     difficulty: str = 'TB', created_by: str = '') -> str:
     ts = time.time()
-    with db.tx() as conn:
-        cur = conn.execute(
-            'INSERT INTO quiz_questions (question, options, answer_index, difficulty, active, '
-            'created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)',
-            (question, json.dumps(options, ensure_ascii=False), answer_index, difficulty, created_by, ts, ts)
-        )
-        return cur.lastrowid
+    ref = fsdb.collection(_COLLECTION).document()
+    ref.set({
+        'question': question, 'options': options, 'answer_index': answer_index,
+        'difficulty': difficulty, 'active': True, 'created_by': created_by,
+        'created_at': ts, 'updated_at': ts,
+    })
+    return ref.id
 
 
-def update_question(qid: int, question: str = None, options: list[str] = None,
+def update_question(qid: str, question: str = None, options: list[str] = None,
                      answer_index: int = None, difficulty: str = None,
                      active: bool = None) -> bool:
-    existing = get_question(qid)
-    if not existing:
+    ref = fsdb.collection(_COLLECTION).document(str(qid))
+    snap = ref.get()
+    if not snap.exists:
         return False
-    new_question = existing['question'] if question is None else question
-    new_options = existing['options'] if options is None else options
-    new_answer = existing['answerIndex'] if answer_index is None else answer_index
-    new_difficulty = existing['difficulty'] if difficulty is None else difficulty
-    new_active = existing['active'] if active is None else active
-    with db.tx() as conn:
-        conn.execute(
-            'UPDATE quiz_questions SET question = ?, options = ?, answer_index = ?, '
-            'difficulty = ?, active = ?, updated_at = ? WHERE id = ?',
-            (new_question, json.dumps(new_options, ensure_ascii=False), new_answer,
-             new_difficulty, 1 if new_active else 0, time.time(), qid)
-        )
+    updates = {'updated_at': time.time()}
+    if question is not None:
+        updates['question'] = question
+    if options is not None:
+        updates['options'] = options
+    if answer_index is not None:
+        updates['answer_index'] = answer_index
+    if difficulty is not None:
+        updates['difficulty'] = difficulty
+    if active is not None:
+        updates['active'] = bool(active)
+    ref.update(updates)
     return True
 
 
-def delete_question(qid: int) -> bool:
-    with db.tx() as conn:
-        cur = conn.execute('DELETE FROM quiz_questions WHERE id = ?', (qid,))
-        return cur.rowcount > 0
+def delete_question(qid: str) -> bool:
+    ref = fsdb.collection(_COLLECTION).document(str(qid))
+    if not ref.get().exists:
+        return False
+    ref.delete()
+    return True
 
 
 def random_questions(count: int = 34) -> list[dict]:
-    """Rút ngẫu nhiên `count` câu đang active — dùng ORDER BY RANDOM() của
-    SQLite. Nếu ngân hàng có ít câu hơn `count`, trả về tất cả (đã xáo trộn)."""
-    conn = db.get_conn()
-    try:
-        rows = conn.execute(
-            'SELECT * FROM quiz_questions WHERE active = 1 ORDER BY RANDOM() LIMIT ?', (count,)
-        ).fetchall()
-    finally:
-        conn.close()
-    return [_row_to_dict(r) for r in rows]
+    """Rút ngẫu nhiên `count` câu đang active. Firestore không hỗ trợ
+    ORDER BY RANDOM() như SQLite nên tải toàn bộ câu active (số lượng nhỏ,
+    vài chục tới vài trăm câu) rồi xáo trộn bằng Python."""
+    items = list_questions(include_inactive=False)
+    if len(items) <= count:
+        random.shuffle(items)
+        return items
+    return random.sample(items, count)
