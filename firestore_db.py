@@ -90,6 +90,14 @@ def _col(name: str):
     return init().collection(name)
 
 
+def collection(name: str):
+    """Accessor public cho các module khác (quiz_bank.py, lab_bank.py) cũng
+    lưu nội dung admin biên tập vào Firestore — dùng chung 1 kết nối/app đã
+    init ở đây thay vì mỗi module tự gọi firebase_admin.initialize_app()
+    (initialize_app() thứ hai sẽ lỗi 'app already exists')."""
+    return _col(name)
+
+
 def _agg_count(query) -> int:
     """Đếm số document khớp query bằng Aggregation Query (rẻ, nhanh, không
     tải toàn bộ document về). Fallback sang đếm thủ công nếu bản thư viện
