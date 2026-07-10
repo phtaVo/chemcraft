@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChemCraft for Admin</title>
+<title>ChemCraft forAdmin — Trung tâm điều hành</title>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -81,7 +81,7 @@ function _resolveAuth(session) {
 
 <style>
 /* ════════════════════════════════════════════════════════════
-   CHEMCRAFT for ADMIN — Design tokens (Google Material 3 inspired)
+   CHEMCRAFT forADMIN — Design tokens (Google Material 3 inspired)
    ════════════════════════════════════════════════════════════ */
 :root{
   /* Neutral Google grayscale */
@@ -377,7 +377,7 @@ table.a-table{width:100%; border-collapse:collapse;}
   <div class="login-card">
     <div class="login-head">
       <div class="login-logo"><i class="fa-solid fa-flask-vial"></i></div>
-      <h1>ChemCraft for Admin</h1>
+      <h1>ChemCraft forAdmin</h1>
       <p>Đăng nhập bằng tài khoản quản trị viên</p>
     </div>
     <div class="login-body">
@@ -404,7 +404,7 @@ table.a-table{width:100%; border-collapse:collapse;}
     <div class="login-head">
       <div class="denied-icon"><i class="fa-solid fa-lock" id="denied-icon-i"></i></div>
       <h1 id="denied-title">Không có quyền truy cập</h1>
-      <p id="denied-subtitle">Tài khoản này chưa được cấp quyền quản trị ChemCraft for Admin.</p>
+      <p id="denied-subtitle">Tài khoản này chưa được cấp quyền quản trị ChemCraft forAdmin.</p>
     </div>
     <div class="login-body" style="padding-top:0;">
 
@@ -449,7 +449,7 @@ table.a-table{width:100%; border-collapse:collapse;}
   <aside class="a-sidebar" id="a-sidebar">
     <div class="a-brand">
       <div class="a-brand-icon"><i class="fa-solid fa-flask-vial"></i></div>
-      <div class="a-brand-text">ChemCraft <span style="color:var(--accent)">forAdmin</span><small>Trang điều hành</small></div>
+      <div class="a-brand-text">ChemCraft <span style="color:var(--accent)">forAdmin</span><small>Trung tâm điều hành · build 2026-07-03-r2</small></div>
     </div>
 
     <nav class="a-nav">
@@ -2186,15 +2186,20 @@ async function renderLearningAnalytics(){
   try {
     _laData = await _qzApi('/api/admin-analytics/learning');
   } catch (e) {
-    document.getElementById('la-root').innerHTML =
-      `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation"></i> Không tải được dữ liệu: ${escapeHtml(e.message)}</div>`;
     _laLoading = false;
+    const rootErr = document.getElementById('la-root');
+    if (!rootErr) return; // người dùng đã chuyển sang tab khác trong lúc chờ
+    rootErr.innerHTML =
+      `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation"></i> Không tải được dữ liệu: ${escapeHtml(e.message)}</div>`;
     return;
   }
   _laLoading = false;
 
+  const laRoot = document.getElementById('la-root');
+  if (!laRoot) return; // người dùng đã chuyển sang tab khác trong lúc chờ dữ liệu
+
   const k = _laData.kpi;
-  document.getElementById('la-root').innerHTML = `
+  laRoot.innerHTML = `
     <div class="kpi-grid" style="margin-bottom:20px;">
       ${[
         ['Tổng học sinh', k.total_students, 'fa-user-graduate', '#1A73E8'],
@@ -3408,7 +3413,9 @@ async function renderLabManage(){
     _labReactions = reactData.reactions || [];
     _labLoaded = true;
   } catch (e) {
-    document.getElementById('lab-page-body').innerHTML =
+    const bodyErr = document.getElementById('lab-page-body');
+    if (!bodyErr) return; // người dùng đã chuyển sang tab khác trong lúc chờ
+    bodyErr.innerHTML =
       `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i> Không tải được dữ liệu Lab 3D: ${escapeHtml(e.message)}</div>`;
     return;
   }
@@ -3417,6 +3424,7 @@ async function renderLabManage(){
 
 function _renderLabBody(){
   const body = document.getElementById('lab-page-body');
+  if (!body) return; // người dùng đã chuyển sang tab khác trong lúc chờ dữ liệu
   body.innerHTML = `
     <div style="display:flex;gap:0;margin-bottom:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:4px;width:fit-content;flex-wrap:wrap;">
       <button class="lab-tab ${_labTab==='shelf'?'active':''}" id="tab-shelf" onclick="switchLabTab('shelf')"><i class="fa-solid fa-boxes-stacked"></i> Hóa chất kệ Lab (${_labShelfChems.length})</button>
