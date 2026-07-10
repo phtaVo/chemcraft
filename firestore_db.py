@@ -102,38 +102,29 @@ def batched_seed(collection_name: str, docs: dict) -> int:
     """Ghi hàng loạt (batch, tới 400 document/lần commit — thay vì từng cái
     một) cho seed_default_*() ở quiz_bank.py/lab_bank.py.
 
-    `docs` là {doc_id: data_dict}. Chỉ ghi những doc_id CHƯA tồn tại — an
-    toàn khi gọi lại nhiều lần (idempotent): nếu lần trước bị Render kill
-    giữa chừng lúc đang seed (VD do quá trình khởi động mất quá lâu), lần
-    khởi động sau sẽ tự bổ sung đúng phần còn thiếu thay vì bỏ qua toàn bộ
-    (như logic cũ "collection có ≥1 document thì coi là xong") hoặc ghi
-    trùng lặp.
+    `docs` là {doc_id: data_dict}, ID cố định (không phải auto-id) nên việc
+    ghi đè (set) là AN TOÀN khi gọi lại nhiều lần — không tạo trùng lặp.
+    Chỉ seed (ghi) khi số document hiện có ÍT HƠN tổng số cần có — nếu lần
+    trước bị Render kill giữa chừng lúc đang seed (VD do quá trình khởi động
+    mất quá lâu), lần khởi động sau sẽ phát hiện thiếu và ghi lại TOÀN BỘ
+    (ghi đè các document đã có sẵn không gây hại gì, cùng dữ liệu).
 
-    Trả về số document mới được ghi trong lần gọi này.
+    Trả về số document được ghi trong lần gọi này (0 nếu đã seed đủ).
     """
     col = _col(collection_name)
-    all_ids = list(docs.keys())
-    missing_ids = []
-    # Kiểm tra theo lô 10 (giới hạn an toàn của toán tử 'in' trong Firestore,
-    # tương thích cả phiên bản client cũ) xem id nào đã tồn tại, để chỉ ghi
-    # bổ sung phần còn thiếu.
-    for i in range(0, len(all_ids), 10):
-        chunk = all_ids[i:i + 10]
-        refs = [col.document(x) for x in chunk]
-        existing = {d.id for d in col.where('__name__', 'in', refs).stream()}
-        missing_ids.extend(x for x in chunk if x not in existing)
-
-    if not missing_ids:
+    existing_count = _agg_count(col)
+    if existing_count >= len(docs):
         return 0
 
     client = init()
+    ids = list(docs.keys())
     written = 0
-    for i in range(0, len(missing_ids), 400):
+    for i in range(0, len(ids), 400):
         batch = client.batch()
-        for doc_id in missing_ids[i:i + 400]:
+        for doc_id in ids[i:i + 400]:
             batch.set(col.document(doc_id), docs[doc_id])
         batch.commit()
-        written += len(missing_ids[i:i + 400])
+        written += len(ids[i:i + 400])
     return written
 
 
