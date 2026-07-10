@@ -24,30 +24,33 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 db.init_db()
 admin_auth.bootstrap_default_admin()
-_seeded_questions = quiz_bank.seed_default_questions()
-if _seeded_questions:
-    print(f'📦 Seeded {_seeded_questions} legacy quiz questions into quiz_questions table.')
-_seeded_molecules = lab_bank.seed_default_molecules()
-if _seeded_molecules:
-    print(f'📦 Seeded {_seeded_molecules} legacy molecules into lab_molecules table.')
-_seeded_reactions = lab_bank.seed_default_reactions()
-if _seeded_reactions:
-    print(f'📦 Seeded {_seeded_reactions} legacy reactions into lab_reactions table.')
-_seeded_shelf_chems = lab_bank.seed_default_shelf_chemicals()
-if _seeded_shelf_chems:
-    print(f'📦 Seeded {_seeded_shelf_chems} legacy shelf chemicals into lab_shelf_chemicals table.')
 
-# ── Firestore: lưu bền vững toàn bộ dữ liệu tracking (events, ai_*, quiz_*,
-# lab_*) — thay cho phần tương ứng của SQLite, vốn bị xoá sạch mỗi khi Render
+# ── Firestore: lưu bền vững cả (1) dữ liệu tracking (events, ai_*, quiz_*,
+# lab_* tracking) lẫn (2) nội dung admin biên tập (ngân hàng câu hỏi quiz,
+# hoá chất/phản ứng Lab 3D) — thay cho SQLite, vốn bị xoá sạch mỗi khi Render
 # free tier redeploy/restart. Không crash cả server nếu thiếu cấu hình — chỉ
-# các endpoint tracking sẽ trả lỗi rõ ràng, để /api/admin/quiz-questions,
-# /api/admin-login, v.v. (vẫn dùng SQLite) không bị ảnh hưởng.
+# các endpoint liên quan Firestore sẽ trả lỗi rõ ràng, để /api/admin-login
+# (vẫn dùng SQLite cho admin_accounts) không bị ảnh hưởng.
 try:
     fsdb.init()
-    print('✅ Firestore (tracking data) đã kết nối.')
+    print('✅ Firestore đã kết nối.')
+
+    _seeded_questions = quiz_bank.seed_default_questions()
+    if _seeded_questions:
+        print(f'📦 Seeded {_seeded_questions} legacy quiz questions vào Firestore.')
+    _seeded_molecules = lab_bank.seed_default_molecules()
+    if _seeded_molecules:
+        print(f'📦 Seeded {_seeded_molecules} legacy molecules vào Firestore.')
+    _seeded_reactions = lab_bank.seed_default_reactions()
+    if _seeded_reactions:
+        print(f'📦 Seeded {_seeded_reactions} legacy reactions vào Firestore.')
+    _seeded_shelf_chems = lab_bank.seed_default_shelf_chemicals()
+    if _seeded_shelf_chems:
+        print(f'📦 Seeded {_seeded_shelf_chems} legacy shelf chemicals vào Firestore.')
 except Exception as e:
     print(f'⚠️  Firestore CHƯA sẵn sàng: {e}')
-    print('   → Mọi tính năng thu thập dữ liệu (event, AI chat log, quiz, lab) sẽ lỗi cho tới khi cấu hình xong.')
+    print('   → Mọi tính năng thu thập dữ liệu, ngân hàng quiz, ngân hàng Lab 3D sẽ lỗi cho tới khi cấu hình xong.')
+
 
 # ── Config ────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
@@ -674,7 +677,7 @@ def admin_create_quiz_question():
     return jsonify(quiz_bank.get_question(qid)), 201
 
 
-@app.route('/api/admin/quiz-questions/<int:qid>', methods=['PUT'])
+@app.route('/api/admin/quiz-questions/<qid>', methods=['PUT'])
 def admin_update_quiz_question(qid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
@@ -717,7 +720,7 @@ def admin_update_quiz_question(qid):
     return jsonify(quiz_bank.get_question(qid))
 
 
-@app.route('/api/admin/quiz-questions/<int:qid>', methods=['DELETE'])
+@app.route('/api/admin/quiz-questions/<qid>', methods=['DELETE'])
 def admin_delete_quiz_question(qid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
@@ -793,7 +796,7 @@ def admin_create_lab_molecule():
     return jsonify(lab_bank.get_molecule(mid)), 201
 
 
-@app.route('/api/admin/lab-molecules/<int:mid>', methods=['PUT'])
+@app.route('/api/admin/lab-molecules/<mid>', methods=['PUT'])
 def admin_update_lab_molecule(mid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
@@ -806,7 +809,7 @@ def admin_update_lab_molecule(mid):
     return jsonify(lab_bank.get_molecule(mid))
 
 
-@app.route('/api/admin/lab-molecules/<int:mid>', methods=['DELETE'])
+@app.route('/api/admin/lab-molecules/<mid>', methods=['DELETE'])
 def admin_delete_lab_molecule(mid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
@@ -861,7 +864,7 @@ def admin_create_lab_reaction():
     return jsonify(lab_bank.get_reaction(rid)), 201
 
 
-@app.route('/api/admin/lab-reactions/<int:rid>', methods=['PUT'])
+@app.route('/api/admin/lab-reactions/<rid>', methods=['PUT'])
 def admin_update_lab_reaction(rid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
@@ -882,7 +885,7 @@ def admin_update_lab_reaction(rid):
     return jsonify(lab_bank.get_reaction(rid))
 
 
-@app.route('/api/admin/lab-reactions/<int:rid>', methods=['DELETE'])
+@app.route('/api/admin/lab-reactions/<rid>', methods=['DELETE'])
 def admin_delete_lab_reaction(rid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
@@ -938,7 +941,7 @@ def admin_create_lab_shelf_chemical():
     return jsonify(lab_bank.get_shelf_chemical(sid)), 201
 
 
-@app.route('/api/admin/lab-shelf-chemicals/<int:sid>', methods=['PUT'])
+@app.route('/api/admin/lab-shelf-chemicals/<sid>', methods=['PUT'])
 def admin_update_lab_shelf_chemical(sid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
@@ -953,7 +956,7 @@ def admin_update_lab_shelf_chemical(sid):
     return jsonify(lab_bank.get_shelf_chemical(sid))
 
 
-@app.route('/api/admin/lab-shelf-chemicals/<int:sid>', methods=['DELETE'])
+@app.route('/api/admin/lab-shelf-chemicals/<sid>', methods=['DELETE'])
 def admin_delete_lab_shelf_chemical(sid):
     if not _require_admin():
         return jsonify({'error': 'unauthorized'}), 401
