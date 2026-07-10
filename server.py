@@ -35,18 +35,30 @@ try:
     fsdb.init()
     print('✅ Firestore đã kết nối.')
 
-    _seeded_questions = quiz_bank.seed_default_questions()
-    if _seeded_questions:
-        print(f'📦 Seeded {_seeded_questions} legacy quiz questions vào Firestore.')
-    _seeded_molecules = lab_bank.seed_default_molecules()
-    if _seeded_molecules:
-        print(f'📦 Seeded {_seeded_molecules} legacy molecules vào Firestore.')
-    _seeded_reactions = lab_bank.seed_default_reactions()
-    if _seeded_reactions:
-        print(f'📦 Seeded {_seeded_reactions} legacy reactions vào Firestore.')
-    _seeded_shelf_chems = lab_bank.seed_default_shelf_chemicals()
-    if _seeded_shelf_chems:
-        print(f'📦 Seeded {_seeded_shelf_chems} legacy shelf chemicals vào Firestore.')
+    try:
+        n = quiz_bank.seed_default_questions()
+        print(f'📦 quiz questions: đã seed {n} câu mới (0 = đã đủ từ trước).')
+    except Exception as e:
+        print(f'❌ Lỗi khi seed quiz questions: {e}')
+
+    try:
+        n = lab_bank.seed_default_molecules()
+        print(f'📦 lab molecules: đã seed {n} phân tử mới (0 = đã đủ từ trước).')
+    except Exception as e:
+        print(f'❌ Lỗi khi seed lab molecules: {e}')
+
+    try:
+        n = lab_bank.seed_default_reactions()
+        print(f'📦 lab reactions: đã seed {n} phản ứng mới (0 = đã đủ từ trước).')
+    except Exception as e:
+        print(f'❌ Lỗi khi seed lab reactions: {e}')
+
+    try:
+        n = lab_bank.seed_default_shelf_chemicals()
+        print(f'📦 lab shelf chemicals: đã seed {n} hoá chất mới (0 = đã đủ từ trước).')
+    except Exception as e:
+        print(f'❌ Lỗi khi seed lab shelf chemicals: {e}')
+
 except Exception as e:
     print(f'⚠️  Firestore CHƯA sẵn sàng: {e}')
     print('   → Mọi tính năng thu thập dữ liệu, ngân hàng quiz, ngân hàng Lab 3D sẽ lỗi cho tới khi cấu hình xong.')
