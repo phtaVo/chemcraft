@@ -91,20 +91,20 @@ def _doc_to_dict(doc) -> dict:
 
 
 def seed_default_questions() -> int:
-    """Chạy 1 lần lúc khởi động: nếu ngân hàng đang trống, nạp 34 câu gốc
-    vào để admin thấy ngay và học sinh không bị mất đề đang có."""
-    col = fsdb.collection(_COLLECTION)
-    existing = list(col.limit(1).stream())
-    if existing:
-        return 0
+    """Chạy lúc khởi động: ghi 34 câu gốc vào Firestore bằng ID cố định
+    ('seed_000'..'seed_033') và ghi theo lô (batch) thay vì từng câu một.
+    An toàn khi gọi lại nhiều lần — chỉ bổ sung câu nào còn thiếu, không tạo
+    trùng lặp — nên nếu lần trước bị Render kill giữa chừng lúc đang seed,
+    lần khởi động sau sẽ tự hoàn thiện phần còn thiếu thay vì bỏ qua."""
     ts = time.time()
-    for item in _LEGACY_QUESTIONS:
-        col.add({
+    docs = {}
+    for i, item in enumerate(_LEGACY_QUESTIONS):
+        docs[f'seed_{i:03d}'] = {
             'question': item['q'], 'options': item['opts'], 'answer_index': item['ans'],
             'difficulty': 'TB', 'active': True, 'created_by': 'system_seed',
             'created_at': ts, 'updated_at': ts,
-        })
-    return len(_LEGACY_QUESTIONS)
+        }
+    return fsdb.batched_seed(_COLLECTION, docs)
 
 
 def list_questions(include_inactive: bool = True) -> list[dict]:
