@@ -98,6 +98,45 @@ def collection(name: str):
     return _col(name)
 
 
+def batched_seed(collection_name: str, docs: dict) -> int:
+    """Ghi hàng loạt (batch, tới 400 document/lần commit — thay vì từng cái
+    một) cho seed_default_*() ở quiz_bank.py/lab_bank.py.
+
+    `docs` là {doc_id: data_dict}. Chỉ ghi những doc_id CHƯA tồn tại — an
+    toàn khi gọi lại nhiều lần (idempotent): nếu lần trước bị Render kill
+    giữa chừng lúc đang seed (VD do quá trình khởi động mất quá lâu), lần
+    khởi động sau sẽ tự bổ sung đúng phần còn thiếu thay vì bỏ qua toàn bộ
+    (như logic cũ "collection có ≥1 document thì coi là xong") hoặc ghi
+    trùng lặp.
+
+    Trả về số document mới được ghi trong lần gọi này.
+    """
+    col = _col(collection_name)
+    all_ids = list(docs.keys())
+    missing_ids = []
+    # Kiểm tra theo lô 10 (giới hạn an toàn của toán tử 'in' trong Firestore,
+    # tương thích cả phiên bản client cũ) xem id nào đã tồn tại, để chỉ ghi
+    # bổ sung phần còn thiếu.
+    for i in range(0, len(all_ids), 10):
+        chunk = all_ids[i:i + 10]
+        refs = [col.document(x) for x in chunk]
+        existing = {d.id for d in col.where('__name__', 'in', refs).stream()}
+        missing_ids.extend(x for x in chunk if x not in existing)
+
+    if not missing_ids:
+        return 0
+
+    client = init()
+    written = 0
+    for i in range(0, len(missing_ids), 400):
+        batch = client.batch()
+        for doc_id in missing_ids[i:i + 400]:
+            batch.set(col.document(doc_id), docs[doc_id])
+        batch.commit()
+        written += len(missing_ids[i:i + 400])
+    return written
+
+
 def _agg_count(query) -> int:
     """Đếm số document khớp query bằng Aggregation Query (rẻ, nhanh, không
     tải toàn bộ document về). Fallback sang đếm thủ công nếu bản thư viện
