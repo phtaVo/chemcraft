@@ -156,6 +156,13 @@ def count_events(ev_type: str) -> int:
     return _agg_count(_col('events').where('type', '==', ev_type))
 
 
+def count_events_total() -> int:
+    """Tổng số document trong `events`, tính bằng Aggregation Query (rẻ —
+    không tải document nào về), dùng cho KPI 'events_total' thay vì
+    len(all_events())."""
+    return _agg_count(_col('events'))
+
+
 def bucket_by_day(ev_type: str, days: int = 7) -> list[int]:
     now = time.time()
     day_sec = 86400
@@ -182,11 +189,39 @@ def query_events(ev_type: str = '', since: float = 0, limit: int = 200) -> list[
     return [doc.to_dict() for doc in q.stream()]
 
 
+def events_since(since: float, limit: int = 20000) -> list[dict]:
+    """Event từ mốc thời gian `since` trở đi (không lọc theo type) — chỉ đọc
+    đúng khung thời gian cần, KHÔNG quét toàn bộ lịch sử. Dùng cho các
+    endpoint chỉ cần vài giờ/vài chục ngày gần nhất (online-uids, rankings...)
+    thay vì all_events() (đọc toàn bộ collection, tốn quota, ngày càng đắt
+    khi collection lớn dần)."""
+    q = (_col('events')
+         .where('ts', '>=', since)
+         .order_by('ts')
+         .limit(limit))
+    return [doc.to_dict() for doc in q.stream()]
+
+
+def events_for_user(uid: str, limit: int = 5000) -> list[dict]:
+    """Toàn bộ lịch sử event của MỘT user — dùng chỉ số (index) theo
+    user_id, KHÔNG quét toàn bộ collection `events` của mọi user. Rẻ hơn
+    all_events() rất nhiều khi có đông người dùng. Dùng cho hồ sơ user, hoạt
+    động theo uid — cần tạo composite index (user_id, ts) lần đầu chạy (xem
+    link 'create index' trong log nếu Firestore báo thiếu)."""
+    if not uid:
+        return []
+    q = (_col('events')
+         .where('user_id', '==', uid)
+         .order_by('ts')
+         .limit(limit))
+    return [doc.to_dict() for doc in q.stream()]
+
+
 def all_events() -> list[dict]:
-    """Toàn bộ event, sắp theo thời gian tăng dần — dùng cho các hàm tổng
-    hợp phía server.py (xếp hạng, hoạt động user, hồ sơ, funnel...). Với quy
-    mô một trường/dự án học tập, tải toàn bộ về xử lý bằng Python là đủ
-    nhanh; nếu sau này dữ liệu lớn hơn nhiều, nên thêm giới hạn theo ngày."""
+    """Toàn bộ event, sắp theo thời gian tăng dần. CHỈ dùng khi thực sự cần
+    số liệu TOÀN THỜI GIAN (VD tổng số học sinh từng dùng web, tính từ lúc
+    đầu) — các trường hợp chỉ cần vài ngày/user cụ thể nên dùng
+    events_since()/events_for_user() ở trên để đọc ít hơn, rẻ hơn nhiều."""
     return [doc.to_dict() for doc in _col('events').order_by('ts').stream()]
 
 
