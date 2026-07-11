@@ -494,8 +494,7 @@ def admin_metrics():
     lab_completed = fsdb.count_events('lab_complete')
     lab_completion = round(100 * lab_completed / max(1, lab_open)) if lab_open else 0
 
-    all_evs = fsdb.all_events()
-    events_total = len(all_evs)
+    events_total = fsdb.count_events_total()
 
     daily_activity = fsdb.bucket_by_day('page_view', 7)
     daily_ai       = fsdb.bucket_by_day('ai_chat', 7)
@@ -521,7 +520,7 @@ def admin_metrics():
     word_cloud = words.most_common(30)
 
     # Heatmap hour x weekday, last 28 days
-    heat_rows = [e for e in all_evs if e.get('ts', 0) >= now - 28 * 86400]
+    heat_rows = fsdb.events_since(now - 28 * 86400)
     heatmap = [[0] * 24 for _ in range(7)]
     for r in heat_rows:
         d = datetime.fromtimestamp(r['ts'])
@@ -1278,7 +1277,7 @@ def admin_online_uids():
         return jsonify({'error': 'unauthorized'}), 401
     now = time.time()
     window = float(request.args.get('window', 300))  # 5 phút
-    events = _events_snapshot()
+    events = fsdb.events_since(now - window)
     seen = {}
     for ev in events:
         uid = _uid_of(ev)
@@ -1358,19 +1357,13 @@ def admin_user_activity():
         return jsonify({'error': 'uids phải là mảng'}), 400
     uids = [str(u) for u in uids if u][:500]  # giới hạn 500 uid/request
     now = time.time()
-    events = _events_snapshot()
 
-    # index events theo uid để tránh O(N*M)
-    per_uid = defaultdict(list)
-    for ev in events:
-        uid = _uid_of(ev)
-        if uid:
-            per_uid[uid].append(ev)
-
+    # Truy vấn theo từng uid (có index user_id+ts) thay vì tải TOÀN BỘ
+    # collection events rồi lọc bằng Python — rẻ hơn rất nhiều khi có đông
+    # người dùng, vì chỉ đọc đúng số document của các uid được hỏi.
     result = {}
     for uid in uids:
-        subset = per_uid.get(uid, [])
-        # tận dụng lại _activity_for_uid nhưng truyền subset đã filter sẵn
+        subset = fsdb.events_for_user(uid)
         result[uid] = _activity_for_uid(subset, uid, now) if subset else \
             _activity_for_uid([], uid, now)
     return jsonify({'activity': result, 'ts': now})
@@ -1420,8 +1413,8 @@ def admin_user_profile():
     days = max(7, min(int(request.args.get('days', 30)), 180))
     now = time.time()
 
-    events = _events_snapshot()
-    user_evs = [e for e in events if _uid_of(e) == uid]
+    events = fsdb.events_for_user(uid)
+    user_evs = events
     user_evs.sort(key=lambda e: e['ts'])
 
     if not user_evs:
@@ -1709,9 +1702,9 @@ def admin_rankings():
     now   = time.time()
     cutoff = 0 if days <= 0 else now - days * 86400
 
-    events = _events_snapshot()
-    if cutoff:
-        events = [e for e in events if e['ts'] >= cutoff]
+    # Chỉ đọc đúng khung thời gian cần (thay vì toàn bộ lịch sử) — rẻ hơn
+    # rất nhiều khi collection events lớn dần theo thời gian.
+    events = fsdb.events_since(cutoff) if cutoff else fsdb.all_events()
 
     # ── Bảng 1: Lab experiments ─────────────────────────────────
     lab_stats = defaultdict(lambda: {
@@ -1849,7 +1842,7 @@ def admin_notifications():
         conn.close()
     last_seen_ts = row['last_seen_ts'] if row else 0
 
-    events = [e for e in _events_snapshot() if e.get('type') == 'bug_report']
+    events = fsdb.query_events('bug_report', since=0, limit=max(limit, 200))
     events.sort(key=lambda e: e['ts'], reverse=True)
     unread = sum(1 for e in events if e['ts'] > last_seen_ts)
     events = events[:limit]
