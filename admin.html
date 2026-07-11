@@ -1100,6 +1100,16 @@ function refreshChartsTheme(){
   }
 
   async function sumLessonsFromFirestore() {
+    // Đọc toàn bộ collection `users` khá tốn (mỗi document 1 lượt đọc) —
+    // cache lại 5 phút trong sessionStorage để F5/chuyển tab nhiều lần
+    // trong lúc dùng không tính lại từ đầu mỗi lần, tránh dồn quota nhanh.
+    const CACHE_KEY = 'cc_admin_lessons_cache_v1';
+    const TTL_MS = 5 * 60 * 1000;
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null');
+      if (cached && (Date.now() - cached.ts) < TTL_MS) return cached.data;
+    } catch (e) { /* ignore, tính lại */ }
+
     try {
       if (!window._fbDb || !window._fbFns) return { lessons: 0, users: 0, avgProgress: 0 };
       const { collection, getDocs } = window._fbFns;
@@ -1116,7 +1126,9 @@ function refreshChartsTheme(){
         });
       });
       const avg = progressCount ? Math.round(progressSum / progressCount) : 0;
-      return { lessons, users, avgProgress: avg };
+      const result = { lessons, users, avgProgress: avg };
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: result })); } catch (e) {}
+      return result;
     } catch (e) {
       return { lessons: 0, users: 0, avgProgress: 0 };
     }
