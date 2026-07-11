@@ -2051,8 +2051,8 @@ const AIAssistant = {
           <td class="num">${r.message_count}</td>
           <td style="font-size:0.82rem;color:var(--fg-mute);">${this._relTime(r.last_ts)}</td>
           <td style="white-space:nowrap;">
-            <button class="mod-btn mod-btn-ghost" style="padding:5px 10px;font-size:0.78rem;" onclick="AIAssistant.openThread(${r.id})"><i class="fa-solid fa-eye"></i> Xem</button>
-            <button class="mod-btn mod-btn-primary" style="padding:5px 10px;font-size:0.78rem;" onclick="AIAssistant.openReply(${r.id})"><i class="fa-solid fa-reply"></i> Phản hồi</button>
+            <button class="mod-btn mod-btn-ghost" style="padding:5px 10px;font-size:0.78rem;" onclick="AIAssistant.openThread('${r.id}')"><i class="fa-solid fa-eye"></i> Xem</button>
+            <button class="mod-btn mod-btn-primary" style="padding:5px 10px;font-size:0.78rem;" onclick="AIAssistant.openReply('${r.id}')"><i class="fa-solid fa-reply"></i> Phản hồi</button>
           </td>
         </tr>`;
       }).join('')}
@@ -2111,7 +2111,7 @@ const AIAssistant = {
         </div>
         <div class="mod-foot">
           <button class="mod-btn mod-btn-ghost" onclick="closeModal('ai-thread-modal-overlay')">Đóng</button>
-          <button class="mod-btn mod-btn-primary" onclick="closeModal('ai-thread-modal-overlay'); AIAssistant.openReply(${cid})"><i class="fa-solid fa-reply"></i> Phản hồi</button>
+          <button class="mod-btn mod-btn-primary" onclick="closeModal('ai-thread-modal-overlay'); AIAssistant.openReply('${cid}')"><i class="fa-solid fa-reply"></i> Phản hồi</button>
         </div>`;
     } catch (e) {
       panel.innerHTML = `<div class="mod-body"><div class="mod-note" style="border-left-color:var(--red);">Lỗi tải hội thoại: ${escapeHtml(e.message)}</div></div>`;
@@ -3346,8 +3346,8 @@ function _renderQuizRows(list){
         </label>
       </td>
       <td><div style="display:flex;gap:5px;">
-        <button class="tbl-act-btn" onclick="openQuizModal(${q.id})"><i class="fa-solid fa-pen"></i></button>
-        <button class="tbl-act-btn danger" onclick="deleteQuizQuestion(${q.id})"><i class="fa-solid fa-trash"></i></button>
+        <button class="tbl-act-btn" onclick="openQuizModal('${q.id}')"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn danger" onclick="deleteQuizQuestion('${q.id}')"><i class="fa-solid fa-trash"></i></button>
       </div></td>
     </tr>`;
   }).join('');
@@ -3626,11 +3626,11 @@ function renderShelfGrid(){
       <div class="chem-meta">${escapeHtml(c.type||'')}${c.ph!=null?' · pH '+c.ph:''}${c.isGas?' · khí':''}${c.solid?' · rắn':''}</div>
       <div class="chem-note">${escapeHtml(c.desc||'')}</div>
       <div style="display:flex;gap:6px;margin-top:10px;">
-        <button class="tbl-act-btn" onclick="openShelfModal(${c.id})" title="Sửa"><i class="fa-solid fa-pen"></i></button>
-        <button class="tbl-act-btn" onclick="toggleShelfStatus(${c.id})" title="${c.status==='published'?'Chuyển về nháp':'Xuất bản'}">
+        <button class="tbl-act-btn" onclick="openShelfModal('${c.id}')" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn" onclick="toggleShelfStatus('${c.id}')" title="${c.status==='published'?'Chuyển về nháp':'Xuất bản'}">
           <i class="fa-solid ${c.status==='published'?'fa-eye-slash':'fa-upload'}"></i>
         </button>
-        <button class="tbl-act-btn danger" onclick="deleteShelfChem(${c.id})" title="Xoá"><i class="fa-solid fa-trash"></i></button>
+        <button class="tbl-act-btn danger" onclick="deleteShelfChem('${c.id}')" title="Xoá"><i class="fa-solid fa-trash"></i></button>
       </div>
     </div>`).join('');
 }
@@ -3753,11 +3753,11 @@ function renderChemGrid(){
       <div class="chem-meta">${c.molWeight?c.molWeight+' g/mol · ':''}${c.atoms.length} nguyên tử · ${c.bonds.length} liên kết${c.polar?' · phân cực':''}</div>
       <div class="chem-note">${escapeHtml(c.desc||'')}</div>
       <div style="display:flex;gap:6px;margin-top:10px;">
-        <button class="tbl-act-btn" onclick="openChemModal(${c.id})" title="Sửa"><i class="fa-solid fa-pen"></i></button>
-        <button class="tbl-act-btn" onclick="toggleChemStatus(${c.id})" title="${c.status==='published'?'Chuyển về nháp':'Xuất bản'}">
+        <button class="tbl-act-btn" onclick="openChemModal('${c.id}')" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn" onclick="toggleChemStatus('${c.id}')" title="${c.status==='published'?'Chuyển về nháp':'Xuất bản'}">
           <i class="fa-solid ${c.status==='published'?'fa-eye-slash':'fa-upload'}"></i>
         </button>
-        <button class="tbl-act-btn danger" onclick="deleteChem(${c.id})" title="Xoá"><i class="fa-solid fa-trash"></i></button>
+        <button class="tbl-act-btn danger" onclick="deleteChem('${c.id}')" title="Xoá"><i class="fa-solid fa-trash"></i></button>
       </div>
     </div>`).join('');
 }
@@ -3785,11 +3785,11 @@ function renderReactTable(){
       <td>${r.participants && r.participants.length ? '<span class="badge ok" title="Có chất tham gia — chạy animation thật trong lab"><i class="fa-solid fa-cube"></i> Chạy 3D</span>' : '<span class="badge off" title="Chỉ hiển thị dạng thẻ nhiệm vụ">Thẻ nhiệm vụ</span>'}</td>
       <td><span class="badge ${r.status==='published'?'ok':'off'}">${r.status==='published'?'Đã xuất bản':'Nháp'}</span></td>
       <td><div style="display:flex;gap:5px;">
-        <button class="tbl-act-btn" onclick="openReactionModal(${r.id})" title="Sửa"><i class="fa-solid fa-pen"></i></button>
-        <button class="tbl-act-btn" onclick="toggleReactionStatus(${r.id})" title="${r.status==='published'?'Chuyển về nháp':'Xuất bản'}">
+        <button class="tbl-act-btn" onclick="openReactionModal('${r.id}')" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+        <button class="tbl-act-btn" onclick="toggleReactionStatus('${r.id}')" title="${r.status==='published'?'Chuyển về nháp':'Xuất bản'}">
           <i class="fa-solid ${r.status==='published'?'fa-eye-slash':'fa-upload'}"></i>
         </button>
-        <button class="tbl-act-btn danger" onclick="deleteReaction(${r.id})" title="Xoá"><i class="fa-solid fa-trash"></i></button>
+        <button class="tbl-act-btn danger" onclick="deleteReaction('${r.id}')" title="Xoá"><i class="fa-solid fa-trash"></i></button>
       </div></td>
     </tr>`).join('');
 }
