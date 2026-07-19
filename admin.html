@@ -562,6 +562,12 @@ table.a-table{width:100%; border-collapse:collapse;}
       </div>
 
       <div class="a-nav-group">
+        <div class="a-nav-label">LMS (Lớp học)</div>
+        <div class="a-nav-item" data-page="lms-classes"><i class="fa-solid fa-chalkboard"></i><span>Lớp học</span></div>
+        <div class="a-nav-item" data-page="lms-subscriptions"><i class="fa-solid fa-crown"></i><span>Subscriptions</span></div>
+      </div>
+
+      <div class="a-nav-group">
         <div class="a-nav-label">Hệ thống</div>
         <div class="a-nav-item" data-page="notifications"><i class="fa-solid fa-bell"></i><span>Thông báo</span></div>
         <div class="a-nav-item" data-page="roles"><i class="fa-solid fa-user-shield"></i><span>Phân quyền</span></div>
@@ -1352,6 +1358,7 @@ function refreshChartsTheme(){
 
 </script>
 <script src="admin_users_module.js" defer></script>
+<script src="admin_lms_module.js" defer></script>
 </body>
 </html>
 
@@ -1360,6 +1367,9 @@ function refreshChartsTheme(){
    MODULE: QUẢN LÝ NGƯỜI DÙNG (thật — đọc từ Firestore)
    ═══════════════════════════════════════════════════════════════ */
 PAGES['users'] = { title:'Quản lý người dùng', sub:'Danh sách tài khoản, phân quyền, trạng thái', render: renderUsers };
+PAGES['roles'] = { title:'Phân quyền / Giáo viên', sub:'Nâng student lên teacher, cấp/thu hồi ChemCraft for edu, khóa tài khoản', render: () => window.CC_LMS.renderTeachers() };
+PAGES['lms-classes'] = { title:'Lớp học', sub:'Toàn bộ lớp học trong hệ thống', render: () => window.CC_LMS.renderClasses() };
+PAGES['lms-subscriptions'] = { title:'Subscriptions', sub:'Thống kê Premium & Usage', render: () => window.CC_LMS.renderStats() };
 
 let _usersCache = [];
 let _usersFiltered = [];
