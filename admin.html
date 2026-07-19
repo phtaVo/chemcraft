@@ -747,6 +747,9 @@ function roleLabel(role){
    NAVIGATION / PAGE ROUTER
    ════════════════════════════════════════════════════════════ */
 const PAGES = {
+  PAGES['lms-teachers']      = { title:'Giáo viên',      sub:'Quản lý quyền & Premium ChemCraft for edu', render: () => window.CC_LMS.renderTeachers() };
+  PAGES['lms-classes']       = { title:'Lớp học',        sub:'Toàn bộ lớp học trong hệ thống',            render: () => window.CC_LMS.renderClasses() };
+  PAGES['lms-subscriptions'] = { title:'Subscriptions',  sub:'Thống kê Premium & Usage',                  render: () => window.CC_LMS.renderStats() };
   dashboard:  { title:'Dashboard', sub:'Tổng quan toàn hệ thống ChemCraft', render: renderDashboard },
   users: {
   title: 'Quản lý người dùng',
@@ -912,32 +915,25 @@ let _firestoreOk = false;
 async function loadDashboardData(){
   if (!document.getElementById('kpi-totalUsers')) return;
 
-  // Thử Firestore
-  if (window._fbDb && window._fbFns) {
-    try {
-      const { collection, getDocs, orderBy, query, limit } = window._fbFns;
-      const db = window._fbDb;
-      const q  = query(collection(db,'users'), orderBy('createdAt','desc'), limit(6));
-      const snap = await getDocs(q);
-      const users = [];
-      snap.forEach(d => users.push({id:d.id,...d.data()}));
+  // Đọc qua backend (Admin SDK) thay vì Firestore SDK thẳng từ trình duyệt —
+  // Firestore rules không còn cho phép đọc collection users mà không đăng
+  // nhập, nên mọi số liệu user giờ đi qua API admin có X-Admin-Token.
+  try {
+    const t = sessionStorage.getItem('cc_admin_token') || window.__adminToken || '';
+    const r = await fetch('/api/admin/users-stats', { headers: { 'X-Admin-Token': t } });
+    if (r.ok) {
+      const stats = await r.json();
       _firestoreOk = true;
-
-      // KPI từ dữ liệu thật
-      setKpi('totalUsers', users.length > 0 ? snap.size+'+ (live)' : '0');
-      setKpi('newUsers', '+' + users.filter(u => {
-        try { const d = u.createdAt?.toDate?.(); return d && (Date.now()-d)<7*86400000; } catch(e){ return false; }
-      }).length);
-
-      // Bảng recent users thật
-      renderRecentUsersTable(users);
-    } catch(e) {
+      setKpi('totalUsers', stats.totalUsers ? stats.totalUsers.toLocaleString('vi-VN') : '0');
+      setKpi('newUsers', '+' + (stats.newUsersWeek || 0));
+      renderRecentUsersTable(stats.recentUsers || []);
+    } else {
+      throw new Error('users-stats ' + r.status);
+    }
+  } catch(e) {
       _firestoreOk = false;
       console.warn('Firestore không khả dụng, dùng demo data:', e.message);
       loadDemoDashboard();
-    }
-  } else {
-    loadDemoDashboard();
   }
 
   // KPI chưa có collection riêng → demo có nhãn
@@ -1092,45 +1088,16 @@ function refreshChartsTheme(){
 
   async function countUsersFromFirestore() {
     try {
-      if (!window._fbDb || !window._fbFns) return null;
-      const { collection, getCountFromServer } = window._fbFns;
-      const snap = await getCountFromServer(collection(window._fbDb, 'users'));
-      return snap.data().count;
-    } catch (e) { return null; }
-  }
-
-  async function sumLessonsFromFirestore() {
-    // Đọc toàn bộ collection `users` khá tốn (mỗi document 1 lượt đọc) —
-    // cache lại 5 phút trong sessionStorage để F5/chuyển tab nhiều lần
-    // trong lúc dùng không tính lại từ đầu mỗi lần, tránh dồn quota nhanh.
-    const CACHE_KEY = 'cc_admin_lessons_cache_v1';
-    const TTL_MS = 5 * 60 * 1000;
+  async function fetchUsersStats() {
+    // Thay thế countUsersFromFirestore() + sumLessonsFromFirestore() cũ:
+    // giờ đọc qua backend (Admin SDK, có cache 5 phút phía server) thay vì
+    // Firestore SDK thẳng từ trình duyệt (không còn được phép theo rules mới).
     try {
-      const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null');
-      if (cached && (Date.now() - cached.ts) < TTL_MS) return cached.data;
-    } catch (e) { /* ignore, tính lại */ }
-
-    try {
-      if (!window._fbDb || !window._fbFns) return { lessons: 0, users: 0, avgProgress: 0 };
-      const { collection, getDocs } = window._fbFns;
-      const snap = await getDocs(collection(window._fbDb, 'users'));
-      let lessons = 0, users = 0, progressSum = 0, progressCount = 0;
-      snap.forEach(d => {
-        const u = d.data();
-        users++;
-        lessons += (u.lessonHistory || []).length;
-        const p = u.lessonProgress || {};
-        Object.values(p).forEach(v => {
-          const val = typeof v === 'number' ? v : (v?.percent ?? v?.progress ?? 0);
-          if (typeof val === 'number') { progressSum += val; progressCount++; }
-        });
-      });
-      const avg = progressCount ? Math.round(progressSum / progressCount) : 0;
-      const result = { lessons, users, avgProgress: avg };
-      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: result })); } catch (e) {}
-      return result;
+      const r = await fetch('/api/admin/users-stats', { headers: { 'X-Admin-Token': token() } });
+      if (!r.ok) throw new Error('users-stats ' + r.status);
+      return await r.json();
     } catch (e) {
-      return { lessons: 0, users: 0, avgProgress: 0 };
+      return { totalUsers: 0, newUsersWeek: 0, lessonsSum: 0, avgProgress: 0, recentUsers: [] };
     }
   }
 
@@ -1284,10 +1251,9 @@ function refreshChartsTheme(){
   window.loadDashboardData = async function () {
     if (!document.getElementById('kpi-totalUsers')) return;
 
-    const [m, userCount, agg] = await Promise.all([
+    const [m, stats] = await Promise.all([
       fetchMetrics().catch(() => null),
-      countUsersFromFirestore(),
-      sumLessonsFromFirestore(),
+      fetchUsersStats(),
     ]);
 
     const set = (k, v) => {
@@ -1295,43 +1261,24 @@ function refreshChartsTheme(){
       if (el) el.innerHTML = v;
     };
 
-    set('totalUsers', (userCount ?? agg.users ?? 0).toLocaleString('vi-VN'));
-
-    // Người dùng mới trong 7 ngày — dựa vào users.createdAt (Firestore)
-    let newUsers = '—';
-    try {
-      if (window._fbDb && window._fbFns) {
-        const { collection, query, where, getCountFromServer, Timestamp } = window._fbFns;
-        const wk = new Date(Date.now() - 7 * 86400_000);
-        const q = query(collection(window._fbDb, 'users'), where('createdAt', '>=', Timestamp.fromDate(wk)));
-        const snap = await getCountFromServer(q);
-        newUsers = '+' + snap.data().count;
-      }
-    } catch (e) {}
-    set('newUsers', newUsers);
+    set('totalUsers', (stats.totalUsers || 0).toLocaleString('vi-VN'));
+    set('newUsers', '+' + (stats.newUsersWeek || 0));
 
     if (m) {
       set('onlineUsers',  m.server.active_ips.toLocaleString('vi-VN'));
-      set('totalLessons', (agg.lessons || m.counts.lessons_done).toLocaleString('vi-VN'));
+      set('totalLessons', (stats.lessonsSum || m.counts.lessons_done).toLocaleString('vi-VN'));
       set('totalQuiz',    m.counts.quiz_done.toLocaleString('vi-VN'));
       set('totalLab',     m.counts.lab_open.toLocaleString('vi-VN'));
       set('aiChats',      m.counts.ai_chats.toLocaleString('vi-VN'));
-      set('completion',   (agg.avgProgress || m.counts.lab_completion) + '%');
+      set('completion',   (stats.avgProgress || m.counts.lab_completion) + '%');
     } else {
       ['onlineUsers','totalLessons','totalQuiz','totalLab','aiChats','completion'].forEach(k => set(k, '—'));
     }
 
-    // Bảng recent users — tận dụng logic Firestore sẵn có
+    // Bảng recent users — lấy sẵn từ cùng 1 lượt gọi /api/admin/users-stats
     try {
-      if (window._fbDb && window._fbFns) {
-        const { collection, getDocs, orderBy, query, limit } = window._fbFns;
-        const q = query(collection(window._fbDb, 'users'), orderBy('createdAt', 'desc'), limit(6));
-        const snap = await getDocs(q);
-        const users = [];
-        snap.forEach(d => users.push({ id: d.id, ...d.data() }));
-        if (typeof window.renderRecentUsersTable === 'function') {
-          window.renderRecentUsersTable(users);
-        }
+      if (typeof window.renderRecentUsersTable === 'function') {
+        window.renderRecentUsersTable(stats.recentUsers || []);
       }
     } catch (e) { console.warn('Recent users:', e); }
 
@@ -1410,7 +1357,6 @@ function refreshChartsTheme(){
 
 </script>
 <script src="admin_users_module.js" defer></script>
-<script src="admin_lms_module.js" defer></script>
 </body>
 </html>
 
@@ -1492,18 +1438,18 @@ async function renderUsers(){
 }
 
 async function fetchUsersFromFirestore(){
-  // Thử Firestore thật
-  if (window._fbDb && window._fbFns) {
-    try {
-      const { collection, getDocs, orderBy, query } = window._fbFns;
-      const q = query(collection(window._fbDb,'users'), orderBy('createdAt','desc'));
-      const snap = await getDocs(q);
-      _usersCache = [];
-      snap.forEach(d => _usersCache.push({ id: d.id, ...d.data() }));
+  try {
+    const t = sessionStorage.getItem('cc_admin_token') || window.__adminToken || '';
+    const r = await fetch('/api/admin/users-list', { headers: { 'X-Admin-Token': t } });
+    if (r.ok) {
+      const { users } = await r.json();
+      _usersCache = users || [];
       if (_usersCache.length > 0) { filterUsers(); return; }
-    } catch(e) {
-      console.warn('Firestore users error, dùng demo:', e.message);
+    } else {
+      console.warn('users-list lỗi:', r.status);
     }
+  } catch(e) {
+    console.warn('users-list error, dùng demo:', e.message);
   }
   // Fallback demo
   _usersCache = DEMO_USERS.map(u => ({...u}));
@@ -1617,10 +1563,15 @@ function avatarGrad(name){
 
 async function toggleLockUser(uid, currentlyLocked){
   if (!confirm(currentlyLocked ? 'Mở khóa tài khoản này?' : 'Khóa tài khoản này?')) return;
-  const { doc, updateDoc } = window._fbFns || {};
-  if (!updateDoc) { alert('Chức năng này cần thêm updateDoc vào _fbFns.'); return; }
   try {
-    await updateDoc(doc(window._fbDb,'users',uid), { locked: !currentlyLocked });
+    const t = sessionStorage.getItem('cc_admin_token') || window.__adminToken || '';
+    const r = await fetch(`/api/admin/users/${uid}/lock`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': t },
+      body: JSON.stringify({ locked: !currentlyLocked }),
+    });
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(data.error || ('Lỗi ' + r.status));
     const u = _usersCache.find(x=>x.id===uid);
     if (u) u.locked = !currentlyLocked;
     filterUsers();
@@ -1654,9 +1605,15 @@ async function saveUserEdit(uid){
   const school = document.getElementById('me-school').value.trim();
   const cls    = document.getElementById('me-class').value.trim();
   const role   = document.getElementById('me-role').value;
-  const { doc, updateDoc } = window._fbFns;
   try {
-    await updateDoc(doc(window._fbDb,'users',uid), { displayName:name, school, class:cls, role });
+    const t = sessionStorage.getItem('cc_admin_token') || window.__adminToken || '';
+    const r = await fetch(`/api/admin/users/${uid}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': t },
+      body: JSON.stringify({ displayName:name, school, class:cls, role }),
+    });
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(data.error || ('Lỗi ' + r.status));
     const u = _usersCache.find(x=>x.id===uid);
     if (u) Object.assign(u, { displayName:name, school, class:cls, role });
     filterUsers(); closeUserModal();
@@ -1991,22 +1948,19 @@ const AIAssistant = {
     const uids = new Set(items.map(r => r.user_id).filter(Boolean));
     const need = [...uids].filter(u => !(u in this._userCache));
     if (!need.length) return;
-    const db = window._fbDb, fns = window._fbFns;
-    if (!db || !fns?.doc || !fns?.getDoc) {
+    try {
+      const t = sessionStorage.getItem('cc_admin_token') || window.__adminToken || '';
+      const r = await fetch('/api/admin/users-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': t },
+        body: JSON.stringify({ uids: need }),
+      });
+      const data = await r.json().catch(() => ({}));
+      const users = data.users || {};
+      need.forEach(u => { this._userCache[u] = users[u] || { name: '', email: '' }; });
+    } catch (e) {
       need.forEach(u => this._userCache[u] = { name: '', email: '' });
-      return;
     }
-    await Promise.all(need.map(async u => {
-      try {
-        const snap = await fns.getDoc(fns.doc(db, 'users', u));
-        if (snap.exists()) {
-          const d = snap.data();
-          this._userCache[u] = { name: d.displayName || d.name || d.fullName || '', email: d.email || '' };
-        } else {
-          this._userCache[u] = { name: '', email: '' };
-        }
-      } catch (e) { this._userCache[u] = { name: '', email: '' }; }
-    }));
   },
 
   _initials(name, email){
@@ -2619,22 +2573,19 @@ const Rankings = {
     ['lab', 'quiz', 'bugs'].forEach(k => (this._data[k] || []).forEach(r => uids.add(r.uid)));
     const need = [...uids].filter(u => u && !(u in this._userCache));
     if (!need.length) return;
-    const db = window._fbDb, fns = window._fbFns;
-    if (!db || !fns?.doc || !fns?.getDoc) {
+    try {
+      const t = sessionStorage.getItem('cc_admin_token') || window.__adminToken || '';
+      const r = await fetch('/api/admin/users-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': t },
+        body: JSON.stringify({ uids: need }),
+      });
+      const data = await r.json().catch(() => ({}));
+      const users = data.users || {};
+      need.forEach(u => { this._userCache[u] = users[u] || { name: '', email: '' }; });
+    } catch (e) {
       need.forEach(u => this._userCache[u] = { name: '', email: '' });
-      return;
     }
-    await Promise.all(need.map(async u => {
-      try {
-        const snap = await fns.getDoc(fns.doc(db, 'users', u));
-        if (snap.exists()) {
-          const d = snap.data();
-          this._userCache[u] = { name: d.displayName || d.name || d.fullName || '', email: d.email || '' };
-        } else {
-          this._userCache[u] = { name: '', email: '' };
-        }
-      } catch (e) { this._userCache[u] = { name: '', email: '' }; }
-    }));
   },
 
   _renderSummary() {
@@ -4129,19 +4080,19 @@ ADMIN_ACCOUNTS = {<br>
     </div>
   `;
 
-  // Kiểm tra firestore
+  // Kiểm tra firestore (qua backend Admin SDK, không còn đọc thẳng từ trình duyệt)
   setTimeout(async () => {
     const el = document.getElementById('firestore-status');
     if (!el) return;
-    if (!window._fbDb || !window._fbFns) {
-      el.innerHTML = `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-xmark" style="color:var(--red);"></i> <strong>Chưa kết nối</strong> — Firebase config không khả dụng.</div>`;
-      return;
-    }
     try {
-      const { collection, getDocs, limit, query } = window._fbFns;
-      const q = query(collection(window._fbDb,'users'), limit(1));
-      await getDocs(q);
-      el.innerHTML = `<div class="mod-note" style="border-left-color:var(--green);"><i class="fa-solid fa-circle-check" style="color:var(--green);"></i> <strong>Kết nối OK</strong> — Firestore hoạt động bình thường. Dữ liệu người dùng sẽ hiển thị thật trong tất cả các module.</div>`;
+      const t = sessionStorage.getItem('cc_admin_token') || window.__adminToken || '';
+      const r = await fetch('/api/admin/firestore-ping', { headers: { 'X-Admin-Token': t } });
+      const data = await r.json().catch(()=>({}));
+      if (r.ok && data.ok) {
+        el.innerHTML = `<div class="mod-note" style="border-left-color:var(--green);"><i class="fa-solid fa-circle-check" style="color:var(--green);"></i> <strong>Kết nối OK</strong> — Firestore hoạt động bình thường. Dữ liệu người dùng sẽ hiển thị thật trong tất cả các module.</div>`;
+      } else {
+        throw new Error(data.error || ('HTTP ' + r.status));
+      }
     } catch(e) {
       el.innerHTML = `<div class="mod-note" style="border-left-color:var(--red);"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);"></i> <strong>Lỗi:</strong> ${escapeHtml(e.message)}<br><br>
         Truy cập <a href="https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=chemcraft-e8e6e" target="_blank" style="color:var(--indigo);text-decoration:underline;">Enable Firestore API</a> rồi reload lại trang.</div>`;
