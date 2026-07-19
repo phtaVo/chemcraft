@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teacher Dashboard - ChemCraft</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{
+  --navy:#0B1220; --indigo:#4F6BFF; --cyan:#06B6D4; --purple:#8B5CF6;
+  --gold:#F59E0B; --green:#10B981; --red:#EF4444;
+  --sky:#F6F8FC; --sky2:#EEF2F9; --white:#FFFFFF;
+  --ink:#101725; --text:#1E2433; --text-m:#5B6477; --text-l:#8C95A8;
+  --border:#E4E9F1; --sh-2: 0 4px 14px rgba(16,23,37,0.08); --sh-3: 0 12px 28px rgba(16,23,37,0.12);
+  --r-md:12px; --r-lg:18px; --r-pill:999px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--text);min-height:100vh;}
+.shell{display:flex;min-height:100vh;}
+.sidebar{width:250px;flex-shrink:0;background:var(--navy);color:#fff;padding:22px 14px;position:sticky;top:0;height:100vh;overflow-y:auto;}
+.sb-logo{font-weight:900;font-size:1.15rem;padding:0 10px 20px;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;}
+.sb-logo i{color:var(--cyan);}
+.sb-item{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:var(--r-md);color:rgba(255,255,255,0.72);font-weight:600;font-size:0.92rem;cursor:pointer;transition:.15s;margin-bottom:2px;}
+.sb-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
+.sb-item.active{background:linear-gradient(135deg,var(--indigo),var(--cyan));color:#fff;}
+.main{flex:1;padding:28px 34px;max-width:1200px;}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+.page-title{font-weight:800;font-size:1.5rem;color:var(--ink);letter-spacing:-0.02em;}
+.card{background:#fff;border-radius:var(--r-lg);box-shadow:var(--sh-2);border:1px solid var(--border);padding:20px;margin-bottom:18px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+.btn{font-family:inherit;font-weight:700;font-size:0.88rem;padding:10px 18px;border:none;border-radius:var(--r-pill);cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px;}
+.btn-primary{background:linear-gradient(135deg,var(--indigo),var(--cyan));color:#fff;}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-ghost{background:var(--sky2);color:var(--ink);}
+.btn-danger{background:rgba(239,68,68,0.12);color:var(--red);}
+.btn-sm{padding:6px 12px;font-size:0.78rem;}
+input,textarea,select{font-family:inherit;width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9rem;background:#fff;color:var(--text);}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--indigo);}
+label{font-size:0.8rem;font-weight:700;color:var(--text-m);display:block;margin-bottom:5px;}
+.field{margin-bottom:12px;}
+.class-card{border:1px solid var(--border);border-radius:var(--r-md);padding:16px;background:#fff;transition:.15s;cursor:pointer;}
+.class-card:hover{box-shadow:var(--sh-3);transform:translateY(-2px);}
+.class-name{font-weight:800;font-size:1rem;margin-bottom:4px;}
+.class-meta{font-size:0.8rem;color:var(--text-m);margin-bottom:8px;}
+.pill{display:inline-block;padding:3px 10px;border-radius:var(--r-pill);font-size:0.72rem;font-weight:700;}
+.pill-cyan{background:#E3F8FB;color:#0891A8;}
+.pill-green{background:#E6F8F1;color:#0D9166;}
+.pill-gold{background:#FEF3DD;color:#B45309;}
+table{width:100%;border-collapse:collapse;font-size:0.86rem;}
+th{text-align:left;color:var(--text-m);font-weight:700;padding:9px 10px;border-bottom:2px solid var(--border);}
+td{padding:10px;border-bottom:1px solid var(--border);}
+.empty{text-align:center;padding:40px 20px;color:var(--text-l);}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(11,18,32,0.55);z-index:999;align-items:center;justify-content:center;}
+.modal-bg.show{display:flex;}
+.modal{background:#fff;border-radius:var(--r-lg);padding:24px;width:min(480px,92vw);max-height:88vh;overflow-y:auto;}
+.modal h3{margin-bottom:16px;font-size:1.1rem;}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:#fff;padding:13px 20px;border-radius:12px;font-size:0.88rem;font-weight:600;z-index:1000;opacity:0;transform:translateY(10px);transition:.25s;}
+.toast.show{opacity:1;transform:translateY(0);}
+.hidden{display:none !important;}
+.usage-bar-wrap{background:var(--sky2);border-radius:var(--r-pill);height:8px;overflow:hidden;margin-top:4px;}
+.usage-bar{height:100%;background:linear-gradient(90deg,var(--cyan),var(--indigo));}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="sidebar">
+    <div class="sb-logo"><i class="fa-solid fa-flask"></i> ChemCraft <span style="color:var(--cyan)">·</span> Teacher</div>
+    <div class="sb-item active" data-tab="overview"><i class="fa-solid fa-house"></i> Tổng quan</div>
+    <div class="sb-item" data-tab="classes"><i class="fa-solid fa-chalkboard"></i> Lớp học</div>
+    <div class="sb-item" data-tab="livestreams"><i class="fa-solid fa-video"></i> Livestream</div>
+    <div class="sb-item" data-tab="documents"><i class="fa-solid fa-folder-open"></i> Tài liệu</div>
+    <div class="sb-item" data-tab="lessons"><i class="fa-solid fa-book"></i> Bài học</div>
+    <div class="sb-item" data-tab="assignments"><i class="fa-solid fa-pen"></i> Bài tập</div>
+    <div class="sb-item" data-tab="tests"><i class="fa-solid fa-file-circle-check"></i> Bài kiểm tra</div>
+    <div class="sb-item" data-tab="submissions"><i class="fa-solid fa-inbox"></i> Bài nộp của học sinh</div>
+    <div class="sb-item" data-tab="students"><i class="fa-solid fa-users"></i> Học sinh</div>
+    <div class="sb-item" data-tab="settings"><i class="fa-solid fa-gear"></i> Cài đặt</div>
+    <div style="margin-top:20px;padding:12px;border-top:1px solid rgba(255,255,255,0.1);">
+      <div id="sb-user" style="font-size:0.82rem;color:rgba(255,255,255,0.6);"></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="page-title" id="page-title">Tổng quan</div>
+      <div id="class-selector-wrap" class="hidden">
+        <select id="class-selector" style="min-width:220px;"></select>
+      </div>
+    </div>
+    <div id="tab-content"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-bg"><div class="modal" id="modal-body"></div></div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+
+let firebaseConfig = {};
+try { firebaseConfig = await (await fetch('/api/firebase-config')).json(); } catch(e){}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+let CURRENT_USER = null;
+let MY_CLASSES = [];
+let ACTIVE_CLASS = null;
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+async function api(path, opts = {}){
+  const token = CURRENT_USER ? await CURRENT_USER.getIdToken() : null;
+  const res = await fetch('/api/lms' + path, {
+    method: opts.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? {'Authorization': 'Bearer ' + token} : {}),
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.error || 'Đã có lỗi xảy ra.');
+  return data;
+}
+
+function openModal(html){
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-bg').classList.add('show');
+}
+function closeModal(){ document.getElementById('modal-bg').classList.remove('show'); }
+document.getElementById('modal-bg').addEventListener('click', (e)=>{ if(e.target.id==='modal-bg') closeModal(); });
+window.closeModal = closeModal;
+
+function fmtDate(ts){
+  if (!ts) return '—';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString('vi-VN');
+}
+
+// ── Sidebar navigation ──────────────────────────────────────────────────
+const TABS = ['overview','classes','livestreams','documents','lessons','assignments','tests','submissions','students','settings'];
+const TAB_TITLES = {
+  overview:'Tổng quan', classes:'Lớp học', livestreams:'Livestream', documents:'Tài liệu',
+  lessons:'Bài học', assignments:'Bài tập', tests:'Bài kiểm tra', submissions:'Bài nộp của học sinh',
+  students:'Học sinh', settings:'Cài đặt',
+};
+const NEEDS_CLASS = new Set(['livestreams','documents','lessons','assignments','tests','submissions','students']);
+
+document.querySelectorAll('.sb-item').forEach(el=>{
+  el.addEventListener('click', ()=>{
+    document.querySelectorAll('.sb-item').forEach(x=>x.classList.remove('active'));
+    el.classList.add('active');
+    renderTab(el.dataset.tab);
+  });
+});
+
+async function renderTab(tab){
+  document.getElementById('page-title').textContent = TAB_TITLES[tab];
+  document.getElementById('class-selector-wrap').classList.toggle('hidden', !NEEDS_CLASS.has(tab));
+  const el = document.getElementById('tab-content');
+  el.innerHTML = '<div class="empty"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>';
+  try {
+    if (tab === 'overview') return renderOverview();
+    if (tab === 'classes') return renderClasses();
+    if (NEEDS_CLASS.has(tab)) {
+      if (!ACTIVE_CLASS) { el.innerHTML = '<div class="empty">Chọn một lớp học ở góc trên bên phải, hoặc tạo lớp mới trong tab "Lớp học".</div>'; return; }
+      if (tab === 'livestreams') return renderLivestreams();
+      if (tab === 'documents') return renderDocuments();
+      if (tab === 'lessons') return renderLessons();
+      if (tab === 'assignments') return renderAssignments();
+      if (tab === 'tests') return renderTests();
+      if (tab === 'submissions') return renderSubmissionsOverview();
+      if (tab === 'students') return renderStudents();
+    }
+    if (tab === 'settings') return renderSettings();
+  } catch(e) { el.innerHTML = `<div class="empty">${e.message}</div>`; }
+}
+
+// ── Overview ─────────────────────────────────────────────────────────────
+async function renderOverview(){
+  const el = document.getElementById('tab-content');
+  const me = await api('/me');
+  const classes = MY_CLASSES;
+  const totalStudents = new Set(classes.flatMap(c=>c.studentIds||[])).size;
+  el.innerHTML = `
+    <div class="grid">
+      <div class="card"><div class="class-meta">Lớp đang quản lý</div><div style="font-size:1.8rem;font-weight:900;">${classes.length}</div></div>
+      <div class="card"><div class="class-meta">Tổng học sinh</div><div style="font-size:1.8rem;font-weight:900;">${totalStudents}</div></div>
+      <div class="card"><div class="class-meta">Gói hiện tại</div><div style="font-size:1.1rem;font-weight:800;">
+        ${me.plan === 'chemcraft_for_edu' && me.planStatus === 'active' ? '<span class="pill pill-gold">ChemCraft for edu</span>' : '<span class="pill pill-cyan">Free</span>'}
+      </div></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:10px;">Lớp học của bạn</h3>
+      ${classes.length ? classes.map(c=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
+          <div><b>${c.name}</b> <span class="class-meta">Khối ${c.grade} · ${(c.studentIds||[]).length} học sinh</span></div>
+          <span class="pill pill-cyan">${c.joinCode}</span>
+        </div>`).join('') : '<div class="empty">Chưa có lớp học nào. Tạo lớp đầu tiên ở tab "Lớp học".</div>'}
+    </div>
+  `;
+}
+
+// ── Classes ──────────────────────────────────────────────────────────────
+async function renderClasses(){
+  const el = document.getElementById('tab-content');
+  el.innerHTML = `
+    <div style="margin-bottom:14px;"><button class="btn btn-primary" id="new-class-btn"><i class="fa-solid fa-plus"></i> Tạo lớp mới</button></div>
+    <div class="grid" id="classes-grid"></div>
+  `;
+  document.getElementById('new-class-btn').onclick = showCreateClassModal;
+  const grid = document.getElementById('classes-grid');
+  grid.innerHTML = MY_CLASSES.length ? MY_CLASSES.map(c=>`
+    <div class="class-card" data-id="${c.id}">
+      <div class="class-name">${c.name}</div>
+      <div class="class-meta">Khối ${c.grade} · Mã lớp: <b>${c.joinCode}</b></div>
+      <div class="class-meta">${(c.studentIds||[]).length} học sinh · ${c.status === 'active' ? '<span class="pill pill-green">Đang hoạt động</span>' : '<span class="pill" style="background:#FDEDED;color:#C8312A;">Đã đóng</span>'}</div>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm select-class-btn" data-id="${c.id}">Chọn làm lớp đang xem</button>
+        <button class="btn btn-danger btn-sm del-class-btn" data-id="${c.id}"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    </div>`).join('') : '<div class="empty">Chưa có lớp học nào.</div>';
+
+  grid.querySelectorAll('.select-class-btn').forEach(b=>b.onclick=()=>{
+    ACTIVE_CLASS = MY_CLASSES.find(c=>c.id===b.dataset.id);
+    document.getElementById('class-selector').value = ACTIVE_CLASS.id;
+    toast('Đã chọn lớp: ' + ACTIVE_CLASS.name);
+  });
+  grid.querySelectorAll('.del-class-btn').forEach(b=>b.onclick=async()=>{
+    if (!confirm('Xoá lớp học này? Hành động không thể hoàn tác.')) return;
+    await api('/classes/' + b.dataset.id, {method:'DELETE'});
+    toast('Đã xoá lớp học.');
+    await loadMyClasses(); renderClasses();
+  });
+}
+
+function showCreateClassModal(){
+  openModal(`
+    <h3>Tạo lớp học mới</h3>
+    <div class="field"><label>Tên lớp</label><input id="cf-name" placeholder="VD: Hóa 10 — Cơ bản"></div>
+    <div class="field"><label>Khối lớp</label><select id="cf-grade"><option value="10">Lớp 10</option><option value="11">Lớp 11</option><option value="12">Lớp 12</option></select></div>
+    <div class="field"><label>Mô tả</label><textarea id="cf-desc" rows="3" placeholder="Mô tả ngắn về lớp học"></textarea></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
+      <button class="btn btn-primary" id="cf-submit">Tạo lớp</button>
+    </div>
+  `);
+  document.getElementById('cf-submit').onclick = async ()=>{
+    const name = document.getElementById('cf-name').value.trim();
+    const grade = parseInt(document.getElementById('cf-grade').value, 10);
+    const description = document.getElementById('cf-desc').value.trim();
+    if (!name) return toast('Vui lòng nhập tên lớp.');
+    try {
+      await api('/classes', {method:'POST', body:{name, grade, description}});
+      closeModal(); toast('Đã tạo lớp học!');
+      await loadMyClasses(); renderClasses();
+    } catch(e){ toast(e.message); }
+  };
+}
+
+// ── Livestreams ──────────────────────────────────────────────────────────
+async function renderLivestreams(){
+  const el = document.getElementById('tab-content');
+  const {livestreams} = await api(`/classes/${ACTIVE_CLASS.id}/livestreams`);
+  el.innerHTML = `
+    <div style="margin-bottom:14px;"><button class="btn btn-primary" id="new-ls-btn"><i class="fa-solid fa-plus"></i> Tạo buổi livestream</button></div>
+    <div class="grid">${livestreams.length ? livestreams.map(l=>`
+      <div class="card">
+        <div class="class-name">${l.title}</div>
+        <div class="class-meta">${fmtDate(l.scheduledAt)}</div>
+        <div style="margin:8px 0;">${statusPill(l.status)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${l.status==='scheduled'?`<button class="btn btn-primary btn-sm go-live" data-id="${l.id}"><i class="fa-solid fa-tower-broadcast"></i> Bắt đầu</button>`:''}
+          ${l.status==='live'?`<button class="btn btn-danger btn-sm end-live" data-id="${l.id}"><i class="fa-solid fa-stop"></i> Kết thúc</button>`:''}
+        </div>
+      </div>`).join('') : '<div class="empty">Chưa có buổi livestream nào.</div>'}</div>
+  `;
+  document.getElementById('new-ls-btn').onclick = ()=> showCreateLivestreamModal();
+  el.querySelectorAll('.go-live').forEach(b=>b.onclick=async()=>{ await api(`/livestreams/${b.dataset.id}/status`,{method:'POST',body:{status:'live'}}); renderLivestreams(); });
+  el.querySelectorAll('.end-live').forEach(b=>b.onclick=async()=>{ await api(`/livestreams/${b.dataset.id}/status`,{method:'POST',body:{status:'ended'}}); renderLivestreams(); });
+}
+function statusPill(s){
+  if (s==='live') return '<span class="pill" style="background:#FDEDED;color:#C8312A;">🔴 ĐANG TRỰC TIẾP</span>';
+  if (s==='ended') return '<span class="pill" style="background:var(--sky2);color:var(--text-m);">Đã kết thúc</span>';
+  return '<span class="pill pill-cyan">Sắp diễn ra</span>';
+}
+function showCreateLivestreamModal(){
+  openModal(`
+    <h3>Tạo buổi livestream</h3>
+    <div class="field"><label>Tiêu đề</label><input id="lf-title" placeholder="VD: Chương 1: Cấu tạo nguyên tử"></div>
+    <div class="field"><label>Mô tả</label><textarea id="lf-desc" rows="2"></textarea></div>
+    <div class="field"><label>Thời gian bắt đầu</label><input id="lf-time" type="datetime-local"></div>
+    <div class="field"><label>Link nhúng YouTube Live / Facebook Live</label>
+      <input id="lf-embed" placeholder="https://www.youtube.com/embed/VIDEO_ID">
+      <div class="class-meta" style="margin-top:4px;">Dán link dạng nhúng (embed). Với YouTube Live: youtube.com/embed/&lt;ID&gt;. Với Facebook Live: lấy link "Nhúng video" trong phần chia sẻ.</div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
+      <button class="btn btn-primary" id="lf-submit">Tạo</button>
+    </div>
+  `);
+  document.getElementById('lf-submit').onclick = async ()=>{
+    const title = document.getElementById('lf-title').value.trim();
+    const embedURL = document.getElementById('lf-embed').value.trim();
+    const scheduledAt = new Date(document.getElementById('lf-time').value || Date.now()).getTime()/1000;
+    if (!title || !embedURL) return toast('Vui lòng nhập tiêu đề và link nhúng.');
+    try {
+      await api(`/classes/${ACTIVE_CLASS.id}/livestreams`, {method:'POST', body:{title, description:document.getElementById('lf-desc').value, scheduledAt, embedURL}});
+      closeModal(); toast('Đã tạo buổi livestream!'); renderLivestreams();
+    } catch(e){ toast(e.message); }
+  };
+}
+
+// ── Documents ──────────────────────────────────────────────────────────
+async function renderDocuments(){
+  const el = document.getElementById('tab-content');
+  const {documents} = await api(`/classes/${ACTIVE_CLASS.id}/documents`);
+  el.innerHTML = `
+    <div class="card">
+      <h3 style="margin-bottom:10px;">Thêm tài liệu (đã tải lên Firebase Storage)</h3>
+      <div class="class-meta" style="margin-bottom:10px;">Tải file lên Firebase Storage bằng công cụ hiện có của bạn, dán URL công khai vào đây.</div>
+      <div class="field"><label>Tiêu đề</label><input id="df-title"></div>
+      <div class="field"><label>Mô tả</label><input id="df-desc"></div>
+      <div class="field"><label>URL file</label><input id="df-url" placeholder="https://..."></div>
+      <div class="field"><label>Loại file</label><select id="df-type"><option>pdf</option><option>doc</option><option>docx</option><option>ppt</option><option>pptx</option><option>image</option></select></div>
+      <button class="btn btn-primary" id="df-submit"><i class="fa-solid fa-upload"></i> Thêm tài liệu</button>
+    </div>
+    <div class="grid">${documents.length ? documents.map(d=>`
+      <div class="card">
+        <div class="class-name">${d.title}</div>
+        <div class="class-meta">${d.description||''}</div>
+        <div class="class-meta">${d.fileType} · ${fmtDate(d.createdAt)}</div>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <a class="btn btn-ghost btn-sm" href="${d.fileURL}" target="_blank">Xem</a>
+          <button class="btn btn-danger btn-sm del-doc" data-id="${d.id}"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      </div>`).join('') : '<div class="empty">Chưa có tài liệu nào.</div>'}</div>
+  `;
+  document.getElementById('df-submit').onclick = async ()=>{
+    const title = document.getElementById('df-title').value.trim();
+    const fileURL = document.getElementById('df-url').value.trim();
+    if (!title || !fileURL) return toast('Vui lòng nhập tiêu đề và URL file.');
+    await api(`/classes/${ACTIVE_CLASS.id}/documents`, {method:'POST', body:{
+      title, description:document.getElementById('df-desc').value, fileURL, fileType:document.getElementById('df-type').value,
+    }});
+    toast('Đã thêm tài liệu.'); renderDocuments();
+  };
+  el.querySelectorAll('.del-doc').forEach(b=>b.onclick=async()=>{ await api('/documents/'+b.dataset.id,{method:'DELETE'}); renderDocuments(); });
+}
+
+// ── Lessons ──────────────────────────────────────────────────────────────
+async function renderLessons(){
+  const el = document.getElementById('tab-content');
+  const {lessons} = await api(`/classes/${ACTIVE_CLASS.id}/lessons`);
+  el.innerHTML = `
+    <div style="margin-bottom:14px;"><button class="btn btn-primary" id="new-lesson-btn"><i class="fa-solid fa-plus"></i> Tạo bài học</button></div>
+    ${lessons.length ? `<table><thead><tr><th>Chương</th><th>Tiêu đề</th><th>Cập nhật</th><th></th></tr></thead><tbody>
+      ${lessons.map(l=>`<tr><td>${l.chapter||'—'}</td><td><b>${l.title}</b></td><td>${fmtDate(l.updatedAt)}</td>
+      <td><button class="btn btn-danger btn-sm del-lesson" data-id="${l.id}"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">Chưa có bài học nào.</div>'}
+  `;
+  document.getElementById('new-lesson-btn').onclick = ()=> showLessonModal();
+  el.querySelectorAll('.del-lesson').forEach(b=>b.onclick=async()=>{ await api('/lessons/'+b.dataset.id,{method:'DELETE'}); renderLessons(); });
+}
+function showLessonModal(){
+  openModal(`
+    <h3>Tạo bài học</h3>
+    <div class="field"><label>Chương</label><input id="ls-chapter" placeholder="VD: Chương 1"></div>
+    <div class="field"><label>Tiêu đề</label><input id="ls-title" placeholder="VD: Bài 1: Cấu tạo nguyên tử"></div>
+    <div class="field"><label>Nội dung</label><textarea id="ls-content" rows="6" placeholder="Nội dung lý thuyết (hỗ trợ HTML cơ bản)"></textarea></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
+      <button class="btn btn-primary" id="ls-submit">Tạo</button>
+    </div>
+  `);
+  document.getElementById('ls-submit').onclick = async ()=>{
+    const title = document.getElementById('ls-title').value.trim();
+    if (!title) return toast('Vui lòng nhập tiêu đề.');
+    await api(`/classes/${ACTIVE_CLASS.id}/lessons`, {method:'POST', body:{
+      title, chapter:document.getElementById('ls-chapter').value, content:document.getElementById('ls-content').value,
+    }});
+    closeModal(); toast('Đã tạo bài học.'); renderLessons();
+  };
+}
+
+// ── Assignments ──────────────────────────────────────────────────────────
+async function renderAssignments(){
+  const el = document.getElementById('tab-content');
+  const {assignments} = await api(`/classes/${ACTIVE_CLASS.id}/assignments`);
+  el.innerHTML = `
+    <div style="margin-bottom:14px;"><button class="btn btn-primary" id="new-a-btn"><i class="fa-solid fa-plus"></i> Tạo bài tập</button></div>
+    ${assignments.length ? `<table><thead><tr><th>Tiêu đề</th><th>Hạn nộp</th><th>Điểm tối đa</th><th></th></tr></thead><tbody>
+      ${assignments.map(a=>`<tr><td><b>${a.title}</b></td><td>${fmtDate(a.deadline)}</td><td>${a.maxScore}</td>
+      <td><button class="btn btn-ghost btn-sm view-subs" data-id="${a.id}">Xem bài nộp</button>
+          <button class="btn btn-danger btn-sm del-a" data-id="${a.id}"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">Chưa có bài tập nào.</div>'}
+  `;
+  document.getElementById('new-a-btn').onclick = ()=> showAssignmentModal();
+  el.querySelectorAll('.del-a').forEach(b=>b.onclick=async()=>{ await api('/assignments/'+b.dataset.id,{method:'DELETE'}); renderAssignments(); });
+  el.querySelectorAll('.view-subs').forEach(b=>b.onclick=()=> showSubmissionsModal(b.dataset.id));
+}
+function showAssignmentModal(){
+  openModal(`
+    <h3>Tạo bài tập</h3>
+    <div class="field"><label>Tiêu đề</label><input id="af-title"></div>
+    <div class="field"><label>Mô tả / đề bài</label><textarea id="af-desc" rows="4"></textarea></div>
+    <div class="field"><label>Loại bài tập</label><select id="af-type"><option value="text">Nhập trực tiếp</option><option value="file">Nộp file</option><option value="mixed">Cả hai</option></select></div>
+    <div class="field"><label>Hạn nộp</label><input id="af-deadline" type="datetime-local"></div>
+    <div class="field"><label>Điểm tối đa</label><input id="af-max" type="number" value="10"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
+      <button class="btn btn-primary" id="af-submit">Tạo</button>
+    </div>
+  `);
+  document.getElementById('af-submit').onclick = async ()=>{
+    const title = document.getElementById('af-title').value.trim();
+    if (!title) return toast('Vui lòng nhập tiêu đề.');
+    const deadline = new Date(document.getElementById('af-deadline').value || Date.now()).getTime()/1000;
+    await api(`/classes/${ACTIVE_CLASS.id}/assignments`, {method:'POST', body:{
+      title, description:document.getElementById('af-desc').value, type:document.getElementById('af-type').value,
+      deadline, maxScore: parseFloat(document.getElementById('af-max').value)||10,
+    }});
+    closeModal(); toast('Đã tạo bài tập.'); renderAssignments();
+  };
+}
+async function showSubmissionsModal(assignmentId){
+  const {submissions} = await api(`/assignments/${assignmentId}/submissions`);
+  openModal(`
+    <h3>Bài nộp</h3>
+    ${submissions.length ? submissions.map(s=>`
+      <div class="card" style="margin-bottom:10px;">
+        <div class="class-meta">${s.studentId} · ${fmtDate(s.submittedAt)} · ${s.status==='graded'?'<span class="pill pill-green">Đã chấm</span>':'<span class="pill pill-cyan">Chưa chấm</span>'}</div>
+        <div style="margin:8px 0;white-space:pre-wrap;">${(s.content||'').slice(0,300)}</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="number" placeholder="Điểm" style="width:90px;" id="score-${s.id}" value="${s.score ?? ''}">
+          <button class="btn btn-primary btn-sm" onclick="window._gradeSub('${s.id}')">Chấm</button>
+        </div>
+      </div>`).join('') : '<div class="empty">Chưa có bài nộp nào.</div>'}
+    <button class="btn btn-ghost" onclick="closeModal()">Đóng</button>
+  `);
+  window._gradeSub = async (sid)=>{
+    const score = parseFloat(document.getElementById('score-'+sid).value);
+    if (isNaN(score)) return toast('Nhập điểm hợp lệ.');
+    await api(`/submissions/${sid}/grade`, {method:'POST', body:{score, feedback:''}});
+    toast('Đã chấm điểm.'); showSubmissionsModal(assignmentId);
+  };
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────
+let TEST_QUESTIONS = [];
+async function renderTests(){
+  const el = document.getElementById('tab-content');
+  const {tests} = await api(`/classes/${ACTIVE_CLASS.id}/tests`);
+  el.innerHTML = `
+    <div style="margin-bottom:14px;"><button class="btn btn-primary" id="new-t-btn"><i class="fa-solid fa-plus"></i> Tạo bài kiểm tra</button></div>
+    ${tests.length ? `<table><thead><tr><th>Tiêu đề</th><th>Số câu</th><th>Hạn</th><th></th></tr></thead><tbody>
+      ${tests.map(t=>`<tr><td><b>${t.title}</b></td><td>${(t.questions||[]).length}</td><td>${fmtDate(t.deadline)}</td>
+      <td><button class="btn btn-ghost btn-sm view-attempts" data-id="${t.id}">Kết quả</button>
+          <button class="btn btn-danger btn-sm del-t" data-id="${t.id}"><i class="fa-solid fa-trash"></i></button></td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">Chưa có bài kiểm tra nào.</div>'}
+  `;
+  document.getElementById('new-t-btn').onclick = ()=> showTestModal();
+  el.querySelectorAll('.del-t').forEach(b=>b.onclick=async()=>{ await api('/tests/'+b.dataset.id,{method:'DELETE'}); renderTests(); });
+  el.querySelectorAll('.view-attempts').forEach(b=>b.onclick=()=> showAttemptsModal(b.dataset.id));
+}
+function showTestModal(){
+  TEST_QUESTIONS = [];
+  openModal(`
+    <h3>Tạo bài kiểm tra</h3>
+    <div class="field"><label>Tiêu đề</label><input id="tf-title"></div>
+    <div class="field"><label>Hạn làm bài</label><input id="tf-deadline" type="datetime-local"></div>
+    <div id="tf-questions"></div>
+    <button class="btn btn-ghost btn-sm" id="tf-add-q" style="margin-bottom:14px;"><i class="fa-solid fa-plus"></i> Thêm câu hỏi</button>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
+      <button class="btn btn-primary" id="tf-submit">Tạo</button>
+    </div>
+  `);
+  document.getElementById('tf-add-q').onclick = ()=> addQuestionRow();
+  addQuestionRow();
+  document.getElementById('tf-submit').onclick = async ()=>{
+    const title = document.getElementById('tf-title').value.trim();
+    const questions = collectQuestions();
+    if (!title || !questions.length) return toast('Vui lòng nhập tiêu đề và ít nhất 1 câu hỏi.');
+    const deadline = new Date(document.getElementById('tf-deadline').value || Date.now()).getTime()/1000;
+    await api(`/classes/${ACTIVE_CLASS.id}/tests`, {method:'POST', body:{title, questions, deadline}});
+    closeModal(); toast('Đã tạo bài kiểm tra.'); renderTests();
+  };
+}
+function addQuestionRow(){
+  const wrap = document.getElementById('tf-questions');
+  const idx = wrap.children.length;
+  const div = document.createElement('div');
+  div.className = 'card'; div.style.marginBottom='10px';
+  div.innerHTML = `
+    <select class="q-type" data-idx="${idx}">
+      <option value="multiple_choice">Trắc nghiệm</option>
+      <option value="true_false">Đúng/Sai</option>
+      <option value="short_answer">Trả lời ngắn</option>
+      <option value="essay">Tự luận</option>
+    </select>
+    <div class="field" style="margin-top:8px;"><input class="q-text" placeholder="Nội dung câu hỏi"></div>
+    <div class="q-extra"></div>
+    <div class="field"><input class="q-points" type="number" placeholder="Điểm" value="1" style="width:90px;"></div>
+  `;
+  wrap.appendChild(div);
+  const sel = div.querySelector('.q-type');
+  const renderExtra = ()=>{
+    const extra = div.querySelector('.q-extra');
+    if (sel.value === 'multiple_choice') {
+      extra.innerHTML = `<div class="class-meta">4 đáp án, cách nhau bằng dấu |, đáp án đúng nhập số thứ tự (0-3)</div>
+        <div class="field"><input class="q-opts" placeholder="Đáp án A|Đáp án B|Đáp án C|Đáp án D"></div>
+        <div class="field"><input class="q-correct" placeholder="Số thứ tự đáp án đúng (0-3)"></div>`;
+    } else if (sel.value === 'true_false') {
+      extra.innerHTML = `<div class="field"><select class="q-correct"><option value="true">Đúng</option><option value="false">Sai</option></select></div>`;
+    } else if (sel.value === 'short_answer') {
+      extra.innerHTML = `<div class="field"><input class="q-correct" placeholder="Đáp án đúng"></div>`;
+    } else {
+      extra.innerHTML = `<div class="class-meta">Tự luận — giáo viên chấm điểm thủ công sau khi học sinh nộp.</div>`;
+    }
+  };
+  sel.onchange = renderExtra; renderExtra();
+}
+function collectQuestions(){
+  const qs = [];
+  document.querySelectorAll('#tf-questions > div').forEach(div=>{
+    const type = div.querySelector('.q-type').value;
+    const question = div.querySelector('.q-text').value.trim();
+    const points = parseFloat(div.querySelector('.q-points').value) || 1;
+    if (!question) return;
+    const q = {type, question, points};
+    if (type === 'multiple_choice') {
+      q.options = (div.querySelector('.q-opts').value||'').split('|').map(s=>s.trim());
+      q.correctAnswer = parseInt(div.querySelector('.q-correct').value, 10);
+    } else if (type === 'true_false') {
+      q.correctAnswer = div.querySelector('.q-correct').value === 'true';
+    } else if (type === 'short_answer') {
+      q.correctAnswer = div.querySelector('.q-correct').value.trim();
+    }
+    qs.push(q);
+  });
+  return qs;
+}
+async function showAttemptsModal(testId){
+  const {attempts} = await api(`/tests/${testId}/attempts`);
+  openModal(`
+    <h3>Kết quả bài kiểm tra</h3>
+    ${attempts.length ? `<table><thead><tr><th>Học sinh</th><th>Điểm</th><th>Trạng thái</th></tr></thead><tbody>
+      ${attempts.map(a=>`<tr><td>${a.studentId}</td><td>${a.totalScore}/${a.maxScore}</td><td>${a.status==='graded'?'Đã chấm xong':'Chờ chấm tự luận'}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">Chưa có học sinh nào làm bài.</div>'}
+    <button class="btn btn-ghost" style="margin-top:12px;" onclick="closeModal()">Đóng</button>
+  `);
+}
+
+// ── Submissions overview / Students ──────────────────────────────────────
+async function renderSubmissionsOverview(){
+  const el = document.getElementById('tab-content');
+  el.innerHTML = '<div class="empty">Chọn một bài tập trong tab "Bài tập" để xem và chấm bài nộp tương ứng.</div>';
+}
+async function renderStudents(){
+  const el = document.getElementById('tab-content');
+  const {students} = await api(`/classes/${ACTIVE_CLASS.id}/students`);
+  el.innerHTML = students.length ? `<table><thead><tr><th>Tên</th><th>Email</th><th>Gói học tập</th><th></th></tr></thead><tbody>
+    ${students.map(s=>`<tr><td>${s.displayName||'(chưa đặt tên)'}</td><td>${s.email||''}</td>
+    <td>${s.educationPlanStatus==='active'?'<span class="pill pill-gold">Premium (được cấp)</span>':'<span class="pill pill-cyan">Free</span>'}</td>
+    <td><button class="btn btn-danger btn-sm rm-student" data-id="${s.uid}"><i class="fa-solid fa-user-minus"></i></button></td></tr>`).join('')}
+  </tbody></table>` : '<div class="empty">Lớp chưa có học sinh nào. Chia sẻ mã lớp để học sinh tham gia.</div>';
+  el.querySelectorAll('.rm-student').forEach(b=>b.onclick=async()=>{
+    if (!confirm('Xoá học sinh khỏi lớp?')) return;
+    await api(`/classes/${ACTIVE_CLASS.id}/students/${b.dataset.id}`, {method:'DELETE'});
+    renderStudents();
+  });
+}
+async function renderSettings(){
+  const el = document.getElementById('tab-content');
+  const me = await api('/me');
+  el.innerHTML = `
+    <div class="card">
+      <h3 style="margin-bottom:10px;">Tài khoản</h3>
+      <div class="class-meta">Vai trò: <b>${me.role}</b></div>
+      <div class="class-meta">Gói: <b>${me.plan}</b> (${me.planStatus})</div>
+      <div style="margin-top:14px;">
+        <div class="class-meta">AI đã dùng hôm nay</div>
+        <div class="usage-bar-wrap"><div class="usage-bar" style="width:${me.usage.unlimited?100:Math.min(100,me.usage.aiUsed/me.usage.aiLimit*100)}%"></div></div>
+        <div class="class-meta">${me.usage.unlimited ? 'Không giới hạn (ChemCraft for edu)' : me.usage.aiUsed + '/' + me.usage.aiLimit + ' lượt'}</div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Class selector ─────────────────────────────────────────────────────
+async function loadMyClasses(){
+  const {classes} = await api('/classes/mine');
+  MY_CLASSES = classes;
+  const sel = document.getElementById('class-selector');
+  sel.innerHTML = classes.map(c=>`<option value="${c.id}">${c.name} (Khối ${c.grade})</option>`).join('');
+  if (!ACTIVE_CLASS && classes.length) ACTIVE_CLASS = classes[0];
+  sel.onchange = ()=>{ ACTIVE_CLASS = MY_CLASSES.find(c=>c.id===sel.value); renderTab(document.querySelector('.sb-item.active').dataset.tab); };
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────
+onAuthStateChanged(auth, async (user)=>{
+  if (!user) {
+    document.getElementById('tab-content').innerHTML = '<div class="empty">Vui lòng <a href="/">đăng nhập</a> bằng tài khoản giáo viên để tiếp tục.</div>';
+    return;
+  }
+  CURRENT_USER = user;
+  document.getElementById('sb-user').textContent = user.displayName || user.email;
+  try {
+    const me = await api('/me');
+    if (me.role !== 'teacher' && me.role !== 'admin') {
+      document.querySelector('.main').innerHTML = `
+        <div class="card" style="text-align:center;padding:60px 20px;">
+          <i class="fa-solid fa-lock" style="font-size:2rem;color:var(--red);"></i>
+          <h2 style="margin:14px 0 6px;">Access Denied</h2>
+          <p style="color:var(--text-m);">Bạn không có quyền truy cập trang Giáo viên.</p>
+        </div>`;
+      return;
+    }
+    await loadMyClasses();
+    renderTab('overview');
+  } catch(e) { toast(e.message); }
+});
+</script>
+</body>
+</html>

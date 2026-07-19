@@ -1,0 +1,106 @@
+// firestore.rules — ChemCraft
+// ============================================================================
+// Nguyên tắc: TẤT CẢ dữ liệu LMS mới (classes, class_lessons, class_documents,
+// assignments, submissions, tests, test_attempts, livestreams, lesson_progress)
+// chỉ được đọc/ghi qua backend Flask bằng Admin SDK (lms_db.py) — Admin SDK
+// LUÔN bypass rules này, nên có deny ở đây cũng không ảnh hưởng backend.
+// Việc deny truy cập trực tiếp từ client là để phòng trường hợp ai đó cố
+// đọc/ghi thẳng vào Firestore bỏ qua API (bỏ qua kiểm tra quyền, giới hạn
+// freemium, xác thực vai trò... vốn nằm ở tầng Flask, không nằm ở rules).
+//
+// Ngoại lệ duy nhất: collection `users` vẫn cho phép client (index.html) đọc/
+// ghi trực tiếp như hiện tại (displayName, lessonHistory, photoURL...), NHƯNG
+// các field nhạy cảm (role, plan, planStatus, educationPlan,
+// educationPlanStatus, sponsoredBy, aiUsageToday, submissionUsageToday,
+// usageDate, accountDisabled) chỉ được phép thay đổi qua Admin SDK — client
+// không được tự sửa các field này để tự cấp quyền/Premium cho bản thân.
+//
+// Deploy: Firebase Console → Firestore Database → Rules → dán nội dung này
+// → Publish. (Hoặc `firebase deploy --only firestore:rules` nếu dùng CLI.)
+// ============================================================================
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Các field chỉ Admin SDK (backend) được phép thay đổi trên users/{uid}.
+    function protectedUserFields() {
+      return ['role', 'plan', 'planStatus', 'educationPlan', 'educationPlanStatus',
+              'sponsoredBy', 'aiUsageToday', 'submissionUsageToday', 'usageDate',
+              'accountDisabled'];
+    }
+
+    function onlyChangesAllowedFields(existingData, newData, protectedKeys) {
+      // True nếu không có field nào trong protectedKeys bị thay đổi giá trị.
+      return protectedKeys.toSet().intersection(newData.diff(existingData).affectedKeys()).size() == 0;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+                    && !('role' in request.resource.data)
+                    && !('plan' in request.resource.data)
+                    && !('accountDisabled' in request.resource.data);
+      allow update: if isOwner(uid)
+                    && onlyChangesAllowedFields(resource.data, request.resource.data, protectedUserFields());
+      allow delete: if false;
+    }
+
+    // ── Mọi collection LMS mới: chỉ Admin SDK (backend Flask) truy cập ──────
+    match /classes/{classId} {
+      allow read, write: if false;
+    }
+    match /class_lessons/{lessonId} {
+      allow read, write: if false;
+    }
+    match /class_documents/{docId} {
+      allow read, write: if false;
+    }
+    match /assignments/{assignmentId} {
+      allow read, write: if false;
+    }
+    match /submissions/{submissionId} {
+      allow read, write: if false;
+    }
+    match /tests/{testId} {
+      allow read, write: if false;
+    }
+    match /test_attempts/{attemptId} {
+      allow read, write: if false;
+    }
+    match /livestreams/{livestreamId} {
+      allow read, write: if false;
+      match /chat_messages/{messageId} {
+        allow read, write: if false;
+      }
+    }
+    match /lesson_progress/{progressId} {
+      allow read, write: if false;
+    }
+
+    // ── Dữ liệu tracking / nội dung admin biên tập đã có từ trước: cũng chỉ
+    // Admin SDK truy cập (giữ nguyên tinh thần bảo mật hiện tại của dự án).
+    match /events/{id} { allow read, write: if false; }
+    match /ai_conversations/{id} { allow read, write: if false; }
+    match /ai_messages/{id} { allow read, write: if false; }
+    match /quiz_attempts/{id} { allow read, write: if false; }
+    match /quiz_answers/{id} { allow read, write: if false; }
+    match /quiz_questions_bank/{id} { allow read, write: if false; }
+    match /lab_sessions/{id} { allow read, write: if false; }
+    match /lab_reaction_runs/{id} { allow read, write: if false; }
+
+    // Mặc định: từ chối tất cả những gì chưa khai báo ở trên.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

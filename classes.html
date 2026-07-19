@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lớp học - ChemCraft</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{
+  --indigo:#4F6BFF; --cyan:#06B6D4; --gold:#F59E0B; --green:#10B981; --red:#EF4444;
+  --sky:#F6F8FC; --sky2:#EEF2F9; --ink:#101725; --text:#1E2433; --text-m:#5B6477; --text-l:#8C95A8;
+  --border:#E4E9F1; --sh-2:0 4px 14px rgba(16,23,37,0.08); --sh-3:0 12px 28px rgba(16,23,37,0.12);
+  --r-md:12px; --r-lg:18px; --r-pill:999px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--text);}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px;}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;flex-wrap:wrap;gap:12px;}
+.title{font-weight:900;font-size:1.6rem;color:var(--ink);letter-spacing:-0.02em;}
+.btn{font-family:inherit;font-weight:700;font-size:0.88rem;padding:10px 18px;border:none;border-radius:var(--r-pill);cursor:pointer;}
+.btn-primary{background:linear-gradient(135deg,var(--indigo),var(--cyan));color:#fff;}
+.grade-tabs{display:flex;gap:8px;margin-bottom:20px;}
+.grade-tab{padding:10px 22px;border-radius:var(--r-pill);background:#fff;border:1.5px solid var(--border);font-weight:700;cursor:pointer;color:var(--text-m);}
+.grade-tab.active{background:linear-gradient(135deg,var(--indigo),var(--cyan));color:#fff;border-color:transparent;}
+.section-label{font-weight:800;font-size:1.05rem;margin:22px 0 12px;color:var(--ink);}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+.class-card{background:#fff;border-radius:var(--r-lg);box-shadow:var(--sh-2);border:1px solid var(--border);padding:18px;transition:.15s;cursor:pointer;}
+.class-card:hover{box-shadow:var(--sh-3);transform:translateY(-2px);}
+.class-name{font-weight:800;font-size:1.02rem;margin-bottom:5px;}
+.class-meta{font-size:0.82rem;color:var(--text-m);margin-bottom:8px;}
+.pill{display:inline-block;padding:3px 10px;border-radius:var(--r-pill);font-size:0.72rem;font-weight:700;background:#E3F8FB;color:#0891A8;}
+.empty{text-align:center;padding:40px;color:var(--text-l);}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(11,18,32,0.55);z-index:999;align-items:center;justify-content:center;}
+.modal-bg.show{display:flex;}
+.modal{background:#fff;border-radius:var(--r-lg);padding:24px;width:min(420px,92vw);}
+input{font-family:inherit;width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9rem;margin-bottom:12px;}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:#fff;padding:13px 20px;border-radius:12px;font-size:0.88rem;font-weight:600;z-index:1000;opacity:0;transform:translateY(10px);transition:.25s;}
+.toast.show{opacity:1;transform:translateY(0);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="title"><i class="fa-solid fa-chalkboard" style="color:var(--cyan);"></i> Lớp học</div>
+    <button class="btn btn-primary" id="join-btn"><i class="fa-solid fa-right-to-bracket"></i> Tham gia bằng mã lớp</button>
+  </div>
+
+  <div class="section-label">Lớp học của tôi</div>
+  <div class="grid" id="my-classes-grid"><div class="empty">Đang tải...</div></div>
+
+  <div class="section-label" style="margin-top:30px;">Khám phá lớp học theo khối</div>
+  <div class="grade-tabs">
+    <div class="grade-tab active" data-grade="10">Lớp 10</div>
+    <div class="grade-tab" data-grade="11">Lớp 11</div>
+    <div class="grade-tab" data-grade="12">Lớp 12</div>
+  </div>
+  <div class="grid" id="browse-grid"><div class="empty">Đang tải...</div></div>
+</div>
+
+<div class="modal-bg" id="modal-bg"><div class="modal">
+  <h3 style="margin-bottom:14px;">Tham gia lớp học</h3>
+  <input id="join-code" placeholder="Nhập mã lớp, VD: CHEM10-AB3F9">
+  <div style="display:flex;gap:10px;justify-content:flex-end;">
+    <button class="btn" style="background:var(--sky2);color:var(--ink);" id="join-cancel">Huỷ</button>
+    <button class="btn btn-primary" id="join-confirm">Tham gia</button>
+  </div>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+
+let firebaseConfig = {};
+try { firebaseConfig = await (await fetch('/api/firebase-config')).json(); } catch(e){}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+let CURRENT_USER = null;
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
+
+async function api(path, opts={}){
+  const token = CURRENT_USER ? await CURRENT_USER.getIdToken() : null;
+  const res = await fetch('/api/lms'+path, {
+    method: opts.method||'GET',
+    headers: {'Content-Type':'application/json', ...(token?{'Authorization':'Bearer '+token}:{})},
+    body: opts.body?JSON.stringify(opts.body):undefined,
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.error||'Đã có lỗi xảy ra.');
+  return data;
+}
+
+async function loadMyClasses(){
+  const grid = document.getElementById('my-classes-grid');
+  try {
+    const {classes} = await api('/classes/mine');
+    grid.innerHTML = classes.length ? classes.map(c=>`
+      <div class="class-card" onclick="location.href='class-detail.html?id=${c.id}'">
+        <div class="class-name">${c.name}</div>
+        <div class="class-meta">Khối ${c.grade} · ${(c.studentIds||[]).length} học sinh</div>
+        <span class="pill">Đã tham gia</span>
+      </div>`).join('') : '<div class="empty">Bạn chưa tham gia lớp học nào. Nhập mã lớp để tham gia.</div>';
+  } catch(e){ grid.innerHTML = `<div class="empty">${e.message}</div>`; }
+}
+
+async function loadBrowse(grade){
+  const grid = document.getElementById('browse-grid');
+  grid.innerHTML = '<div class="empty">Đang tải...</div>';
+  try {
+    const {classes} = await api('/classes/browse?grade='+grade);
+    grid.innerHTML = classes.length ? classes.map(c=>`
+      <div class="class-card">
+        <div class="class-name">${c.name}</div>
+        <div class="class-meta">${c.description||''}</div>
+        <div class="class-meta">${(c.studentIds||[]).length} học sinh</div>
+        <button class="btn" style="background:var(--sky2);color:var(--ink);margin-top:6px;" onclick="window._joinDirect('${c.joinCode}')">Vào lớp học</button>
+      </div>`).join('') : `<div class="empty">Chưa có lớp học nào ở Khối ${grade}.</div>`;
+  } catch(e){ grid.innerHTML = `<div class="empty">${e.message}</div>`; }
+}
+
+document.querySelectorAll('.grade-tab').forEach(t=>t.addEventListener('click', ()=>{
+  document.querySelectorAll('.grade-tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  loadBrowse(t.dataset.grade);
+}));
+
+const modalBg = document.getElementById('modal-bg');
+document.getElementById('join-btn').onclick = ()=> modalBg.classList.add('show');
+document.getElementById('join-cancel').onclick = ()=> modalBg.classList.remove('show');
+document.getElementById('join-confirm').onclick = async ()=>{
+  const code = document.getElementById('join-code').value.trim();
+  if (!code) return toast('Vui lòng nhập mã lớp.');
+  try {
+    await api('/classes/join', {method:'POST', body:{code}});
+    modalBg.classList.remove('show');
+    toast('Tham gia lớp học thành công!');
+    loadMyClasses();
+  } catch(e){ toast(e.message); }
+};
+window._joinDirect = async (code)=>{
+  try { await api('/classes/join', {method:'POST', body:{code}}); toast('Tham gia lớp học thành công!'); loadMyClasses(); }
+  catch(e){ toast(e.message); }
+};
+
+onAuthStateChanged(auth, async (user)=>{
+  if (!user) { document.querySelector('.wrap').innerHTML = '<div class="empty">Vui lòng <a href="/">đăng nhập</a> để xem lớp học.</div>'; return; }
+  CURRENT_USER = user;
+  loadMyClasses();
+  loadBrowse(10);
+});
+</script>
+</body>
+</html>

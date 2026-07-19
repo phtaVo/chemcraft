@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chi tiết lớp học - ChemCraft</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{
+  --indigo:#4F6BFF; --cyan:#06B6D4; --gold:#F59E0B; --green:#10B981; --red:#EF4444;
+  --sky:#F6F8FC; --sky2:#EEF2F9; --ink:#101725; --text:#1E2433; --text-m:#5B6477; --text-l:#8C95A8;
+  --border:#E4E9F1; --sh-2:0 4px 14px rgba(16,23,37,0.08); --sh-3:0 12px 28px rgba(16,23,37,0.12);
+  --r-md:12px; --r-lg:18px; --r-pill:999px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--text);}
+.wrap{max-width:1000px;margin:0 auto;padding:24px 20px 60px;}
+.class-header{background:linear-gradient(135deg,#0B1220,#1B2A4A);border-radius:var(--r-lg);padding:26px;color:#fff;margin-bottom:20px;}
+.class-header h1{font-size:1.4rem;font-weight:900;margin-bottom:6px;}
+.class-header .meta{opacity:0.75;font-size:0.86rem;}
+.tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;}
+.tab{padding:9px 16px;border-radius:var(--r-pill);background:#fff;border:1.5px solid var(--border);font-weight:700;font-size:0.85rem;cursor:pointer;color:var(--text-m);}
+.tab.active{background:linear-gradient(135deg,var(--indigo),var(--cyan));color:#fff;border-color:transparent;}
+.card{background:#fff;border-radius:var(--r-lg);box-shadow:var(--sh-2);border:1px solid var(--border);padding:18px;margin-bottom:14px;}
+.btn{font-family:inherit;font-weight:700;font-size:0.86rem;padding:9px 16px;border:none;border-radius:var(--r-pill);cursor:pointer;}
+.btn-primary{background:linear-gradient(135deg,var(--indigo),var(--cyan));color:#fff;}
+.btn-ghost{background:var(--sky2);color:var(--ink);}
+.pill{display:inline-block;padding:3px 10px;border-radius:var(--r-pill);font-size:0.72rem;font-weight:700;}
+.pill-live{background:#FDEDED;color:#C8312A;}
+.pill-cyan{background:#E3F8FB;color:#0891A8;}
+.pill-green{background:#E6F8F1;color:#0D9166;}
+.empty{text-align:center;padding:34px;color:var(--text-l);}
+textarea,input{font-family:inherit;width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9rem;margin-bottom:10px;}
+.chat-box{display:flex;flex-direction:column;height:280px;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;}
+.chat-msgs{flex:1;overflow-y:auto;padding:10px;font-size:0.85rem;}
+.chat-msg{margin-bottom:6px;}
+.chat-input{display:flex;border-top:1px solid var(--border);}
+.chat-input input{border:none;border-radius:0;margin:0;flex:1;}
+.chat-input button{border:none;background:var(--indigo);color:#fff;padding:0 16px;cursor:pointer;}
+.q-block{padding:14px 0;border-bottom:1px solid var(--border);}
+.opt-row{display:flex;align-items:center;gap:8px;padding:6px 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="header-area" class="class-header"><h1>Đang tải...</h1></div>
+  <div class="tabs">
+    <div class="tab active" data-tab="overview">Tổng quan</div>
+    <div class="tab" data-tab="livestream">Livestream</div>
+    <div class="tab" data-tab="documents">Tài liệu</div>
+    <div class="tab" data-tab="lessons">Bài học</div>
+    <div class="tab" data-tab="assignments">Bài tập</div>
+    <div class="tab" data-tab="tests">Bài kiểm tra</div>
+  </div>
+  <div id="content"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+
+let firebaseConfig = {};
+try { firebaseConfig = await (await fetch('/api/firebase-config')).json(); } catch(e){}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+let CURRENT_USER = null;
+const CLASS_ID = new URLSearchParams(location.search).get('id');
+let CLASS_DATA = null;
+let chatPollTimer = null;
+
+async function api(path, opts={}){
+  const token = CURRENT_USER ? await CURRENT_USER.getIdToken() : null;
+  const res = await fetch('/api/lms'+path, {
+    method: opts.method||'GET',
+    headers: {'Content-Type':'application/json', ...(token?{'Authorization':'Bearer '+token}:{})},
+    body: opts.body?JSON.stringify(opts.body):undefined,
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.error||'Đã có lỗi xảy ra.');
+  return data;
+}
+function fmtDate(ts){ if(!ts) return '—'; return new Date(ts*1000).toLocaleString('vi-VN'); }
+
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  clearInterval(chatPollTimer);
+  renderTab(t.dataset.tab);
+}));
+
+async function renderTab(tab){
+  const el = document.getElementById('content');
+  el.innerHTML = '<div class="empty"><i class="fa-solid fa-spinner fa-spin"></i> Đang tải...</div>';
+  try {
+    if (tab==='overview') return renderOverview();
+    if (tab==='livestream') return renderLivestream();
+    if (tab==='documents') return renderDocuments();
+    if (tab==='lessons') return renderLessons();
+    if (tab==='assignments') return renderAssignments();
+    if (tab==='tests') return renderTests();
+  } catch(e){ el.innerHTML = `<div class="empty">${e.message}</div>`; }
+}
+
+async function renderOverview(){
+  const el = document.getElementById('content');
+  const [{lessons}, {assignments}] = await Promise.all([
+    api(`/classes/${CLASS_ID}/lessons`), api(`/classes/${CLASS_ID}/assignments`),
+  ]);
+  const done = lessons.filter(l=>l.completed).length;
+  const now = Date.now()/1000;
+  const upcoming = assignments.filter(a=>a.deadline > now).sort((a,b)=>a.deadline-b.deadline).slice(0,3);
+  el.innerHTML = `
+    <div class="card">
+      <h3 style="margin-bottom:10px;">Tiến độ học tập</h3>
+      <div>Đã hoàn thành ${done}/${lessons.length} bài học</div>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:10px;">Bài tập sắp đến hạn</h3>
+      ${upcoming.length ? upcoming.map(a=>`
+        <div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
+          <b>${a.title}</b><span class="pill pill-cyan">${fmtDate(a.deadline)}</span>
+        </div>`).join('') : '<div class="empty">Không có bài tập nào sắp đến hạn.</div>'}
+    </div>
+  `;
+}
+
+async function renderLivestream(){
+  const el = document.getElementById('content');
+  const {livestreams} = await api(`/classes/${CLASS_ID}/livestreams`);
+  const live = livestreams.find(l=>l.status==='live');
+  const others = livestreams.filter(l=>l.id !== (live && live.id));
+  el.innerHTML = `
+    ${live ? `
+      <div class="card">
+        <div style="margin-bottom:10px;"><span class="pill pill-live">🔴 ĐANG TRỰC TIẾP</span> <b>${live.title}</b></div>
+        <div style="aspect-ratio:16/9;border-radius:var(--r-md);overflow:hidden;margin-bottom:14px;">
+          <iframe src="${live.embedURL}" style="width:100%;height:100%;border:0;" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+        </div>
+        <div class="chat-box">
+          <div class="chat-msgs" id="chat-msgs"></div>
+          <div class="chat-input"><input id="chat-input" placeholder="Nhập tin nhắn..."><button id="chat-send"><i class="fa-solid fa-paper-plane"></i></button></div>
+        </div>
+      </div>` : '<div class="card empty">Hiện không có buổi livestream nào đang diễn ra.</div>'}
+    <div class="section-label" style="margin:16px 0 10px;font-weight:800;">Các buổi khác</div>
+    ${others.length ? others.map(l=>`
+      <div class="card">
+        <b>${l.title}</b> ${l.status==='scheduled'?'<span class="pill pill-cyan">Sắp diễn ra</span>':'<span class="pill">Đã kết thúc</span>'}
+        <div style="color:var(--text-m);font-size:0.82rem;margin-top:4px;">${fmtDate(l.scheduledAt)}</div>
+        ${l.recordingURL ? `<a class="btn btn-ghost" style="margin-top:8px;display:inline-block;" href="${l.recordingURL}" target="_blank">Xem lại</a>` : ''}
+      </div>`).join('') : '<div class="empty">Chưa có buổi nào khác.</div>'}
+  `;
+  if (live) {
+    const loadChat = async ()=>{
+      const {messages} = await api(`/livestreams/${live.id}/chat`);
+      const box = document.getElementById('chat-msgs');
+      if (!box) return;
+      box.innerHTML = messages.map(m=>`<div class="chat-msg"><b>${m.name}:</b> ${m.message}</div>`).join('');
+      box.scrollTop = box.scrollHeight;
+    };
+    await loadChat();
+    chatPollTimer = setInterval(loadChat, 4000);
+    document.getElementById('chat-send').onclick = async ()=>{
+      const input = document.getElementById('chat-input');
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = '';
+      try { await api(`/livestreams/${live.id}/chat`, {method:'POST', body:{message:msg}}); loadChat(); }
+      catch(e){ alert(e.message); }
+    };
+  }
+}
+
+async function renderDocuments(){
+  const el = document.getElementById('content');
+  const {documents} = await api(`/classes/${CLASS_ID}/documents`);
+  el.innerHTML = documents.length ? documents.map(d=>`
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+      <div><b>${d.title}</b><div style="font-size:0.8rem;color:var(--text-m);">${d.fileType} · ${fmtDate(d.createdAt)}</div></div>
+      <a class="btn btn-ghost" href="${d.fileURL}" target="_blank">Xem / Tải xuống</a>
+    </div>`).join('') : '<div class="card empty">Chưa có tài liệu nào.</div>';
+}
+
+async function renderLessons(){
+  const el = document.getElementById('content');
+  const {lessons} = await api(`/classes/${CLASS_ID}/lessons`);
+  el.innerHTML = lessons.length ? lessons.map(l=>`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <b>${l.chapter ? l.chapter+' · ' : ''}${l.title}</b>
+        ${l.completed ? '<span class="pill pill-green">Đã hoàn thành</span>' : `<button class="btn btn-ghost mark-done" data-id="${l.id}">Đánh dấu hoàn thành</button>`}
+      </div>
+      <div style="margin-top:10px;color:var(--text-m);font-size:0.9rem;white-space:pre-wrap;">${l.content||''}</div>
+    </div>`).join('') : '<div class="card empty">Chưa có bài học nào.</div>';
+  el.querySelectorAll('.mark-done').forEach(b=>b.onclick=async()=>{ await api(`/lessons/${b.dataset.id}/complete`,{method:'POST'}); renderLessons(); });
+}
+
+async function renderAssignments(){
+  const el = document.getElementById('content');
+  const {assignments} = await api(`/classes/${CLASS_ID}/assignments`);
+  const now = Date.now()/1000;
+  const cards = await Promise.all(assignments.map(async a=>{
+    const {submission} = await api(`/assignments/${a.id}/my-submission`);
+    const overdue = a.deadline && now > a.deadline;
+    return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;">
+          <b>${a.title}</b>
+          ${submission ? (submission.status==='graded' ? `<span class="pill pill-green">Điểm: ${submission.score}/${a.maxScore}</span>` : '<span class="pill pill-cyan">Đã nộp</span>') : (overdue ? '<span class="pill" style="background:#FDEDED;color:#C8312A;">Quá hạn</span>' : '<span class="pill pill-cyan">Chưa nộp</span>')}
+        </div>
+        <div style="color:var(--text-m);font-size:0.85rem;margin:6px 0;">Hạn nộp: ${fmtDate(a.deadline)} · Điểm tối đa: ${a.maxScore}</div>
+        <div style="margin:8px 0;white-space:pre-wrap;">${a.description||''}</div>
+        ${(!overdue || submission) ? `
+          <textarea id="ans-${a.id}" rows="3" placeholder="Nhập câu trả lời trực tiếp...">${submission ? (submission.content||'') : ''}</textarea>
+          <button class="btn btn-primary submit-a" data-id="${a.id}" ${overdue && !submission ? 'disabled' : ''}>Nộp bài</button>
+        ` : ''}
+      </div>`;
+  }));
+  el.innerHTML = cards.length ? cards.join('') : '<div class="card empty">Chưa có bài tập nào.</div>';
+  el.querySelectorAll('.submit-a').forEach(b=>b.onclick=async()=>{
+    const content = document.getElementById('ans-'+b.dataset.id).value;
+    try {
+      await api(`/assignments/${b.dataset.id}/submit`, {method:'POST', body:{content}});
+      alert('Đã nộp bài thành công!'); renderAssignments();
+    } catch(e){ alert(e.message); }
+  });
+}
+
+async function renderTests(){
+  const el = document.getElementById('content');
+  const {tests} = await api(`/classes/${CLASS_ID}/tests`);
+  const {attempts} = await api('/my-test-attempts');
+  el.innerHTML = tests.length ? tests.map(t=>{
+    const attempt = attempts.find(a=>a.testId===t.id);
+    return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;">
+          <b>${t.title}</b>
+          ${attempt ? `<span class="pill pill-green">${attempt.status==='graded'?`Điểm: ${attempt.totalScore}/${attempt.maxScore}`:'Chờ chấm tự luận'}</span>` : '<span class="pill pill-cyan">Chưa làm</span>'}
+        </div>
+        <div style="color:var(--text-m);font-size:0.85rem;margin:6px 0;">${(t.questions||[]).length} câu · Hạn: ${fmtDate(t.deadline)}</div>
+        ${!attempt ? `<button class="btn btn-primary start-test" data-id="${t.id}">Làm bài</button>` : ''}
+      </div>`;
+  }).join('') : '<div class="card empty">Chưa có bài kiểm tra nào.</div>';
+  el.querySelectorAll('.start-test').forEach(b=>b.onclick=()=> openTest(b.dataset.id));
+}
+
+async function openTest(testId){
+  const {test} = await api(`/tests/${testId}`);
+  const el = document.getElementById('content');
+  el.innerHTML = `<div class="card"><h3 style="margin-bottom:14px;">${test.title}</h3><div id="test-qs"></div>
+    <button class="btn btn-primary" id="submit-test">Nộp bài kiểm tra</button></div>`;
+  const qs = document.getElementById('test-qs');
+  qs.innerHTML = test.questions.map((q,i)=>{
+    if (q.type === 'multiple_choice') {
+      return `<div class="q-block"><div><b>Câu ${i+1}:</b> ${q.question}</div>
+        ${q.options.map((o,oi)=>`<div class="opt-row"><input type="radio" name="q${i}" value="${oi}"> ${o}</div>`).join('')}</div>`;
+    }
+    if (q.type === 'true_false') {
+      return `<div class="q-block"><div><b>Câu ${i+1}:</b> ${q.question}</div>
+        <div class="opt-row"><input type="radio" name="q${i}" value="true"> Đúng</div>
+        <div class="opt-row"><input type="radio" name="q${i}" value="false"> Sai</div></div>`;
+    }
+    if (q.type === 'short_answer') {
+      return `<div class="q-block"><div><b>Câu ${i+1}:</b> ${q.question}</div><input id="q${i}" placeholder="Nhập đáp án..."></div>`;
+    }
+    return `<div class="q-block"><div><b>Câu ${i+1}:</b> ${q.question}</div><textarea id="q${i}" rows="3" placeholder="Viết câu trả lời của bạn..."></textarea></div>`;
+  }).join('');
+  document.getElementById('submit-test').onclick = async ()=>{
+    const answers = test.questions.map((q,i)=>{
+      if (q.type === 'multiple_choice' || q.type === 'true_false') {
+        const checked = qs.querySelector(`input[name="q${i}"]:checked`);
+        if (!checked) return null;
+        return q.type === 'true_false' ? checked.value === 'true' : parseInt(checked.value, 10);
+      }
+      const inp = document.getElementById('q'+i);
+      return inp ? inp.value : null;
+    });
+    try {
+      await api(`/tests/${testId}/submit`, {method:'POST', body:{answers}});
+      alert('Đã nộp bài kiểm tra!'); renderTests();
+    } catch(e){ alert(e.message); }
+  };
+}
+
+onAuthStateChanged(auth, async (user)=>{
+  if (!user) { document.querySelector('.wrap').innerHTML = '<div class="empty">Vui lòng <a href="/">đăng nhập</a> để xem lớp học.</div>'; return; }
+  CURRENT_USER = user;
+  if (!CLASS_ID) { document.querySelector('.wrap').innerHTML = '<div class="empty">Thiếu mã lớp học.</div>'; return; }
+  try {
+    const {class: cls} = await api(`/classes/${CLASS_ID}`);
+    CLASS_DATA = cls;
+    document.getElementById('header-area').innerHTML = `<h1>${cls.name}</h1><div class="meta">Khối ${cls.grade} · Mã lớp: ${cls.joinCode}</div>`;
+    renderTab('overview');
+  } catch(e){ document.querySelector('.wrap').innerHTML = `<div class="empty">${e.message}</div>`; }
+});
+</script>
+</body>
+</html>
