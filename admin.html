@@ -747,9 +747,6 @@ function roleLabel(role){
    NAVIGATION / PAGE ROUTER
    ════════════════════════════════════════════════════════════ */
 const PAGES = {
-  PAGES['lms-teachers']      = { title:'Giáo viên',      sub:'Quản lý quyền & Premium ChemCraft for edu', render: () => window.CC_LMS.renderTeachers() };
-  PAGES['lms-classes']       = { title:'Lớp học',        sub:'Toàn bộ lớp học trong hệ thống',            render: () => window.CC_LMS.renderClasses() };
-  PAGES['lms-subscriptions'] = { title:'Subscriptions',  sub:'Thống kê Premium & Usage',                  render: () => window.CC_LMS.renderStats() };
   dashboard:  { title:'Dashboard', sub:'Tổng quan toàn hệ thống ChemCraft', render: renderDashboard },
   users: {
   title: 'Quản lý người dùng',
@@ -1086,8 +1083,6 @@ function refreshChartsTheme(){
     return r.json();
   }
 
-  async function countUsersFromFirestore() {
-    try {
   async function fetchUsersStats() {
     // Thay thế countUsersFromFirestore() + sumLessonsFromFirestore() cũ:
     // giờ đọc qua backend (Admin SDK, có cache 5 phút phía server) thay vì
