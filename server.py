@@ -15,6 +15,8 @@ import admin_auth
 import quiz_bank
 import lab_bank
 import firestore_db as fsdb
+import lms_db
+import lms_routes
 
 load_dotenv()
 
@@ -34,6 +36,11 @@ admin_auth.bootstrap_default_admin()
 try:
     fsdb.init()
     print('✅ Firestore đã kết nối.')
+
+    # LMS: lớp học, bài học/tài liệu/bài tập/bài kiểm tra, livestream,
+    # phân quyền student/teacher/admin, freemium usage limits.
+    lms_routes.register(app)
+    print('✅ LMS routes đã đăng ký (/api/lms/*).')
 
     try:
         n = quiz_bank.seed_default_questions()
@@ -238,6 +245,21 @@ def chat():
         return jsonify({'error': 'Thiếu nội dung tin nhắn.'}), 400
     if not GEMINI_API_KEY:
         return jsonify({'error': 'Server chưa cấu hình API key.'}), 500
+
+    # Freemium: tối đa 5 lượt AI/ngày cho tài khoản Free (gộp chung mọi loại
+    # AI, không tách riêng). Tài khoản chưa đăng nhập (user_id rỗng) không bị
+    # giới hạn ở đây vì không có gì để đếm theo - giữ nguyên hành vi cũ.
+    if user_id:
+        try:
+            allowed, usage_info = lms_db.try_consume_ai_usage(user_id)
+            if not allowed:
+                return jsonify({
+                    'error': f"Bạn đã sử dụng hết {usage_info['limit']} lượt AI miễn phí hôm nay. "
+                             f"Vui lòng quay lại vào ngày mai hoặc nâng cấp gói Premium.",
+                    'limitReached': True,
+                }), 429
+        except Exception as e:
+            app.logger.warning('Bỏ qua kiểm tra usage AI do lỗi Firestore: %s', e)
 
     # Ensure a conversation row exists so multi-turn chats are threaded,
     # not just isolated question/answer events like before.
