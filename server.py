@@ -1369,6 +1369,163 @@ def _activity_for_uid(events, uid, now):
     }
 
 
+def _ts_to_epoch(v):
+    """Chuẩn hoá createdAt (có thể là Firestore Timestamp object khi đọc qua
+    Admin SDK, hoặc epoch số nếu ghi bằng cách khác) về epoch giây, để trả
+    JSON được và so sánh được."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        return v.timestamp()
+    except Exception:
+        return None
+
+
+_users_stats_cache = {'ts': 0, 'data': None}
+_USERS_STATS_TTL = 300  # 5 phút — cùng ý tưởng cache mà admin.html từng làm
+                        # ở sessionStorage, nay chuyển vào backend để MỌI
+                        # admin cùng hưởng lợi từ 1 cache chung thay vì mỗi
+                        # trình duyệt tự cache riêng.
+
+
+@app.route('/api/admin/users-list', methods=['GET'])
+def admin_users_list():
+    """Thay thế fetchUsersFromFirestore() cũ (đọc thẳng Firestore từ trình
+    duyệt, không cần đăng nhập) — giờ đọc qua Admin SDK, yêu cầu admin token."""
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    docs = fsdb.collection('users').stream()
+    users = []
+    for d in docs:
+        u = d.to_dict() or {}
+        u['id'] = d.id
+        u['createdAt'] = _ts_to_epoch(u.get('createdAt'))
+        users.append(u)
+    users.sort(key=lambda x: x.get('createdAt') or 0, reverse=True)
+    return jsonify({'users': users})
+
+
+@app.route('/api/admin/users-stats', methods=['GET'])
+def admin_users_stats():
+    """Thay thế countUsersFromFirestore() + sumLessonsFromFirestore() +
+    truy vấn newUsers 7 ngày + bảng recent users — gộp lại 1 API duy nhất,
+    tính 1 lần và cache 5 phút thay vì mỗi widget tự đọc lại toàn bộ
+    collection users (vốn đã bị đánh dấu 'khá tốn' ngay trong comment cũ)."""
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    now = time.time()
+    if _users_stats_cache['data'] and (now - _users_stats_cache['ts']) < _USERS_STATS_TTL:
+        return jsonify(_users_stats_cache['data'])
+
+    users = []
+    lessons_sum = 0
+    progress_sum = 0.0
+    progress_count = 0
+    week_ago = now - 7 * 86400
+    new_users_week = 0
+    for d in fsdb.collection('users').stream():
+        u = d.to_dict() or {}
+        u['id'] = d.id
+        ts = _ts_to_epoch(u.get('createdAt'))
+        u['createdAt'] = ts
+        if ts and ts >= week_ago:
+            new_users_week += 1
+        lessons_sum += len(u.get('lessonHistory') or [])
+        for v in (u.get('lessonProgress') or {}).values():
+            val = v if isinstance(v, (int, float)) else (
+                (v.get('percent') if isinstance(v, dict) else None)
+                or (v.get('progress') if isinstance(v, dict) else None)
+            )
+            if isinstance(val, (int, float)):
+                progress_sum += val
+                progress_count += 1
+        users.append(u)
+    users.sort(key=lambda x: x.get('createdAt') or 0, reverse=True)
+
+    data = {
+        'totalUsers': len(users),
+        'newUsersWeek': new_users_week,
+        'lessonsSum': lessons_sum,
+        'avgProgress': round(progress_sum / progress_count) if progress_count else 0,
+        'recentUsers': users[:6],
+    }
+    _users_stats_cache['ts'] = now
+    _users_stats_cache['data'] = data
+    return jsonify(data)
+
+
+@app.route('/api/admin/users/<uid>/update', methods=['POST'])
+def admin_update_user(uid):
+    """Thay thế saveUserEdit() cũ (updateDoc thẳng từ trình duyệt, không
+    đăng nhập) — cho phép sửa displayName/school/class/role qua Admin SDK.
+    Giữ nguyên field 'role' tự do (student/teacher/admin/super_admin/...)
+    như cũ, KHÔNG ép theo 3 giá trị của module LMS, để không phá vỡ các
+    role nội bộ khác đang dùng field này."""
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    body = request.get_json(silent=True) or {}
+    ref = fsdb.collection('users').document(uid)
+    if not ref.get().exists:
+        return jsonify({'error': 'Không tìm thấy người dùng.'}), 404
+    updates = {k: body[k] for k in ('displayName', 'school', 'class', 'role') if k in body}
+    if updates:
+        ref.update(updates)
+    _users_stats_cache['data'] = None  # invalidate cache vì danh sách vừa đổi
+    return jsonify({'ok': True})
+
+
+@app.route('/api/admin/users/<uid>/lock', methods=['POST'])
+def admin_lock_user(uid):
+    """Thay thế toggleLockUser() cũ (updateDoc thẳng từ trình duyệt)."""
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    body = request.get_json(silent=True) or {}
+    ref = fsdb.collection('users').document(uid)
+    if not ref.get().exists:
+        return jsonify({'error': 'Không tìm thấy người dùng.'}), 404
+    ref.update({'locked': bool(body.get('locked', True))})
+    return jsonify({'ok': True})
+
+
+@app.route('/api/admin/firestore-ping', methods=['GET'])
+def admin_firestore_ping():
+    """Thay thế bài kiểm tra kết nối Firestore ở tab Cài đặt (cũ: getDocs
+    thẳng từ trình duyệt không đăng nhập — giờ luôn 403 với rules mới)."""
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    try:
+        list(fsdb.collection('users').limit(1).stream())
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/users-lookup', methods=['POST'])
+def admin_users_lookup():
+    """Thay thế các getDoc(doc(db,'users',uid)) rải rác trong admin.html
+    (AI Assistant, Rankings...) để hiện tên/email học sinh — giờ tra theo
+    lô (batch) 1 lần qua Admin SDK thay vì N lượt đọc riêng lẻ từ trình
+    duyệt (vốn cũng đã bị firestore.rules mới chặn)."""
+    if not _require_admin():
+        return jsonify({'error': 'unauthorized'}), 401
+    body = request.get_json(silent=True) or {}
+    uids = [str(u) for u in (body.get('uids') or []) if u][:500]
+    out = {}
+    for uid in uids:
+        doc = fsdb.collection('users').document(uid).get()
+        if doc.exists:
+            d = doc.to_dict() or {}
+            out[uid] = {
+                'name': d.get('displayName') or d.get('name') or d.get('fullName') or '',
+                'email': d.get('email', ''),
+            }
+        else:
+            out[uid] = {'name': '', 'email': ''}
+    return jsonify({'users': out})
+
+
 @app.route('/api/admin-user-activity', methods=['POST'])
 def admin_user_activity():
     if not _require_admin():
