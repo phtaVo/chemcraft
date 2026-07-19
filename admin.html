@@ -1587,6 +1587,7 @@ function openUserEditModal(uid){
   const u = _usersCache.find(x=>x.id===uid);
   if (!u) return;
   const roles = ['student','teacher','admin','super_admin','content_manager','lab_manager','data_analyst'];
+  const isPremium = u.plan === 'chemcraft_for_edu' && u.planStatus === 'active';
   document.getElementById('user-modal').innerHTML = `
     <div class="mod-head"><div class="mod-title"><i class="fa-solid fa-pen"></i> Chỉnh sửa người dùng</div><button class="mod-close" onclick="closeUserModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="mod-body">
@@ -1595,7 +1596,13 @@ function openUserEditModal(uid){
       <div class="mod-field"><label>Trường học</label><input type="text" id="me-school" value="${escapeHtml(u.school||'')}"></div>
       <div class="mod-field"><label>Lớp</label><input type="text" id="me-class" value="${escapeHtml(u.class||'')}"></div>
       <div class="mod-field"><label>Vai trò</label>
-        <select id="me-role">${roles.map(r=>`<option value="${r}" ${(u.role||'student')===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
+        <select id="me-role" onchange="document.getElementById('me-premium-wrap').style.display = this.value==='teacher' ? 'block' : 'none';">${roles.map(r=>`<option value="${r}" ${(u.role||'student')===r?'selected':''}>${roleLabel(r)}</option>`).join('')}</select>
+      </div>
+      <div class="mod-field" id="me-premium-wrap" style="display:${(u.role||'student')==='teacher'?'block':'none'};">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="me-premium" ${isPremium?'checked':''} style="width:auto;">
+          <span>Cấp gói <b>ChemCraft for edu</b> (Premium — AI/nộp bài không giới hạn, lan tự động cho học sinh trong lớp)</span>
+        </label>
       </div>
     </div>
     <div class="mod-foot">
@@ -1610,6 +1617,8 @@ async function saveUserEdit(uid){
   const school = document.getElementById('me-school').value.trim();
   const cls    = document.getElementById('me-class').value.trim();
   const role   = document.getElementById('me-role').value;
+  const premiumEl = document.getElementById('me-premium');
+  const wantPremium = premiumEl ? premiumEl.checked : false;
   try {
     const t = sessionStorage.getItem('cc_admin_token') || window.__adminToken || '';
     const r = await fetch(`/api/admin/users/${uid}/update`, {
@@ -1619,8 +1628,20 @@ async function saveUserEdit(uid){
     });
     const data = await r.json().catch(()=>({}));
     if (!r.ok) throw new Error(data.error || ('Lỗi ' + r.status));
+
+    if (role === 'teacher' && premiumEl) {
+      const pr = await fetch(`/api/lms/admin/teachers/${uid}/premium`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': t },
+        body: JSON.stringify({ active: wantPremium }),
+      });
+      if (!pr.ok) console.warn('Không cập nhật được gói Premium:', pr.status);
+    }
+
     const u = _usersCache.find(x=>x.id===uid);
-    if (u) Object.assign(u, { displayName:name, school, class:cls, role });
+    if (u) Object.assign(u, { displayName:name, school, class:cls, role,
+      plan: wantPremium && role==='teacher' ? 'chemcraft_for_edu' : u.plan,
+      planStatus: wantPremium && role==='teacher' ? 'active' : (role==='teacher' ? 'inactive' : u.planStatus) });
     filterUsers(); closeUserModal();
   } catch(e){ alert('Lỗi lưu: ' + e.message); }
 }
