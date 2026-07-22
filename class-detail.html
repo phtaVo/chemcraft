@@ -40,7 +40,19 @@ textarea,input{font-family:inherit;width:100%;padding:10px 13px;border:1.5px sol
 .chat-input button{border:none;background:var(--indigo);color:#fff;padding:0 16px;cursor:pointer;}
 .q-block{padding:14px 0;border-bottom:1px solid var(--border);}
 .opt-row{display:flex;align-items:center;gap:8px;padding:6px 0;}
+.viewer-bg{display:none;position:fixed;inset:0;background:rgba(11,18,32,0.7);z-index:999;align-items:center;justify-content:center;padding:20px;}
+.viewer-bg.show{display:flex;}
+.viewer-box{background:#fff;border-radius:var(--r-md);width:min(900px,96vw);height:90vh;display:flex;flex-direction:column;overflow:hidden;}
+.viewer-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);}
+.viewer-head button{border:none;background:var(--sky2);border-radius:8px;padding:6px 10px;cursor:pointer;}
 </style>
+
+<div class="viewer-bg" id="viewer-bg">
+  <div class="viewer-box">
+    <div class="viewer-head"><b id="viewer-title">Xem tài liệu</b><button onclick="document.getElementById('viewer-bg').classList.remove('show')"><i class="fa-solid fa-xmark"></i></button></div>
+    <iframe id="viewer-iframe" style="flex:1;border:0;" src="about:blank"></iframe>
+  </div>
+</div>
 </head>
 <body>
 <div class="wrap">
@@ -62,15 +74,46 @@ textarea,input{font-family:inherit;width:100%;padding:10px 13px;border:1.5px sol
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js';
 
 let firebaseConfig = {};
 try { firebaseConfig = await (await fetch('/api/firebase-config')).json(); } catch(e){}
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const storage = getStorage(app);
 let CURRENT_USER = null;
 const CLASS_ID = new URLSearchParams(location.search).get('id');
 let CLASS_DATA = null;
 let chatPollTimer = null;
+let examTimer = null;
+
+async function uploadFile(file, path, onProgress){
+  const r = storageRef(storage, path);
+  const task = uploadBytesResumable(r, file);
+  return new Promise((resolve, reject)=>{
+    task.on('state_changed',
+      (snap)=>{ if (onProgress) onProgress(Math.round(snap.bytesTransferred/snap.totalBytes*100)); },
+      (err)=> reject(err),
+      async ()=>{ try { resolve(await getDownloadURL(task.snapshot.ref)); } catch(e){ reject(e); } }
+    );
+  });
+}
+function safeFileName(name){ return name.replace(/[^a-zA-Z0-9_.\-]/g, '_'); }
+const VIEWABLE_EXT = ['pdf','doc','docx','ppt','pptx'];
+function docViewerUrl(fileURL){
+  return 'https://docs.google.com/viewer?url=' + encodeURIComponent(fileURL) + '&embedded=true';
+}
+function isViewableFile(fileURL, fileType){
+  const ext = (fileType || fileURL.split('.').pop() || '').toLowerCase().replace('.', '');
+  return VIEWABLE_EXT.includes(ext);
+}
+window.openViewer = function(title, fileURL, fileType){
+  document.getElementById('viewer-title').textContent = title || 'Xem tài liệu';
+  const ext = (fileType || fileURL.split('.').pop() || '').toLowerCase().replace('.', '');
+  const src = ext === 'pdf' ? fileURL : docViewerUrl(fileURL);
+  document.getElementById('viewer-iframe').src = src;
+  document.getElementById('viewer-bg').classList.add('show');
+};
 
 async function api(path, opts={}){
   const token = CURRENT_USER ? await CURRENT_USER.getIdToken() : null;
@@ -177,25 +220,41 @@ async function renderLivestream(){
 async function renderDocuments(){
   const el = document.getElementById('content');
   const {documents} = await api(`/classes/${CLASS_ID}/documents`);
-  el.innerHTML = documents.length ? documents.map(d=>`
+  el.innerHTML = documents.length ? documents.map((d,i)=>`
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
       <div><b>${d.title}</b><div style="font-size:0.8rem;color:var(--text-m);">${d.fileType} · ${fmtDate(d.createdAt)}</div></div>
-      <a class="btn btn-ghost" href="${d.fileURL}" target="_blank">Xem / Tải xuống</a>
+      <div style="display:flex;gap:8px;">
+        ${isViewableFile(d.fileURL, d.fileType) ? `<button class="btn btn-primary view-doc" data-i="${i}">Xem trực tuyến</button>` : ''}
+        <a class="btn btn-ghost" href="${d.fileURL}" target="_blank">Tải xuống</a>
+      </div>
     </div>`).join('') : '<div class="card empty">Chưa có tài liệu nào.</div>';
+  el.querySelectorAll('.view-doc').forEach(b=>b.onclick=()=>{
+    const d = documents[parseInt(b.dataset.i,10)];
+    openViewer(d.title, d.fileURL, d.fileType);
+  });
 }
 
 async function renderLessons(){
   const el = document.getElementById('content');
   const {lessons} = await api(`/classes/${CLASS_ID}/lessons`);
-  el.innerHTML = lessons.length ? lessons.map(l=>`
+  el.innerHTML = lessons.length ? lessons.map((l,li)=>`
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <b>${l.chapter ? l.chapter+' · ' : ''}${l.title}</b>
         ${l.completed ? '<span class="pill pill-green">Đã hoàn thành</span>' : `<button class="btn btn-ghost mark-done" data-id="${l.id}">Đánh dấu hoàn thành</button>`}
       </div>
       <div style="margin-top:10px;color:var(--text-m);font-size:0.9rem;white-space:pre-wrap;">${l.content||''}</div>
+      ${(l.attachments||[]).length ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        ${l.attachments.map((a,ai)=>`<button class="btn btn-ghost btn-sm view-attach" data-li="${li}" data-ai="${ai}"><i class="fa-solid fa-paperclip"></i> ${a.name||('Tài liệu '+(ai+1))}</button>`).join('')}
+      </div>` : ''}
     </div>`).join('') : '<div class="card empty">Chưa có bài học nào.</div>';
   el.querySelectorAll('.mark-done').forEach(b=>b.onclick=async()=>{ await api(`/lessons/${b.dataset.id}/complete`,{method:'POST'}); renderLessons(); });
+  el.querySelectorAll('.view-attach').forEach(b=>b.onclick=()=>{
+    const l = lessons[parseInt(b.dataset.li,10)];
+    const a = l.attachments[parseInt(b.dataset.ai,10)];
+    if (isViewableFile(a.url, a.type)) openViewer(a.name, a.url, a.type);
+    else window.open(a.url, '_blank');
+  });
 }
 
 async function renderAssignments(){
@@ -205,6 +264,7 @@ async function renderAssignments(){
   const cards = await Promise.all(assignments.map(async a=>{
     const {submission} = await api(`/assignments/${a.id}/my-submission`);
     const overdue = a.deadline && now > a.deadline;
+    const files = (submission && submission.files) || [];
     return `
       <div class="card">
         <div style="display:flex;justify-content:space-between;">
@@ -215,15 +275,34 @@ async function renderAssignments(){
         <div style="margin:8px 0;white-space:pre-wrap;">${a.description||''}</div>
         ${(!overdue || submission) ? `
           <textarea id="ans-${a.id}" rows="3" placeholder="Nhập câu trả lời trực tiếp...">${submission ? (submission.content||'') : ''}</textarea>
+          <div class="field"><label>Đính kèm file (ảnh bài làm / Word / PDF — có thể chọn nhiều)</label>
+            <input type="file" id="file-${a.id}" multiple accept=".pdf,.doc,.docx,image/*">
+          </div>
+          ${files.length ? `<div style="margin-bottom:8px;">Đã nộp: ${files.map(f=>`<a href="${f.url}" target="_blank">${f.name}</a>`).join(', ')}</div>` : ''}
+          <div id="prog-${a.id}" class="hidden" style="height:6px;background:var(--sky2);border-radius:99px;overflow:hidden;margin-bottom:8px;"><div id="progbar-${a.id}" style="height:100%;width:0%;background:var(--indigo);"></div></div>
           <button class="btn btn-primary submit-a" data-id="${a.id}" ${overdue && !submission ? 'disabled' : ''}>Nộp bài</button>
         ` : ''}
       </div>`;
   }));
   el.innerHTML = cards.length ? cards.join('') : '<div class="card empty">Chưa có bài tập nào.</div>';
   el.querySelectorAll('.submit-a').forEach(b=>b.onclick=async()=>{
-    const content = document.getElementById('ans-'+b.dataset.id).value;
+    const aid = b.dataset.id;
+    const content = document.getElementById('ans-'+aid).value;
+    const fileInput = document.getElementById('file-'+aid);
+    const newFiles = Array.from(fileInput.files || []);
+    const uploaded = [];
     try {
-      await api(`/assignments/${b.dataset.id}/submit`, {method:'POST', body:{content}});
+      if (newFiles.length) {
+        const progWrap = document.getElementById('prog-'+aid);
+        const progBar = document.getElementById('progbar-'+aid);
+        progWrap.classList.remove('hidden');
+        for (const file of newFiles) {
+          const path = `lms/classes/${CLASS_ID}/submissions/${CURRENT_USER.uid}/${Date.now()}_${safeFileName(file.name)}`;
+          const url = await uploadFile(file, path, (pct)=>{ progBar.style.width = pct+'%'; });
+          uploaded.push({name: file.name, url});
+        }
+      }
+      await api(`/assignments/${aid}/submit`, {method:'POST', body:{content, files: uploaded}});
       alert('Đã nộp bài thành công!'); renderAssignments();
     } catch(e){ alert(e.message); }
   });
@@ -235,55 +314,250 @@ async function renderTests(){
   const {attempts} = await api('/my-test-attempts');
   el.innerHTML = tests.length ? tests.map(t=>{
     const attempt = attempts.find(a=>a.testId===t.id);
+    const tl = t.settings && t.settings.timeLimitMinutes ? ' · ' + t.settings.timeLimitMinutes + ' phút' : '';
     return `
       <div class="card">
         <div style="display:flex;justify-content:space-between;">
           <b>${t.title}</b>
           ${attempt ? `<span class="pill pill-green">${attempt.status==='graded'?`Điểm: ${attempt.totalScore}/${attempt.maxScore}`:'Chờ chấm tự luận'}</span>` : '<span class="pill pill-cyan">Chưa làm</span>'}
         </div>
-        <div style="color:var(--text-m);font-size:0.85rem;margin:6px 0;">${(t.questions||[]).length} câu · Hạn: ${fmtDate(t.deadline)}</div>
-        ${!attempt ? `<button class="btn btn-primary start-test" data-id="${t.id}">Làm bài</button>` : ''}
+        <div style="color:var(--text-m);font-size:0.85rem;margin:6px 0;">${(t.questions||[]).length} câu · Hạn: ${fmtDate(t.deadline)}${tl}</div>
+        ${!attempt ? `<button class="btn btn-primary start-test" data-id="${t.id}">Làm bài</button>` : `<button class="btn btn-ghost review-test" data-id="${attempt.id}">Xem lại bài làm</button>`}
       </div>`;
   }).join('') : '<div class="card empty">Chưa có bài kiểm tra nào.</div>';
   el.querySelectorAll('.start-test').forEach(b=>b.onclick=()=> openTest(b.dataset.id));
+  el.querySelectorAll('.review-test').forEach(b=>b.onclick=()=> reviewTestAttempt(b.dataset.id));
+}
+
+let EXAM = null;
+
+function shuffleArray(arr){
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 async function openTest(testId){
   const {test} = await api(`/tests/${testId}`);
-  const el = document.getElementById('content');
-  el.innerHTML = `<div class="card"><h3 style="margin-bottom:14px;">${test.title}</h3><div id="test-qs"></div>
-    <button class="btn btn-primary" id="submit-test">Nộp bài kiểm tra</button></div>`;
-  const qs = document.getElementById('test-qs');
-  qs.innerHTML = test.questions.map((q,i)=>{
-    if (q.type === 'multiple_choice') {
-      return `<div class="q-block"><div><b>Câu ${i+1}:</b> ${q.question}</div>
-        ${q.options.map((o,oi)=>`<div class="opt-row"><input type="radio" name="q${i}" value="${oi}"> ${o}</div>`).join('')}</div>`;
-    }
-    if (q.type === 'true_false') {
-      return `<div class="q-block"><div><b>Câu ${i+1}:</b> ${q.question}</div>
-        <div class="opt-row"><input type="radio" name="q${i}" value="true"> Đúng</div>
-        <div class="opt-row"><input type="radio" name="q${i}" value="false"> Sai</div></div>`;
-    }
-    if (q.type === 'short_answer') {
-      return `<div class="q-block"><div><b>Câu ${i+1}:</b> ${q.question}</div><input id="q${i}" placeholder="Nhập đáp án..."></div>`;
-    }
-    return `<div class="q-block"><div><b>Câu ${i+1}:</b> ${q.question}</div><textarea id="q${i}" rows="3" placeholder="Viết câu trả lời của bạn..."></textarea></div>`;
-  }).join('');
-  document.getElementById('submit-test').onclick = async ()=>{
-    const answers = test.questions.map((q,i)=>{
-      if (q.type === 'multiple_choice' || q.type === 'true_false') {
-        const checked = qs.querySelector(`input[name="q${i}"]:checked`);
-        if (!checked) return null;
-        return q.type === 'true_false' ? checked.value === 'true' : parseInt(checked.value, 10);
-      }
-      const inp = document.getElementById('q'+i);
-      return inp ? inp.value : null;
+  const settings = test.settings || {};
+  const groups = [
+    {key:'multiple_choice', label:'Phần I: Trắc nghiệm'},
+    {key:'true_false', label:'Phần II: Đúng/Sai'},
+    {key:'true_false_group', label:'Phần II: Đúng/Sai'},
+    {key:'short_answer', label:'Phần III: Trả lời ngắn'},
+    {key:'essay', label:'Phần IV: Tự luận'},
+  ];
+  let order = [];
+  const sectionRanges = [];
+  groups.forEach(g=>{
+    let idxs = test.questions.map((q,i)=>({q,i})).filter(x=>x.q.type===g.key).map(x=>x.i);
+    if (!idxs.length) return;
+    if (settings.shuffleQuestions) idxs = shuffleArray(idxs.slice());
+    const last = sectionRanges[sectionRanges.length-1];
+    if (last && last.label === g.label) { last.end = order.length + idxs.length; }
+    else sectionRanges.push({label:g.label, start:order.length, end:order.length+idxs.length});
+    order.push(...idxs);
+  });
+  const optionOrders = {};
+  if (settings.shuffleOptions) {
+    test.questions.forEach((q,i)=>{
+      if (q.type === 'multiple_choice') optionOrders[i] = shuffleArray(q.options.map((_,oi)=>oi));
     });
-    try {
-      await api(`/tests/${testId}/submit`, {method:'POST', body:{answers}});
-      alert('Đã nộp bài kiểm tra!'); renderTests();
-    } catch(e){ alert(e.message); }
+  }
+  EXAM = {
+    testId, test, settings, order, sectionRanges, optionOrders,
+    answers: {}, marked: new Set(), pos: 0,
+    deadlineTs: settings.timeLimitMinutes ? Date.now() + settings.timeLimitMinutes*60000 : null,
   };
+  renderExamShell();
+  renderExamQuestion();
+  if (EXAM.deadlineTs) startExamTimer();
+}
+
+function renderExamShell(){
+  const el = document.getElementById('content');
+  el.innerHTML = `
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+      <b>${EXAM.test.title}</b>
+      <div id="exam-timer" style="font-weight:800;${EXAM.deadlineTs?'':'display:none;'}"></div>
+    </div>
+    <div class="card">
+      <div id="exam-palette" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
+      <div id="exam-question"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:14px;align-items:center;">
+        <button class="btn btn-ghost" id="exam-prev">← Câu trước</button>
+        <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="exam-mark" style="width:auto;"> Đánh dấu xem lại</label>
+        <button class="btn btn-ghost" id="exam-next">Câu tiếp →</button>
+      </div>
+      <div style="margin-top:14px;text-align:right;">
+        <button class="btn btn-primary" id="exam-submit">Nộp bài kiểm tra</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('exam-prev').onclick = ()=> gotoExamPos(EXAM.pos-1);
+  document.getElementById('exam-next').onclick = ()=> gotoExamPos(EXAM.pos+1);
+  document.getElementById('exam-mark').onchange = (e)=>{
+    const qi = EXAM.order[EXAM.pos];
+    if (e.target.checked) EXAM.marked.add(qi); else EXAM.marked.delete(qi);
+    renderExamPalette();
+  };
+  document.getElementById('exam-submit').onclick = ()=> submitExam(false);
+}
+
+function renderExamPalette(){
+  const wrap = document.getElementById('exam-palette');
+  wrap.innerHTML = EXAM.sectionRanges.map(sec=>{
+    const btns = [];
+    for (let p = sec.start; p < sec.end; p++) {
+      const qi = EXAM.order[p];
+      const answered = EXAM.answers[qi] !== undefined && EXAM.answers[qi] !== null && EXAM.answers[qi] !== '';
+      const marked = EXAM.marked.has(qi);
+      const isCurrent = p === EXAM.pos;
+      const locked = (!EXAM.settings.allowReview && p < EXAM.pos);
+      const bg = answered ? 'var(--green)' : 'var(--sky2)';
+      const color = answered ? '#fff' : 'var(--text)';
+      const border = marked ? 'var(--gold)' : (isCurrent ? 'var(--indigo)' : 'transparent');
+      btns.push(`<button ${locked?'disabled':''} onclick="window._examGoto(${p})" style="width:34px;height:34px;border-radius:8px;border:2px solid ${border};background:${bg};color:${color};font-weight:700;cursor:${locked?'not-allowed':'pointer'};opacity:${locked?0.5:1};">${p+1}</button>`);
+    }
+    return `<div style="width:100%;font-size:0.78rem;font-weight:800;color:var(--text-m);margin:6px 0 2px;">${sec.label}</div><div style="display:flex;gap:6px;flex-wrap:wrap;">${btns.join('')}</div>`;
+  }).join('');
+}
+window._examGoto = (p)=> gotoExamPos(p);
+
+function gotoExamPos(p){
+  if (!EXAM || p < 0 || p >= EXAM.order.length) return;
+  if (!EXAM.settings.allowReview && p < EXAM.pos) return;
+  saveCurrentAnswer();
+  EXAM.pos = p;
+  renderExamQuestion();
+}
+
+function saveCurrentAnswer(){
+  const qi = EXAM.order[EXAM.pos];
+  const q = EXAM.test.questions[qi];
+  const root = document.getElementById('exam-question');
+  if (!root) return;
+  if (q.type === 'multiple_choice') {
+    const checked = root.querySelector('input[name="eq"]:checked');
+    EXAM.answers[qi] = checked ? parseInt(checked.value, 10) : null;
+  } else if (q.type === 'true_false') {
+    const checked = root.querySelector('input[name="eq"]:checked');
+    EXAM.answers[qi] = checked ? checked.value === 'true' : null;
+  } else if (q.type === 'true_false_group') {
+    const vals = (q.subItems||[]).map((_,si)=>{
+      const checked = root.querySelector(`input[name="eq-${si}"]:checked`);
+      return checked ? checked.value === 'true' : null;
+    });
+    EXAM.answers[qi] = vals;
+  } else {
+    const inp = document.getElementById('eq-input');
+    EXAM.answers[qi] = inp ? inp.value : null;
+  }
+}
+
+function renderExamQuestion(){
+  renderExamPalette();
+  const qi = EXAM.order[EXAM.pos];
+  const q = EXAM.test.questions[qi];
+  const root = document.getElementById('exam-question');
+  document.getElementById('exam-mark').checked = EXAM.marked.has(qi);
+  document.getElementById('exam-prev').style.visibility = (EXAM.settings.allowReview && EXAM.pos > 0) ? 'visible' : 'hidden';
+  document.getElementById('exam-next').textContent = EXAM.pos === EXAM.order.length-1 ? 'Câu cuối' : 'Câu tiếp →';
+
+  let html = `<div style="font-weight:700;margin-bottom:4px;">Câu ${EXAM.pos+1}/${EXAM.order.length} (${q.points} điểm)</div><div style="white-space:pre-wrap;margin-bottom:12px;">${q.question}</div>`;
+  const savedAns = EXAM.answers[qi];
+
+  if (q.type === 'multiple_choice') {
+    const optOrder = EXAM.optionOrders[qi] || q.options.map((_,i)=>i);
+    html += optOrder.map(oi=>`<div class="opt-row"><label style="display:flex;gap:8px;cursor:pointer;width:100%;"><input type="radio" name="eq" value="${oi}" ${savedAns===oi?'checked':''}> ${q.options[oi]}</label></div>`).join('');
+  } else if (q.type === 'true_false') {
+    html += `<div class="opt-row"><label><input type="radio" name="eq" value="true" ${savedAns===true?'checked':''}> Đúng</label></div>
+              <div class="opt-row"><label><input type="radio" name="eq" value="false" ${savedAns===false?'checked':''}> Sai</label></div>`;
+  } else if (q.type === 'true_false_group') {
+    html += (q.subItems||[]).map((si,sidx)=>{
+      const val = Array.isArray(savedAns) ? savedAns[sidx] : null;
+      return `<div style="margin:8px 0;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div style="margin-bottom:6px;">${String.fromCharCode(97+sidx)}) ${si.text}</div>
+        <div style="display:flex;gap:16px;">
+          <label><input type="radio" name="eq-${sidx}" value="true" ${val===true?'checked':''}> Đúng</label>
+          <label><input type="radio" name="eq-${sidx}" value="false" ${val===false?'checked':''}> Sai</label>
+        </div></div>`;
+    }).join('');
+  } else if (q.type === 'short_answer') {
+    html += `<input id="eq-input" placeholder="Nhập đáp án..." value="${savedAns||''}">`;
+  } else {
+    html += `<textarea id="eq-input" rows="5" placeholder="Viết câu trả lời của bạn...">${savedAns||''}</textarea>`;
+  }
+  root.innerHTML = html;
+}
+
+function startExamTimer(){
+  const el = document.getElementById('exam-timer');
+  const tick = ()=>{
+    const remainMs = EXAM.deadlineTs - Date.now();
+    if (remainMs <= 0) {
+      clearInterval(examTimer);
+      el.textContent = '00:00';
+      if (EXAM.settings.autoSubmitOnTimeout) { alert('Hết thời gian làm bài — hệ thống tự động nộp bài.'); submitExam(true); }
+      return;
+    }
+    const m = Math.floor(remainMs/60000), s = Math.floor((remainMs%60000)/1000);
+    el.textContent = String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+    el.style.color = remainMs < 60000 ? 'var(--red)' : 'var(--ink)';
+  };
+  tick();
+  examTimer = setInterval(tick, 1000);
+}
+
+async function submitExam(isAuto){
+  if (!isAuto && !confirm('Nộp bài kiểm tra? Bạn sẽ không thể sửa sau khi nộp.')) return;
+  saveCurrentAnswer();
+  clearInterval(examTimer);
+  const answers = EXAM.test.questions.map((q,i)=> EXAM.answers[i] !== undefined ? EXAM.answers[i] : null);
+  try {
+    await api(`/tests/${EXAM.testId}/submit`, {method:'POST', body:{answers}});
+    alert('Đã nộp bài kiểm tra!');
+    EXAM = null;
+    renderTests();
+  } catch(e){ alert(e.message); }
+}
+
+async function reviewTestAttempt(attemptId){
+  const {attempt} = await api(`/test-attempts/${attemptId}`);
+  const el = document.getElementById('content');
+  el.innerHTML = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;">
+        <b>${attempt.testTitle || 'Kết quả bài kiểm tra'}</b>
+        <span class="pill pill-green">${attempt.totalScore}/${attempt.maxScore} điểm</span>
+      </div>
+      ${!attempt.revealAnswers ? '<div class="class-meta" style="margin-top:8px;">Giáo viên chưa công bố đáp án cho bài kiểm tra này.</div>' : ''}
+    </div>
+    ${attempt.questions.map((q,i)=>{
+      const a = attempt.answers[i] || {};
+      let body = `<div style="white-space:pre-wrap;margin:6px 0;"><b>Câu ${i+1}:</b> ${q.question}</div>`;
+      if (attempt.revealAnswers) {
+        if (q.type === 'multiple_choice') {
+          body += q.options.map((o,oi)=>`<div class="opt-row" style="${oi===q.correctAnswer?'color:var(--green);font-weight:700;':''}${oi===a.answer && oi!==q.correctAnswer?'color:var(--red);':''}">${oi===q.correctAnswer?'✓':(oi===a.answer?'✗':'')} ${o}</div>`).join('');
+        } else if (q.type === 'true_false_group') {
+          body += (q.subItems||[]).map((si,sidx)=>{
+            const given = Array.isArray(a.answer) ? a.answer[sidx] : null;
+            const ok = given === si.correct;
+            return `<div class="opt-row" style="${ok?'color:var(--green);':'color:var(--red);'}">${String.fromCharCode(97+sidx)}) ${si.text} — Đáp án đúng: ${si.correct?'Đúng':'Sai'}${given!==null?', bạn chọn: '+(given?'Đúng':'Sai'):''}</div>`;
+          }).join('');
+        } else if (q.type === 'short_answer') {
+          body += `<div class="class-meta">Bạn trả lời: ${a.answer||'(trống)'} · Đáp án đúng: ${Array.isArray(q.correctAnswer)?q.correctAnswer.join(' / '):q.correctAnswer}</div>`;
+        } else {
+          body += `<div class="class-meta">Bạn trả lời:</div><div style="white-space:pre-wrap;">${a.answer||'(trống)'}</div>`;
+        }
+      }
+      body += `<div class="class-meta" style="margin-top:6px;">Điểm: ${a.score != null ? a.score : 'chưa chấm'}/${q.points}</div>`;
+      return `<div class="card">${body}</div>`;
+    }).join('')}
+    <button class="btn btn-ghost" onclick="renderTests()">← Quay lại danh sách</button>
+  `;
 }
 
 onAuthStateChanged(auth, async (user)=>{
