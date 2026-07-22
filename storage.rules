@@ -1,0 +1,67 @@
+// storage.rules — ChemCraft LMS file uploads
+// ============================================================================
+// Phạm vi: chỉ áp dụng cho các đường dẫn LMS mới (lesson attachments, tài
+// liệu, bài nộp). Các đường dẫn khác trong Storage (nếu có) không bị ảnh
+// hưởng bởi rules này trừ khi bạn thêm match tương ứng.
+//
+// Nguyên tắc:
+// - Đọc (download): bất kỳ ai có URL (kèm token) đều xem được — đây là hành
+//   vi mặc định của Firebase Storage download URL, rules chỉ kiểm soát được
+//   việc TẠO ra token đó (tức là quyền GHI/đọc trực tiếp qua SDK), không thu
+//   hồi được sau khi link đã được cấp. Đủ dùng cho tài liệu học tập công khai
+//   trong lớp — không dùng để lưu dữ liệu thật sự nhạy cảm.
+// - Ghi (upload): bắt buộc đăng nhập Firebase Auth, giới hạn dung lượng và
+//   loại file, để tránh spam/phá server bằng file rác hoặc quá khổ.
+//
+// Deploy: Firebase Console → Storage → Rules → dán → Publish
+// (hoặc `firebase deploy --only storage` nếu dùng CLI).
+// ============================================================================
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAllowedType() {
+      return request.resource.contentType.matches('application/pdf')
+          || request.resource.contentType.matches('application/msword')
+          || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+          || request.resource.contentType.matches('application/vnd.ms-powerpoint')
+          || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.presentationml.presentation')
+          || request.resource.contentType.matches('image/.*');
+    }
+
+    function underSizeLimit() {
+      return request.resource.size < 25 * 1024 * 1024; // 25MB / file
+    }
+
+    // Tài liệu bài học + tài liệu lớp học — giáo viên upload, ai đăng nhập
+    // cũng đọc được (đủ dùng, xem ghi chú ở trên).
+    match /lms/classes/{classId}/documents/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isAllowedType() && underSizeLimit();
+    }
+
+    match /lms/classes/{classId}/lessons/{lessonId}/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isAllowedType() && underSizeLimit();
+    }
+
+    // Bài nộp của học sinh — chỉ người đăng nhập mới đọc/ghi được (không để
+    // request.auth == null như 2 match trên, vì đây là bài làm cá nhân).
+    match /lms/classes/{classId}/submissions/{studentUid}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == studentUid
+                   && isAllowedType() && underSizeLimit();
+    }
+
+    // Mặc định: từ chối mọi đường dẫn khác chưa khai báo ở trên.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
