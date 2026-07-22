@@ -99,11 +99,26 @@ td{padding:10px;border-bottom:1px solid var(--border);}
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js';
 
 let firebaseConfig = {};
 try { firebaseConfig = await (await fetch('/api/firebase-config')).json(); } catch(e){}
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const storage = getStorage(app);
+
+async function uploadFile(file, path, onProgress){
+  const r = storageRef(storage, path);
+  const task = uploadBytesResumable(r, file);
+  return new Promise((resolve, reject)=>{
+    task.on('state_changed',
+      (snap)=>{ if (onProgress) onProgress(Math.round(snap.bytesTransferred/snap.totalBytes*100)); },
+      (err)=> reject(err),
+      async ()=>{ try { resolve(await getDownloadURL(task.snapshot.ref)); } catch(e){ reject(e); } }
+    );
+  });
+}
+function safeFileName(name){ return name.replace(/[^a-zA-Z0-9_.\-]/g, '_'); }
 
 let CURRENT_USER = null;
 let MY_CLASSES = [];
@@ -324,13 +339,14 @@ async function renderDocuments(){
   const {documents} = await api(`/classes/${ACTIVE_CLASS.id}/documents`);
   el.innerHTML = `
     <div class="card">
-      <h3 style="margin-bottom:10px;">Thêm tài liệu (đã tải lên Firebase Storage)</h3>
-      <div class="class-meta" style="margin-bottom:10px;">Tải file lên Firebase Storage bằng công cụ hiện có của bạn, dán URL công khai vào đây.</div>
+      <h3 style="margin-bottom:10px;">Thêm tài liệu</h3>
       <div class="field"><label>Tiêu đề</label><input id="df-title"></div>
       <div class="field"><label>Mô tả</label><input id="df-desc"></div>
-      <div class="field"><label>URL file</label><input id="df-url" placeholder="https://..."></div>
-      <div class="field"><label>Loại file</label><select id="df-type"><option>pdf</option><option>doc</option><option>docx</option><option>ppt</option><option>pptx</option><option>image</option></select></div>
-      <button class="btn btn-primary" id="df-submit"><i class="fa-solid fa-upload"></i> Thêm tài liệu</button>
+      <div class="field"><label>File (PDF / Word / PowerPoint / hình ảnh, tối đa 25MB)</label>
+        <input type="file" id="df-file" accept=".pdf,.doc,.docx,.ppt,.pptx,image/*">
+      </div>
+      <div id="df-progress" class="usage-bar-wrap hidden" style="margin-bottom:10px;"><div class="usage-bar" id="df-progress-bar" style="width:0%"></div></div>
+      <button class="btn btn-primary" id="df-submit"><i class="fa-solid fa-upload"></i> Tải lên</button>
     </div>
     <div class="grid">${documents.length ? documents.map(d=>`
       <div class="card">
@@ -338,19 +354,29 @@ async function renderDocuments(){
         <div class="class-meta">${d.description||''}</div>
         <div class="class-meta">${d.fileType} · ${fmtDate(d.createdAt)}</div>
         <div style="margin-top:8px;display:flex;gap:8px;">
-          <a class="btn btn-ghost btn-sm" href="${d.fileURL}" target="_blank">Xem</a>
+          <a class="btn btn-ghost btn-sm" href="${d.fileURL}" target="_blank">Xem / Tải xuống</a>
           <button class="btn btn-danger btn-sm del-doc" data-id="${d.id}"><i class="fa-solid fa-trash"></i></button>
         </div>
       </div>`).join('') : '<div class="empty">Chưa có tài liệu nào.</div>'}</div>
   `;
   document.getElementById('df-submit').onclick = async ()=>{
     const title = document.getElementById('df-title').value.trim();
-    const fileURL = document.getElementById('df-url').value.trim();
-    if (!title || !fileURL) return toast('Vui lòng nhập tiêu đề và URL file.');
-    await api(`/classes/${ACTIVE_CLASS.id}/documents`, {method:'POST', body:{
-      title, description:document.getElementById('df-desc').value, fileURL, fileType:document.getElementById('df-type').value,
-    }});
-    toast('Đã thêm tài liệu.'); renderDocuments();
+    const fileInput = document.getElementById('df-file');
+    const file = fileInput.files[0];
+    if (!title || !file) return toast('Vui lòng nhập tiêu đề và chọn file.');
+    const progWrap = document.getElementById('df-progress');
+    const progBar = document.getElementById('df-progress-bar');
+    progWrap.classList.remove('hidden');
+    try {
+      const path = `lms/classes/${ACTIVE_CLASS.id}/documents/${Date.now()}_${safeFileName(file.name)}`;
+      const fileURL = await uploadFile(file, path, (pct)=>{ progBar.style.width = pct+'%'; });
+      const ext = (file.name.split('.').pop()||'').toLowerCase();
+      await api(`/classes/${ACTIVE_CLASS.id}/documents`, {method:'POST', body:{
+        title, description:document.getElementById('df-desc').value, fileURL,
+        fileType: ext, fileSize: file.size,
+      }});
+      toast('Đã tải lên tài liệu.'); renderDocuments();
+    } catch(e){ toast('Lỗi tải lên: ' + e.message); progWrap.classList.add('hidden'); }
   };
   el.querySelectorAll('.del-doc').forEach(b=>b.onclick=async()=>{ await api('/documents/'+b.dataset.id,{method:'DELETE'}); renderDocuments(); });
 }
@@ -375,6 +401,10 @@ function showLessonModal(){
     <div class="field"><label>Chương</label><input id="ls-chapter" placeholder="VD: Chương 1"></div>
     <div class="field"><label>Tiêu đề</label><input id="ls-title" placeholder="VD: Bài 1: Cấu tạo nguyên tử"></div>
     <div class="field"><label>Nội dung</label><textarea id="ls-content" rows="6" placeholder="Nội dung lý thuyết (hỗ trợ HTML cơ bản)"></textarea></div>
+    <div class="field"><label>Tài liệu đính kèm (PDF/Word/PPT/hình ảnh, có thể chọn nhiều)</label>
+      <input type="file" id="ls-files" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,image/*">
+    </div>
+    <div id="ls-progress" class="usage-bar-wrap hidden" style="margin-bottom:10px;"><div class="usage-bar" id="ls-progress-bar" style="width:0%"></div></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
       <button class="btn btn-primary" id="ls-submit">Tạo</button>
@@ -383,8 +413,24 @@ function showLessonModal(){
   document.getElementById('ls-submit').onclick = async ()=>{
     const title = document.getElementById('ls-title').value.trim();
     if (!title) return toast('Vui lòng nhập tiêu đề.');
+    const files = Array.from(document.getElementById('ls-files').files || []);
+    const attachments = [];
+    if (files.length) {
+      const progWrap = document.getElementById('ls-progress');
+      const progBar = document.getElementById('ls-progress-bar');
+      progWrap.classList.remove('hidden');
+      for (const file of files) {
+        try {
+          const path = `lms/classes/${ACTIVE_CLASS.id}/lessons/${Date.now()}_${safeFileName(file.name)}`;
+          const url = await uploadFile(file, path, (pct)=>{ progBar.style.width = pct+'%'; });
+          const ext = (file.name.split('.').pop()||'').toLowerCase();
+          attachments.push({name: file.name, url, type: ext});
+        } catch(e){ toast('Lỗi tải file ' + file.name + ': ' + e.message); }
+      }
+    }
     await api(`/classes/${ACTIVE_CLASS.id}/lessons`, {method:'POST', body:{
       title, chapter:document.getElementById('ls-chapter').value, content:document.getElementById('ls-content').value,
+      attachments,
     }});
     closeModal(); toast('Đã tạo bài học.'); renderLessons();
   };
@@ -438,6 +484,7 @@ async function showSubmissionsModal(assignmentId){
       <div class="card" style="margin-bottom:10px;">
         <div class="class-meta">${s.studentId} · ${fmtDate(s.submittedAt)} · ${s.status==='graded'?'<span class="pill pill-green">Đã chấm</span>':'<span class="pill pill-cyan">Chưa chấm</span>'}</div>
         <div style="margin:8px 0;white-space:pre-wrap;">${(s.content||'').slice(0,300)}</div>
+        ${(s.files||[]).length ? `<div class="class-meta" style="margin-bottom:8px;">File đính kèm: ${s.files.map(f=>`<a href="${f.url}" target="_blank">${f.name}</a>`).join(', ')}</div>` : ''}
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="number" placeholder="Điểm" style="width:90px;" id="score-${s.id}" value="${s.score ?? ''}">
           <button class="btn btn-primary btn-sm" onclick="window._gradeSub('${s.id}')">Chấm</button>
@@ -470,94 +517,226 @@ async function renderTests(){
   el.querySelectorAll('.del-t').forEach(b=>b.onclick=async()=>{ await api('/tests/'+b.dataset.id,{method:'DELETE'}); renderTests(); });
   el.querySelectorAll('.view-attempts').forEach(b=>b.onclick=()=> showAttemptsModal(b.dataset.id));
 }
+
 function showTestModal(){
   TEST_QUESTIONS = [];
   openModal(`
     <h3>Tạo bài kiểm tra</h3>
     <div class="field"><label>Tiêu đề</label><input id="tf-title"></div>
     <div class="field"><label>Hạn làm bài</label><input id="tf-deadline" type="datetime-local"></div>
-    <div id="tf-questions"></div>
-    <button class="btn btn-ghost btn-sm" id="tf-add-q" style="margin-bottom:14px;"><i class="fa-solid fa-plus"></i> Thêm câu hỏi</button>
-    <div style="display:flex;gap:10px;justify-content:flex-end;">
+
+    <div class="card" style="margin-bottom:12px;">
+      <div style="font-weight:800;margin-bottom:8px;">Cấu hình đề</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="field"><label>Thời gian làm bài (phút, để trống = không giới hạn)</label><input id="tf-timelimit" type="number" min="1"></div>
+        <div class="field"><label>Hiện đáp án</label>
+          <select id="tf-showanswers">
+            <option value="after_submit">Ngay sau khi nộp</option>
+            <option value="manual">Khi giáo viên công bố</option>
+            <option value="never">Không hiện</option>
+          </select>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:4px;"><input type="checkbox" id="tf-shuffle-q" style="width:auto;"> Trộn thứ tự câu hỏi</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:6px;"><input type="checkbox" id="tf-shuffle-o" style="width:auto;"> Trộn thứ tự đáp án (trắc nghiệm)</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:6px;"><input type="checkbox" id="tf-allow-review" checked style="width:auto;"> Cho phép quay lại sửa câu đã làm trong lúc thi</label>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <button class="btn btn-ghost btn-sm" id="tf-mode-manual" style="flex:1;">✍️ Soạn thủ công</button>
+      <button class="btn btn-ghost btn-sm" id="tf-mode-paste" style="flex:1;">📋 Dán đề (kiểu Azota)</button>
+    </div>
+    <div id="tf-manual-panel"></div>
+    <div id="tf-paste-panel" class="hidden"></div>
+
+    <div style="font-weight:800;margin:14px 0 6px;">Danh sách câu hỏi (<span id="tf-qcount">0</span>)</div>
+    <div id="tf-questions-list"></div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
       <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
-      <button class="btn btn-primary" id="tf-submit">Tạo</button>
+      <button class="btn btn-primary" id="tf-submit">Tạo bài kiểm tra</button>
     </div>
   `);
-  document.getElementById('tf-add-q').onclick = ()=> addQuestionRow();
-  addQuestionRow();
+
+  renderManualPanel();
+  renderPastePanel();
+  renderQuestionsList();
+  document.getElementById('tf-mode-manual').onclick = ()=> switchTestMode('manual');
+  document.getElementById('tf-mode-paste').onclick = ()=> switchTestMode('paste');
+  switchTestMode('manual');
+
   document.getElementById('tf-submit').onclick = async ()=>{
     const title = document.getElementById('tf-title').value.trim();
-    const questions = collectQuestions();
-    if (!title || !questions.length) return toast('Vui lòng nhập tiêu đề và ít nhất 1 câu hỏi.');
+    if (!title || !TEST_QUESTIONS.length) return toast('Vui lòng nhập tiêu đề và ít nhất 1 câu hỏi.');
     const deadline = new Date(document.getElementById('tf-deadline').value || Date.now()).getTime()/1000;
-    await api(`/classes/${ACTIVE_CLASS.id}/tests`, {method:'POST', body:{title, questions, deadline}});
-    closeModal(); toast('Đã tạo bài kiểm tra.'); renderTests();
+    const settings = {
+      timeLimitMinutes: document.getElementById('tf-timelimit').value ? parseInt(document.getElementById('tf-timelimit').value,10) : null,
+      showAnswersAfter: document.getElementById('tf-showanswers').value,
+      shuffleQuestions: document.getElementById('tf-shuffle-q').checked,
+      shuffleOptions: document.getElementById('tf-shuffle-o').checked,
+      allowReview: document.getElementById('tf-allow-review').checked,
+    };
+    try {
+      await api(`/classes/${ACTIVE_CLASS.id}/tests`, {method:'POST', body:{title, questions:TEST_QUESTIONS, deadline, settings}});
+      closeModal(); toast('Đã tạo bài kiểm tra.'); renderTests();
+    } catch(e){ toast(e.message); }
   };
 }
-function addQuestionRow(){
-  const wrap = document.getElementById('tf-questions');
-  const idx = wrap.children.length;
-  const div = document.createElement('div');
-  div.className = 'card'; div.style.marginBottom='10px';
-  div.innerHTML = `
-    <select class="q-type" data-idx="${idx}">
-      <option value="multiple_choice">Trắc nghiệm</option>
-      <option value="true_false">Đúng/Sai</option>
-      <option value="short_answer">Trả lời ngắn</option>
-      <option value="essay">Tự luận</option>
-    </select>
-    <div class="field" style="margin-top:8px;"><input class="q-text" placeholder="Nội dung câu hỏi"></div>
-    <div class="q-extra"></div>
-    <div class="field"><input class="q-points" type="number" placeholder="Điểm" value="1" style="width:90px;"></div>
+
+function switchTestMode(mode){
+  document.getElementById('tf-manual-panel').classList.toggle('hidden', mode!=='manual');
+  document.getElementById('tf-paste-panel').classList.toggle('hidden', mode!=='paste');
+}
+
+function renderManualPanel(){
+  const panel = document.getElementById('tf-manual-panel');
+  panel.innerHTML = `
+    <div class="card">
+      <select id="mq-type">
+        <option value="multiple_choice">Trắc nghiệm</option>
+        <option value="true_false">Đúng/Sai (1 ý)</option>
+        <option value="short_answer">Trả lời ngắn</option>
+        <option value="essay">Tự luận</option>
+      </select>
+      <div class="field" style="margin-top:8px;"><input id="mq-text" placeholder="Nội dung câu hỏi"></div>
+      <div id="mq-extra"></div>
+      <div class="field"><input id="mq-points" type="number" placeholder="Điểm" value="1" style="width:90px;"></div>
+      <button class="btn btn-primary btn-sm" id="mq-add">+ Thêm vào đề</button>
+    </div>
   `;
-  wrap.appendChild(div);
-  const sel = div.querySelector('.q-type');
+  const sel = document.getElementById('mq-type');
   const renderExtra = ()=>{
-    const extra = div.querySelector('.q-extra');
+    const extra = document.getElementById('mq-extra');
     if (sel.value === 'multiple_choice') {
-      extra.innerHTML = `<div class="class-meta">4 đáp án, cách nhau bằng dấu |, đáp án đúng nhập số thứ tự (0-3)</div>
-        <div class="field"><input class="q-opts" placeholder="Đáp án A|Đáp án B|Đáp án C|Đáp án D"></div>
-        <div class="field"><input class="q-correct" placeholder="Số thứ tự đáp án đúng (0-3)"></div>`;
+      extra.innerHTML = `<div class="class-meta">4 đáp án cách nhau bằng dấu |, đáp án đúng nhập số thứ tự (0-3)</div>
+        <div class="field"><input id="mq-opts" placeholder="Đáp án A|Đáp án B|Đáp án C|Đáp án D"></div>
+        <div class="field"><input id="mq-correct" placeholder="Số thứ tự đáp án đúng (0-3)"></div>`;
     } else if (sel.value === 'true_false') {
-      extra.innerHTML = `<div class="field"><select class="q-correct"><option value="true">Đúng</option><option value="false">Sai</option></select></div>`;
+      extra.innerHTML = `<div class="field"><select id="mq-correct"><option value="true">Đúng</option><option value="false">Sai</option></select></div>`;
     } else if (sel.value === 'short_answer') {
-      extra.innerHTML = `<div class="field"><input class="q-correct" placeholder="Đáp án đúng"></div>`;
+      extra.innerHTML = `<div class="field"><input id="mq-correct" placeholder="Đáp án đúng (nhiều đáp án tương đương cách nhau bằng /)"></div>`;
     } else {
       extra.innerHTML = `<div class="class-meta">Tự luận — giáo viên chấm điểm thủ công sau khi học sinh nộp.</div>`;
     }
   };
   sel.onchange = renderExtra; renderExtra();
-}
-function collectQuestions(){
-  const qs = [];
-  document.querySelectorAll('#tf-questions > div').forEach(div=>{
-    const type = div.querySelector('.q-type').value;
-    const question = div.querySelector('.q-text').value.trim();
-    const points = parseFloat(div.querySelector('.q-points').value) || 1;
-    if (!question) return;
+  document.getElementById('mq-add').onclick = ()=>{
+    const question = document.getElementById('mq-text').value.trim();
+    if (!question) return toast('Nhập nội dung câu hỏi.');
+    const points = parseFloat(document.getElementById('mq-points').value)||1;
+    const type = sel.value;
     const q = {type, question, points};
     if (type === 'multiple_choice') {
-      q.options = (div.querySelector('.q-opts').value||'').split('|').map(s=>s.trim());
-      q.correctAnswer = parseInt(div.querySelector('.q-correct').value, 10);
+      q.options = (document.getElementById('mq-opts').value||'').split('|').map(s=>s.trim());
+      q.correctAnswer = parseInt(document.getElementById('mq-correct').value,10);
     } else if (type === 'true_false') {
-      q.correctAnswer = div.querySelector('.q-correct').value === 'true';
+      q.correctAnswer = document.getElementById('mq-correct').value === 'true';
     } else if (type === 'short_answer') {
-      q.correctAnswer = div.querySelector('.q-correct').value.trim();
+      const raw = document.getElementById('mq-correct').value.trim();
+      const parts = raw.split('/').map(s=>s.trim()).filter(Boolean);
+      q.correctAnswer = parts.length > 1 ? parts : raw;
     }
-    qs.push(q);
-  });
-  return qs;
+    TEST_QUESTIONS.push(q);
+    renderQuestionsList();
+    document.getElementById('mq-text').value=''; document.getElementById('mq-points').value='1';
+  };
 }
+
+function renderPastePanel(){
+  const panel = document.getElementById('tf-paste-panel');
+  panel.innerHTML = `
+    <div class="card">
+      <div class="class-meta" style="margin-bottom:8px;">
+        Cú pháp: mỗi câu bắt đầu bằng <b>"Câu N."</b>. Trắc nghiệm dùng <b>A./B./C./D.</b> (đặt <b>*</b> trước chữ cái đáp án đúng).
+        Đúng/Sai nhiều ý dùng <b>a)/b)/c)/d)</b> (đặt <b>*</b> trước ý ĐÚNG). Trả lời ngắn: không có lựa chọn, khai đáp án ở khối
+        <b>answer_key</b> cuối đề (VD: "1. 13,5"). Câu không có lựa chọn và không có trong answer_key → tự động là tự luận.
+      </div>
+      <textarea id="tf-paste-text" rows="10" placeholder="Câu 1. ...&#10;A. ...&#10;*B. ...&#10;C. ...&#10;D. ...&#10;&#10;answer_key&#10;1. ..."></textarea>
+      <button class="btn btn-primary btn-sm" id="tf-parse-btn" style="margin-top:8px;">Phân tích đề</button>
+    </div>
+  `;
+  document.getElementById('tf-parse-btn').onclick = async ()=>{
+    const text = document.getElementById('tf-paste-text').value;
+    if (!text.trim()) return toast('Dán nội dung đề trước đã.');
+    try {
+      const {questions} = await api(`/classes/${ACTIVE_CLASS.id}/tests/parse-text`, {method:'POST', body:{text}});
+      TEST_QUESTIONS.push(...questions);
+      renderQuestionsList();
+      toast(`Đã nhận diện ${questions.length} câu — kiểm tra lại danh sách bên dưới trước khi Tạo.`);
+      document.getElementById('tf-paste-text').value = '';
+    } catch(e){ toast(e.message); }
+  };
+}
+
+const TEST_TYPE_LABELS = {multiple_choice:'Trắc nghiệm', true_false:'Đúng/Sai', true_false_group:'Đúng/Sai (nhiều ý)', short_answer:'Trả lời ngắn', essay:'Tự luận'};
+
+function renderQuestionsList(){
+  const wrap = document.getElementById('tf-questions-list');
+  document.getElementById('tf-qcount').textContent = TEST_QUESTIONS.length;
+  wrap.innerHTML = TEST_QUESTIONS.length ? TEST_QUESTIONS.map((q,i)=>`
+    <div class="card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
+      <div style="flex:1;">
+        <span class="pill pill-cyan">${TEST_TYPE_LABELS[q.type]||q.type}</span>
+        <div style="margin-top:6px;white-space:pre-wrap;">${(q.question||'').slice(0,200)}</div>
+        ${q.type==='true_false_group' ? `<div class="class-meta">${(q.subItems||[]).length} ý nhỏ</div>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="number" value="${q.points}" style="width:64px;" onchange="window._setQPoints(${i}, this.value)">
+        <button class="btn btn-danger btn-sm" onclick="window._removeQ(${i})"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    </div>`).join('') : '<div class="empty">Chưa có câu hỏi nào — thêm thủ công hoặc dán đề ở trên.</div>';
+}
+window._setQPoints = (i, val)=>{ TEST_QUESTIONS[i].points = parseFloat(val)||0; };
+window._removeQ = (i)=>{ TEST_QUESTIONS.splice(i,1); renderQuestionsList(); };
+
 async function showAttemptsModal(testId){
-  const {attempts} = await api(`/tests/${testId}/attempts`);
+  const [{attempts}, {test}] = await Promise.all([
+    api(`/tests/${testId}/attempts`),
+    api(`/tests/${testId}`),
+  ]);
   openModal(`
     <h3>Kết quả bài kiểm tra</h3>
-    ${attempts.length ? `<table><thead><tr><th>Học sinh</th><th>Điểm</th><th>Trạng thái</th></tr></thead><tbody>
-      ${attempts.map(a=>`<tr><td>${a.studentId}</td><td>${a.totalScore}/${a.maxScore}</td><td>${a.status==='graded'?'Đã chấm xong':'Chờ chấm tự luận'}</td></tr>`).join('')}
-    </tbody></table>` : '<div class="empty">Chưa có học sinh nào làm bài.</div>'}
+    ${(test.settings && test.settings.showAnswersAfter === 'manual') ? `
+      <div style="margin-bottom:10px;">
+        <button class="btn ${test.resultsPublished?'btn-ghost':'btn-primary'} btn-sm" id="tf-publish-btn">
+          ${test.resultsPublished ? 'Đã công bố — bấm để ẩn lại' : 'Công bố kết quả cho học sinh'}
+        </button>
+      </div>` : ''}
+    <div id="attempts-list"></div>
     <button class="btn btn-ghost" style="margin-top:12px;" onclick="closeModal()">Đóng</button>
   `);
+  const publishBtn = document.getElementById('tf-publish-btn');
+  if (publishBtn) publishBtn.onclick = async ()=>{
+    await api(`/tests/${testId}/publish-results`, {method:'POST', body:{published: !test.resultsPublished}});
+    toast('Đã cập nhật.'); showAttemptsModal(testId);
+  };
+  const listEl = document.getElementById('attempts-list');
+  listEl.innerHTML = attempts.length ? attempts.map(a=>`
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;">
+        <b>${a.studentId}</b>
+        <span>${a.totalScore}/${a.maxScore} · ${a.status==='graded'?'Đã chấm xong':'Chờ chấm tự luận'}</span>
+      </div>
+      ${(test.questions||[]).map((q,qi)=> q.type==='essay' ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+          <div class="class-meta">Câu ${qi+1} (tự luận): ${(q.question||'').slice(0,140)}</div>
+          <div style="white-space:pre-wrap;margin:6px 0;">${(a.answers[qi] && a.answers[qi].answer) || '(chưa trả lời)'}</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" style="width:80px;" id="essay-score-${a.id}-${qi}" value="${a.answers[qi] && a.answers[qi].score != null ? a.answers[qi].score : ''}" placeholder="Điểm">
+            <button class="btn btn-primary btn-sm" onclick="window._gradeEssay('${a.id}', ${qi}, '${testId}')">Chấm</button>
+          </div>
+        </div>` : '').join('')}
+    </div>`).join('') : '<div class="empty">Chưa có học sinh nào làm bài.</div>';
 }
+window._gradeEssay = async (attemptId, qi, testId)=>{
+  const val = parseFloat(document.getElementById(`essay-score-${attemptId}-${qi}`).value);
+  if (isNaN(val)) return toast('Nhập điểm hợp lệ.');
+  try {
+    await api(`/test-attempts/${attemptId}/grade-essay`, {method:'POST', body:{questionIndex: qi, score: val}});
+    toast('Đã chấm điểm.');
+    showAttemptsModal(testId);
+  } catch(e){ toast(e.message); }
+};
 
 // ── Submissions overview / Students ──────────────────────────────────────
 async function renderSubmissionsOverview(){
