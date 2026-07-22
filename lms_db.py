@@ -22,6 +22,7 @@ Collections mới:
   livestreams/{id}/chat_messages   (subcollection)
 """
 import random
+import re
 import string
 import time
 
@@ -31,6 +32,8 @@ import firestore_db as fsdb
 FREE_AI_LIMIT = 5
 FREE_SUBMISSION_LIMIT = 2
 EDU_PLAN = 'chemcraft_for_edu'
+_stats_cache = {'ts': 0, 'data': None}
+_STATS_TTL = 300  # 5 phút — cùng ý tưởng cache như /api/admin/users-stats
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -565,18 +568,41 @@ def grade_submission(submission_id: str, score: float, feedback: str) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TESTS (trắc nghiệm / đúng-sai / trả lời ngắn / tự luận)
+# TESTS (trắc nghiệm / đúng-sai nhiều ý / trả lời ngắn / tự luận)
 # ══════════════════════════════════════════════════════════════════════
 
+DEFAULT_TEST_SETTINGS = {
+    'shuffleQuestions': False,
+    'shuffleOptions': False,
+    'timeLimitMinutes': None,      # None = không giới hạn giờ
+    'allowReview': True,           # cho phép quay lại sửa câu đã làm trong lúc thi
+    'showAnswersAfter': 'after_submit',  # 'after_submit' | 'manual' | 'never'
+    'autoSubmitOnTimeout': True,
+}
+
+
+def _merge_settings(settings: dict = None) -> dict:
+    out = dict(DEFAULT_TEST_SETTINGS)
+    if settings:
+        out.update({k: v for k, v in settings.items() if k in DEFAULT_TEST_SETTINGS})
+    return out
+
+
 def create_test(class_id: str, teacher_id: str, title: str, description: str,
-                 questions: list, deadline: float) -> str:
-    """questions: [{type, question, options?, correctAnswer?, points}, ...]
-    type in ('multiple_choice','true_false','short_answer','essay')."""
+                 questions: list, deadline: float, settings: dict = None) -> str:
+    """questions: [{type, question, options?, correctAnswer?, subItems?, points}, ...]
+    type in ('multiple_choice','true_false','true_false_group','short_answer','essay').
+    - true_false_group: subItems=[{text, correct: bool}, ...] (dạng 4 ý a/b/c/d
+      giống đề thi THPT 2025), chấm theo tỉ lệ số ý đúng.
+    - short_answer.correctAnswer có thể là 1 chuỗi hoặc list các đáp án tương
+      đương được chấp nhận.
+    """
     ts = time.time()
     ref = fsdb.collection('tests').document()
     ref.set({
         'classId': class_id, 'teacherId': teacher_id, 'title': title,
         'description': description, 'questions': questions, 'deadline': deadline,
+        'settings': _merge_settings(settings), 'resultsPublished': False,
         'createdAt': ts, 'updatedAt': ts,
     })
     return ref.id
@@ -599,12 +625,15 @@ def get_test(test_id: str, *, for_student: bool = False) -> dict | None:
         return None
     d = doc.to_dict()
     d['id'] = doc.id
+    d['settings'] = _merge_settings(d.get('settings'))
     if for_student:
         # Không lộ đáp án đúng cho học sinh trước khi làm bài
         safe_qs = []
         for q in d.get('questions', []):
             q2 = dict(q)
             q2.pop('correctAnswer', None)
+            if 'subItems' in q2:
+                q2['subItems'] = [{'text': si.get('text', '')} for si in q2['subItems']]
             safe_qs.append(q2)
         d['questions'] = safe_qs
     return d
@@ -614,9 +643,15 @@ def update_test(test_id: str, **fields) -> bool:
     ref = fsdb.collection('tests').document(test_id)
     if not ref.get().exists:
         return False
+    if 'settings' in fields:
+        fields['settings'] = _merge_settings(fields['settings'])
     fields['updatedAt'] = time.time()
     ref.update(fields)
     return True
+
+
+def publish_test_results(test_id: str, published: bool = True) -> bool:
+    return update_test(test_id, resultsPublished=published)
 
 
 def delete_test(test_id: str) -> bool:
@@ -627,16 +662,51 @@ def delete_test(test_id: str) -> bool:
     return True
 
 
+def _norm_short_answer(s):
+    if s is None:
+        return None
+    return str(s).strip().lower().replace(',', '.')
+
+
+def _values_match(given, expected) -> bool:
+    g, e = _norm_short_answer(given), _norm_short_answer(expected)
+    if g is None or e is None:
+        return False
+    if g == e:
+        return True
+    try:
+        return abs(float(g) - float(e)) < 1e-6
+    except (TypeError, ValueError):
+        return False
+
+
 def _auto_grade(question: dict, answer) -> float | None:
     qtype = question.get('type')
     points = float(question.get('points', 0) or 0)
     correct = question.get('correctAnswer')
+
     if qtype in ('multiple_choice', 'true_false'):
         return points if answer == correct else 0.0
+
+    if qtype == 'true_false_group':
+        # Đề dạng "câu lớn + 4 ý a/b/c/d đúng/sai" — chấm theo tỉ lệ số ý đúng
+        # (giống thang điểm THPT 2025), answer là list bool theo đúng thứ tự subItems.
+        sub_items = question.get('subItems') or []
+        if not sub_items:
+            return 0.0
+        ans_list = answer if isinstance(answer, list) else []
+        correct_n = sum(
+            1 for i, si in enumerate(sub_items)
+            if i < len(ans_list) and ans_list[i] is not None and bool(ans_list[i]) == bool(si.get('correct'))
+        )
+        return round(points * correct_n / len(sub_items), 4)
+
     if qtype == 'short_answer':
         if answer is None or correct is None:
             return 0.0
-        return points if str(answer).strip().lower() == str(correct).strip().lower() else 0.0
+        accepted = correct if isinstance(correct, list) else [correct]
+        return points if any(_values_match(answer, a) for a in accepted) else 0.0
+
     return None  # essay -> chấm tay
 
 
@@ -670,6 +740,38 @@ def submit_test_attempt(test_id: str, student_id: str, answers: list) -> str:
     return ref.id
 
 
+def get_test_attempt(attempt_id: str) -> dict | None:
+    doc = fsdb.collection('test_attempts').document(attempt_id).get()
+    if not doc.exists:
+        return None
+    d = doc.to_dict()
+    d['id'] = doc.id
+    return d
+
+
+def get_test_attempt_for_review(attempt_id: str) -> dict | None:
+    """Trả về attempt kèm đề gốc — chỉ lộ đáp án đúng nếu settings cho phép
+    (showAnswersAfter != 'never', và nếu là 'manual' thì test phải đã được
+    giáo viên bấm công bố kết quả)."""
+    attempt = get_test_attempt(attempt_id)
+    if not attempt:
+        return None
+    test = get_test(attempt['testId'])
+    if not test:
+        return attempt
+    settings = test.get('settings') or DEFAULT_TEST_SETTINGS
+    reveal = (settings.get('showAnswersAfter') == 'after_submit'
+              or (settings.get('showAnswersAfter') == 'manual' and test.get('resultsPublished')))
+    attempt['revealAnswers'] = bool(reveal)
+    attempt['testTitle'] = test.get('title')
+    if reveal:
+        attempt['questions'] = test.get('questions', [])
+    else:
+        attempt['questions'] = [{'question': q.get('question'), 'type': q.get('type')}
+                                 for q in test.get('questions', [])]
+    return attempt
+
+
 def grade_essay_answer(attempt_id: str, question_index: int, score: float) -> bool:
     ref = fsdb.collection('test_attempts').document(attempt_id)
     snap = ref.get()
@@ -699,6 +801,94 @@ def list_test_attempts(test_id: str = None, student_id: str = None) -> list[dict
         items.append(it)
     items.sort(key=lambda x: x.get('submittedAt') or 0, reverse=True)
     return items
+
+
+# ── Parser đề dạng text (kiểu Azota) ────────────────────────────────────
+_Q_HEADER_RE = re.compile(r'(?im)^[ \t]*C[âa]u[ \t]*(\d+)[\.:]?[ \t]*(.*)$')
+_MC_OPT_RE = re.compile(r'^[ \t]*(\*?)([A-D])[\.\)][ \t]*(.*)$')
+_TF_OPT_RE = re.compile(r'^[ \t]*(\*?)([a-d])[\.\)][ \t]*(.*)$')
+_ANSKEY_HEADER_RE = re.compile(r'(?im)^[ \t]*answer[_ ]?key[ \t]*:?[ \t]*$')
+_ANSKEY_ENTRY_RE = re.compile(r'(\d+)[ \t]*[\.\):][ \t]*([^;\n]+)')
+
+
+def parse_azota_text(raw_text: str) -> list[dict]:
+    """Phân tích đề dạng text theo cú pháp kiểu Azota:
+      - Mỗi câu bắt đầu bằng dòng 'Câu N.'
+      - Trắc nghiệm: các dòng 'A. ...'/'B. ...'/'C. ...'/'D. ...', '*' trước
+        chữ cái đánh dấu đáp án đúng.
+      - Đúng/Sai nhiều ý: các dòng 'a) ...'/'b) ...'/'c) ...'/'d) ...', '*'
+        trước chữ đánh dấu ý ĐÚNG.
+      - Trả lời ngắn: câu không có lựa chọn nhưng có mặt trong khối
+        'answer_key' ở cuối đề (nhiều đáp án tương đương cách nhau bằng '/').
+      - Còn lại (không lựa chọn, không có trong answer_key) -> tự luận.
+    Trả về danh sách câu hỏi ở dạng preview để giáo viên xem/sửa trước khi lưu
+    — KHÔNG tự lưu vào Firestore."""
+    text = (raw_text or '').replace('\r\n', '\n').replace('\r', '\n')
+
+    m = _ANSKEY_HEADER_RE.search(text)
+    key_map = {}
+    if m:
+        key_blob = text[m.end():]
+        text = text[:m.start()]
+        for km in _ANSKEY_ENTRY_RE.finditer(key_blob):
+            qnum, val = int(km.group(1)), km.group(2).strip()
+            vals = [v.strip() for v in val.split('/') if v.strip()]
+            key_map[qnum] = vals if len(vals) > 1 else (vals[0] if vals else '')
+
+    headers = list(_Q_HEADER_RE.finditer(text))
+    questions = []
+    for i, h in enumerate(headers):
+        qnum = int(h.group(1))
+        stem_first_line = h.group(2).strip()
+        body = text[h.end():(headers[i + 1].start() if i + 1 < len(headers) else len(text))]
+        lines = body.split('\n')
+
+        stem_lines = [stem_first_line] if stem_first_line else []
+        idx = 0
+        while idx < len(lines):
+            line = lines[idx].strip()
+            if not line:
+                idx += 1
+                continue
+            if _MC_OPT_RE.match(line) or _TF_OPT_RE.match(line):
+                break
+            stem_lines.append(line)
+            idx += 1
+        question_text = '\n'.join(l for l in stem_lines if l).strip()
+
+        mc_opts, tf_opts = [], []
+        while idx < len(lines):
+            line = lines[idx].strip()
+            if not line:
+                idx += 1
+                continue
+            mc = _MC_OPT_RE.match(line)
+            tf = None if mc else _TF_OPT_RE.match(line)
+            if mc:
+                mc_opts.append((bool(mc.group(1)), mc.group(3).strip()))
+            elif tf:
+                tf_opts.append((bool(tf.group(1)), tf.group(3).strip()))
+            idx += 1
+
+        if mc_opts:
+            correct_idx = next((k for k, o in enumerate(mc_opts) if o[0]), 0)
+            questions.append({
+                'type': 'multiple_choice', 'question': question_text,
+                'options': [o[1] for o in mc_opts], 'correctAnswer': correct_idx, 'points': 1,
+            })
+        elif tf_opts:
+            questions.append({
+                'type': 'true_false_group', 'question': question_text,
+                'subItems': [{'text': o[1], 'correct': o[0]} for o in tf_opts], 'points': 1,
+            })
+        elif qnum in key_map:
+            questions.append({
+                'type': 'short_answer', 'question': question_text,
+                'correctAnswer': key_map[qnum], 'points': 1,
+            })
+        else:
+            questions.append({'type': 'essay', 'question': question_text, 'points': 1})
+    return questions
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -792,19 +982,38 @@ def delete_chat_message(livestream_id: str, message_id: str) -> bool:
 # ADMIN STATS
 # ══════════════════════════════════════════════════════════════════════
 
+def _agg_count(query) -> int:
+    """Đếm bằng Aggregation Query — 1 lượt đọc bất kể collection to cỡ nào,
+    thay vì .stream() toàn bộ document chỉ để lấy len(). Quan trọng trên
+    Firestore Spark (free) plan vốn có hạn mức đọc/ngày."""
+    try:
+        result = query.count().get()
+        return int(result[0][0].value)
+    except Exception:
+        return sum(1 for _ in query.stream())
+
+
 def admin_lms_stats() -> dict:
+    now = time.time()
+    cached = _stats_cache.get('data')
+    if cached and (now - _stats_cache.get('ts', 0)) < _STATS_TTL:
+        return cached
+
     teachers = list_teachers()
     premium_teachers = [t for t in teachers if has_unlimited_access(t)]
-    all_classes = list(fsdb.collection('classes').stream())
+    all_classes = list(fsdb.collection('classes').stream())  # collection classes thường nhỏ, cần đọc để gộp studentIds
     student_count = set()
     for c in all_classes:
         student_count.update(c.to_dict().get('studentIds', []))
-    return {
+    data = {
         'teacherCount': len(teachers),
         'premiumTeacherCount': len(premium_teachers),
         'classCount': len(all_classes),
         'studentCount': len(student_count),
-        'submissionCount': len(list(fsdb.collection('submissions').stream())),
-        'testAttemptCount': len(list(fsdb.collection('test_attempts').stream())),
-        'livestreamCount': len(list(fsdb.collection('livestreams').stream())),
+        'submissionCount': _agg_count(fsdb.collection('submissions')),
+        'testAttemptCount': _agg_count(fsdb.collection('test_attempts')),
+        'livestreamCount': _agg_count(fsdb.collection('livestreams')),
     }
+    _stats_cache['ts'] = now
+    _stats_cache['data'] = data
+    return data
