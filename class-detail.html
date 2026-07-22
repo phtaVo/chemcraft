@@ -74,28 +74,41 @@ textarea,input{font-family:inherit;width:100%;padding:10px 13px;border:1.5px sol
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
-import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js';
 
 let firebaseConfig = {};
 try { firebaseConfig = await (await fetch('/api/firebase-config')).json(); } catch(e){}
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const storage = getStorage(app);
 let CURRENT_USER = null;
 const CLASS_ID = new URLSearchParams(location.search).get('id');
 let CLASS_DATA = null;
 let chatPollTimer = null;
 let examTimer = null;
 
+// ── Upload file lên Cloudinary (thay cho Firebase Storage — không cần
+//    nâng cấp gói Blaze). "path" chỉ dùng để tạo folder cho gọn gàng,
+//    không ảnh hưởng URL trả về.
+const CLOUDINARY_CLOUD_NAME = 'kvq1twzz';
+const CLOUDINARY_UPLOAD_PRESET = 'chemcraft_uploads';
+
 async function uploadFile(file, path, onProgress){
-  const r = storageRef(storage, path);
-  const task = uploadBytesResumable(r, file);
   return new Promise((resolve, reject)=>{
-    task.on('state_changed',
-      (snap)=>{ if (onProgress) onProgress(Math.round(snap.bytesTransferred/snap.totalBytes*100)); },
-      (err)=> reject(err),
-      async ()=>{ try { resolve(await getDownloadURL(task.snapshot.ref)); } catch(e){ reject(e); } }
-    );
+    const folder = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`);
+    xhr.upload.onprogress = (e)=>{ if (onProgress && e.lengthComputable) onProgress(Math.round(e.loaded/e.total*100)); };
+    xhr.onload = ()=>{
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch(e){}
+      if (xhr.status >= 200 && xhr.status < 300 && data.secure_url) resolve(data.secure_url);
+      else reject(new Error(data?.error?.message || 'Tải file lên thất bại.'));
+    };
+    xhr.onerror = ()=> reject(new Error('Lỗi mạng khi tải file lên.'));
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    if (folder) fd.append('folder', folder);
+    xhr.send(fd);
   });
 }
 function safeFileName(name){ return name.replace(/[^a-zA-Z0-9_.\-]/g, '_'); }
