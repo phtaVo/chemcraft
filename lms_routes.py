@@ -403,8 +403,25 @@ def create_test(class_id):
     if not title or not questions:
         return jsonify({'error': 'Thiếu tiêu đề hoặc danh sách câu hỏi.'}), 400
     tid = lms_db.create_test(class_id, request.lms_user['uid'], title,
-                              b.get('description', ''), questions, b.get('deadline', 0))
+                              b.get('description', ''), questions, b.get('deadline', 0),
+                              settings=b.get('settings'))
     return jsonify({'id': tid, 'test': lms_db.get_test(tid)})
+
+
+@bp.route('/classes/<class_id>/tests/parse-text', methods=['POST'])
+@lms_auth.require_class_owner_or_admin
+def parse_test_text(class_id):
+    """Giáo viên dán toàn bộ đề (kiểu Azota) vào 1 ô — trả về preview danh
+    sách câu hỏi đã phân tích để chỉnh sửa trước khi lưu thật (không ghi
+    Firestore ở bước này)."""
+    b = request.get_json(silent=True) or {}
+    raw_text = b.get('text') or ''
+    if not raw_text.strip():
+        return jsonify({'error': 'Thiếu nội dung đề để phân tích.'}), 400
+    questions = lms_db.parse_azota_text(raw_text)
+    if not questions:
+        return jsonify({'error': 'Không nhận diện được câu hỏi nào — kiểm tra lại cú pháp "Câu N."'}), 400
+    return jsonify({'questions': questions})
 
 
 @bp.route('/tests/<test_id>', methods=['GET'])
@@ -428,8 +445,22 @@ def update_test(test_id):
     if u.get('role') != 'admin' and t.get('teacherId') != u['uid']:
         return jsonify({'error': 'Không có quyền.'}), 403
     b = request.get_json(silent=True) or {}
-    allowed = {k: v for k, v in b.items() if k in ('title', 'description', 'questions', 'deadline')}
+    allowed = {k: v for k, v in b.items() if k in ('title', 'description', 'questions', 'deadline', 'settings')}
     lms_db.update_test(test_id, **allowed)
+    return jsonify({'ok': True})
+
+
+@bp.route('/tests/<test_id>/publish-results', methods=['POST'])
+@lms_auth.require_auth
+def publish_test_results(test_id):
+    t = lms_db.get_test(test_id)
+    if not t:
+        return jsonify({'error': 'Không tìm thấy bài kiểm tra.'}), 404
+    u = request.lms_user
+    if u.get('role') != 'admin' and t.get('teacherId') != u['uid']:
+        return jsonify({'error': 'Không có quyền.'}), 403
+    b = request.get_json(silent=True) or {}
+    lms_db.publish_test_results(test_id, bool(b.get('published', True)))
     return jsonify({'ok': True})
 
 
@@ -475,6 +506,28 @@ def list_test_attempts(test_id):
 @lms_auth.require_auth
 def my_test_attempts():
     return jsonify({'attempts': lms_db.list_test_attempts(student_id=request.lms_user['uid'])})
+
+
+@bp.route('/test-attempts/<attempt_id>', methods=['GET'])
+@lms_auth.require_auth
+def get_test_attempt_detail(attempt_id):
+    """Học sinh xem lại bài đã làm (đề + đáp án nếu settings cho phép);
+    giáo viên/admin luôn xem được để chấm."""
+    attempt = lms_db.get_test_attempt(attempt_id)
+    if not attempt:
+        return jsonify({'error': 'Không tìm thấy lượt làm bài.'}), 404
+    u = request.lms_user
+    is_owner = attempt.get('studentId') == u['uid']
+    is_teacher = u.get('role') == 'admin' or attempt.get('teacherId') == u['uid']
+    if not is_owner and not is_teacher:
+        return jsonify({'error': 'Không có quyền xem bài làm này.'}), 403
+    data = lms_db.get_test_attempt_for_review(attempt_id)
+    if is_teacher:
+        data['revealAnswers'] = True
+        test = lms_db.get_test(attempt['testId'])
+        if test:
+            data['questions'] = test.get('questions', [])
+    return jsonify({'attempt': data})
 
 
 @bp.route('/test-attempts/<attempt_id>/grade-essay', methods=['POST'])
