@@ -287,7 +287,7 @@ def create_assignment(class_id):
     aid = lms_db.create_assignment(
         class_id, request.lms_user['uid'], title, b.get('description', ''),
         b.get('type', 'text'), b.get('deadline', 0), b.get('maxScore', 10),
-        lesson_id=b.get('lessonId'),
+        lesson_id=b.get('lessonId'), attachments=b.get('attachments', []),
     )
     return jsonify({'id': aid, 'assignment': lms_db.get_assignment(aid)})
 
@@ -303,7 +303,7 @@ def update_assignment(assignment_id):
         return jsonify({'error': 'Không có quyền.'}), 403
     b = request.get_json(silent=True) or {}
     allowed = {k: v for k, v in b.items() if k in
-               ('title', 'description', 'type', 'deadline', 'maxScore')}
+               ('title', 'description', 'type', 'deadline', 'maxScore', 'attachments')}
     lms_db.update_assignment(assignment_id, **allowed)
     return jsonify({'ok': True})
 
