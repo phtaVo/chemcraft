@@ -182,6 +182,7 @@
         <div class="lms-stat-grid">
           <div class="lms-stat-card"><div class="lms-stat-num">${s.teacherCount}</div><div class="lms-stat-label">Giáo viên</div></div>
           <div class="lms-stat-card"><div class="lms-stat-num">${s.premiumTeacherCount}</div><div class="lms-stat-label">Giáo viên Premium</div></div>
+          <div class="lms-stat-card"><div class="lms-stat-num">${s.studentPremiumCount ?? 0}</div><div class="lms-stat-label">Học sinh Premium (được tặng riêng)</div></div>
           <div class="lms-stat-card"><div class="lms-stat-num">${s.classCount}</div><div class="lms-stat-label">Lớp học</div></div>
           <div class="lms-stat-card"><div class="lms-stat-num">${s.studentCount}</div><div class="lms-stat-label">Học sinh (trong lớp)</div></div>
           <div class="lms-stat-card"><div class="lms-stat-num">${s.submissionCount}</div><div class="lms-stat-label">Lượt nộp bài</div></div>
