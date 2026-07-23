@@ -305,6 +305,27 @@ def list_conversations_all(exclude_topics: tuple = ('admin_reply_draft',)) -> li
     return out
 
 
+def list_conversations_for_user(uid: str, limit: int = 200) -> list[dict]:
+    """Lịch sử hội thoại AI của 1 học sinh — dùng cho tính năng 'Lưu lịch sử
+    AI không giới hạn' (#5). KHÔNG giới hạn số lượng theo gói Free/Premium ở
+    tầng đọc (dữ liệu đã lưu vĩnh viễn trên Firestore từ trước — giới hạn
+    Free/Premium chỉ áp dụng cho SỐ LƯỢT HỎI MỚI/ngày qua try_consume_ai_usage,
+    không áp dụng cho việc xem lại lịch sử cũ); `limit` chỉ để tránh tải quá
+    nhiều trong 1 lần, không phải giới hạn sản phẩm."""
+    if not uid:
+        return []
+    q = (_col('ai_conversations')
+         .where('user_id', '==', uid)
+         .order_by('last_ts', direction=firestore.Query.DESCENDING)
+         .limit(limit))
+    out = []
+    for d in q.stream():
+        item = d.to_dict()
+        item['id'] = d.id
+        out.append(item)
+    return out
+
+
 def list_all_messages(role: str | None = None, exclude_topics: tuple = ('admin_reply_draft',)) -> list[dict]:
     """Toàn bộ message (có thể lọc theo role) trừ các message thuộc topic bị
     loại — dùng cho top câu hỏi, word cloud, tần suất theo ngày, error rate..."""
@@ -349,14 +370,15 @@ def create_quiz_attempt(user_id: str, total_q) -> str:
 
 
 def record_quiz_answer(attempt_id: str, question_id, question_text: str,
-                        is_correct: bool, retry_count: int = 0, duration_sec=None) -> None:
+                        is_correct: bool, retry_count: int = 0, duration_sec=None,
+                        topic: str = '') -> None:
     if not attempt_id:
         return
     _col('quiz_answers').add({
         'attempt_id': attempt_id, 'question_id': question_id or '',
         'question_text': question_text or '', 'is_correct': bool(is_correct),
         'retry_count': retry_count or 0, 'duration_sec': duration_sec,
-        'answered_at': time.time(),
+        'topic': topic or '', 'answered_at': time.time(),
     })
 
 
@@ -379,6 +401,29 @@ def list_quiz_attempts() -> list[dict]:
 
 def list_quiz_answers() -> list[dict]:
     return [d.to_dict() for d in _col('quiz_answers').stream()]
+
+
+def list_quiz_answers_for_user(uid: str, limit_attempts: int = 50) -> list[dict]:
+    """Toàn bộ quiz_answers thuộc về các attempt của 1 học sinh — dùng cho
+    thống kê điểm yếu theo chuyên đề (#2). Firestore không hỗ trợ JOIN nên
+    phải lấy attempt_id của user trước (giới hạn `limit_attempts` lần gần
+    nhất để tránh quét quá nhiều), rồi truy vấn quiz_answers theo lô 30
+    attempt_id 1 lần ('in' operator giới hạn tối đa 30 giá trị)."""
+    if not uid:
+        return []
+    attempt_q = (_col('quiz_attempts')
+                 .where('user_id', '==', uid)
+                 .order_by('started_at', direction=firestore.Query.DESCENDING)
+                 .limit(limit_attempts))
+    attempt_ids = [d.id for d in attempt_q.stream()]
+    if not attempt_ids:
+        return []
+    out = []
+    for i in range(0, len(attempt_ids), 30):
+        chunk = attempt_ids[i:i + 30]
+        q = _col('quiz_answers').where('attempt_id', 'in', chunk)
+        out.extend(d.to_dict() for d in q.stream())
+    return out
 
 
 # ═══════════════════════════════════════════════════════════════════════
