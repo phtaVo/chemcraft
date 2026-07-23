@@ -13,10 +13,12 @@ Cách gắn vào server.py hiện tại (KHÔNG đổi cấu trúc file cũ):
 blueprint không phụ thuộc thứ tự khởi tạo đó, chỉ cần fsdb.init() đã chạy
 (đã có sẵn trong server.py) trước khi có request đầu tiên tới các route này.
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 
 import lms_db
 import lms_auth
+import firestore_db as fsdb
+import ai_pdf_export
 
 bp = Blueprint('lms', __name__, url_prefix='/api/lms')
 
@@ -37,6 +39,8 @@ def me():
         'uid': u['uid'], 'role': u.get('role'), 'plan': u.get('plan'),
         'planStatus': u.get('planStatus'), 'educationPlan': u.get('educationPlan'),
         'educationPlanStatus': u.get('educationPlanStatus'),
+        'studentPlan': u.get('studentPlan'), 'studentPlanStatus': u.get('studentPlanStatus'),
+        'studentPlanExpiresAt': u.get('studentPlanExpiresAt'),
         'usage': lms_db.usage_snapshot(u['uid']),
     })
 
@@ -45,6 +49,59 @@ def me():
 @lms_auth.require_auth
 def usage():
     return jsonify(lms_db.usage_snapshot(request.lms_user['uid']))
+
+
+@bp.route('/me/weak-topics', methods=['GET'])
+@lms_auth.require_auth
+def my_weak_topics():
+    """Thống kê điểm yếu theo chuyên đề của chính học sinh đang đăng nhập (#2)."""
+    return jsonify(lms_db.student_weak_topics(request.lms_user['uid']))
+
+
+# ══════════════════════════════════════════════════════════════════════
+# LỊCH SỬ AI KHÔNG GIỚI HẠN + XUẤT PDF (#5)
+# ══════════════════════════════════════════════════════════════════════
+# Dữ liệu ai_conversations/ai_messages đã được lưu VĨNH VIỄN trên Firestore
+# từ trước (xem firestore_db.py) — cái CHƯA có là 1 API để chính học sinh
+# xem lại lịch sử của mình (trước đây chỉ admin xem được qua trang quản trị)
+# và xuất PDF lời giải. Không có giới hạn Free/Premium ở đây theo đúng yêu
+# cầu #5 ("Lưu lịch sử AI không giới hạn") — mọi học sinh xem được TOÀN BỘ
+# lịch sử của chính mình, bất kể gói.
+
+@bp.route('/my-ai-conversations', methods=['GET'])
+@lms_auth.require_auth
+def my_ai_conversations():
+    uid = request.lms_user['uid']
+    items = fsdb.list_conversations_for_user(uid)
+    return jsonify({'conversations': items})
+
+
+@bp.route('/my-ai-conversations/<cid>', methods=['GET'])
+@lms_auth.require_auth
+def my_ai_conversation_detail(cid):
+    uid = request.lms_user['uid']
+    conv = fsdb.get_conversation(cid)
+    if not conv or conv.get('user_id') != uid:
+        return jsonify({'error': 'Không tìm thấy hội thoại.'}), 404
+    messages = fsdb.list_messages(cid)
+    return jsonify({'conversation': conv, 'messages': messages})
+
+
+@bp.route('/my-ai-conversations/<cid>/export-pdf', methods=['GET'])
+@lms_auth.require_auth
+def my_ai_conversation_export_pdf(cid):
+    uid = request.lms_user['uid']
+    conv = fsdb.get_conversation(cid)
+    if not conv or conv.get('user_id') != uid:
+        return jsonify({'error': 'Không tìm thấy hội thoại.'}), 404
+    messages = fsdb.list_messages(cid)
+    try:
+        pdf_bytes = ai_pdf_export.build_conversation_pdf(conv, messages)
+    except Exception as e:
+        return jsonify({'error': f'Không tạo được PDF: {e}'}), 500
+    return Response(pdf_bytes, mimetype='application/pdf', headers={
+        'Content-Disposition': f'attachment; filename="chemcraft-ai-{cid}.pdf"'
+    })
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -154,6 +211,51 @@ def add_student(class_id):
 def remove_student(class_id, student_id):
     lms_db.remove_student(class_id, student_id)
     return jsonify({'ok': True})
+
+
+def _student_in_class(class_id: str, student_id: str) -> bool:
+    cls = lms_db.get_class(class_id)
+    return bool(cls) and student_id in (cls.get('studentIds') or [])
+
+
+# Giáo viên tặng Premium riêng cho 1 học sinh trong lớp mình chủ nhiệm (#3).
+# Giới hạn số ngày tối đa 1 lần tặng để tránh giáo viên tặng vĩnh viễn không
+# kiểm soát — nếu cần tặng lại/gia hạn, giáo viên gọi lại API này.
+GIFT_PREMIUM_MAX_DAYS = 90
+
+
+@bp.route('/classes/<class_id>/students/<student_id>/gift-premium', methods=['POST'])
+@lms_auth.require_class_owner_or_admin
+def gift_student_premium(class_id, student_id):
+    if not _student_in_class(class_id, student_id):
+        return jsonify({'error': 'Học sinh này không thuộc lớp học này.'}), 400
+    b = request.get_json(silent=True) or {}
+    try:
+        days = int(b.get('days', 30))
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, GIFT_PREMIUM_MAX_DAYS))
+    lms_db.grant_student_premium(student_id, request.lms_user['uid'], days=days)
+    return jsonify({'ok': True, 'days': days})
+
+
+@bp.route('/classes/<class_id>/students/<student_id>/gift-premium', methods=['DELETE'])
+@lms_auth.require_class_owner_or_admin
+def revoke_gifted_student_premium(class_id, student_id):
+    if not _student_in_class(class_id, student_id):
+        return jsonify({'error': 'Học sinh này không thuộc lớp học này.'}), 400
+    lms_db.revoke_student_premium(student_id)
+    return jsonify({'ok': True})
+
+
+@bp.route('/classes/<class_id>/students/<student_id>/weak-topics', methods=['GET'])
+@lms_auth.require_class_owner_or_admin
+def student_weak_topics_for_teacher(class_id, student_id):
+    """Giáo viên xem thống kê điểm yếu theo chuyên đề của 1 học sinh trong
+    lớp mình — dùng cho báo cáo học sinh (#3, phần 'xem báo cáo học sinh')."""
+    if not _student_in_class(class_id, student_id):
+        return jsonify({'error': 'Học sinh này không thuộc lớp học này.'}), 400
+    return jsonify(lms_db.student_weak_topics(student_id))
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -648,6 +750,86 @@ def delete_chat(livestream_id, message_id):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# CHAT TRỰC TIẾP HỌC SINH ↔ GIÁO VIÊN (theo lớp)
+# ══════════════════════════════════════════════════════════════════════
+# Khác livestream chat (công khai, chỉ tồn tại trong buổi live): đây là
+# kênh riêng tư 1-1 giữa 1 học sinh và giáo viên chủ nhiệm lớp, tồn tại lâu
+# dài (không gắn với buổi học nào), dùng cho hỏi bài/trao đổi ngoài giờ.
+
+@bp.route('/classes/<class_id>/chat', methods=['GET'])
+@lms_auth.require_auth
+def student_get_class_chat(class_id):
+    """Học sinh xem hội thoại của CHÍNH MÌNH với giáo viên chủ nhiệm lớp này."""
+    u = request.lms_user
+    cls = lms_db.get_class(class_id)
+    if not cls:
+        return jsonify({'error': 'Không tìm thấy lớp học.'}), 404
+    if u['uid'] not in (cls.get('studentIds') or []):
+        return jsonify({'error': 'Bạn không thuộc lớp học này.'}), 403
+    messages = lms_db.list_class_chat_messages(class_id, u['uid'])
+    lms_db.mark_class_chat_read(class_id, u['uid'], reader_role='student')
+    return jsonify({'messages': messages, 'teacherId': cls.get('teacherId')})
+
+
+@bp.route('/classes/<class_id>/chat', methods=['POST'])
+@lms_auth.require_auth
+def student_post_class_chat(class_id):
+    u = request.lms_user
+    cls = lms_db.get_class(class_id)
+    if not cls:
+        return jsonify({'error': 'Không tìm thấy lớp học.'}), 404
+    if u['uid'] not in (cls.get('studentIds') or []):
+        return jsonify({'error': 'Bạn không thuộc lớp học này.'}), 403
+    b = request.get_json(silent=True) or {}
+    try:
+        mid = lms_db.send_class_chat_message(
+            class_id, u['uid'], sender_id=u['uid'], sender_role='student',
+            sender_name=u.get('displayName', 'Học sinh'), message=b.get('message', '')
+        )
+    except ValueError:
+        return jsonify({'error': 'Tin nhắn trống.'}), 400
+    return jsonify({'ok': True, 'id': mid})
+
+
+@bp.route('/classes/<class_id>/students/<student_id>/chat', methods=['GET'])
+@lms_auth.require_class_owner_or_admin
+def teacher_get_class_chat(class_id, student_id):
+    """Giáo viên (hoặc admin) xem hội thoại với 1 học sinh cụ thể trong lớp."""
+    cls = lms_db.get_class(class_id)
+    if not cls or student_id not in (cls.get('studentIds') or []):
+        return jsonify({'error': 'Học sinh này không thuộc lớp học này.'}), 400
+    messages = lms_db.list_class_chat_messages(class_id, student_id)
+    lms_db.mark_class_chat_read(class_id, student_id, reader_role='teacher')
+    return jsonify({'messages': messages})
+
+
+@bp.route('/classes/<class_id>/students/<student_id>/chat', methods=['POST'])
+@lms_auth.require_class_owner_or_admin
+def teacher_post_class_chat(class_id, student_id):
+    cls = lms_db.get_class(class_id)
+    if not cls or student_id not in (cls.get('studentIds') or []):
+        return jsonify({'error': 'Học sinh này không thuộc lớp học này.'}), 400
+    u = request.lms_user
+    b = request.get_json(silent=True) or {}
+    try:
+        mid = lms_db.send_class_chat_message(
+            class_id, student_id, sender_id=u['uid'], sender_role='teacher',
+            sender_name=u.get('displayName', 'Giáo viên'), message=b.get('message', '')
+        )
+    except ValueError:
+        return jsonify({'error': 'Tin nhắn trống.'}), 400
+    return jsonify({'ok': True, 'id': mid})
+
+
+@bp.route('/teacher/chat-threads', methods=['GET'])
+@lms_auth.require_role('teacher', 'admin')
+def teacher_chat_threads():
+    """Hộp thư: toàn bộ hội thoại của các học sinh trong các lớp giáo viên
+    này chủ nhiệm, mới nhất lên đầu — dùng cho tab 'Tin nhắn' trong teacher.html."""
+    return jsonify({'threads': lms_db.list_chat_threads_for_teacher(request.lms_user['uid'])})
+
+
+# ══════════════════════════════════════════════════════════════════════
 # ADMIN — quản lý giáo viên / premium / thống kê
 # ══════════════════════════════════════════════════════════════════════
 
@@ -680,6 +862,25 @@ def admin_set_active(uid):
 def admin_set_premium(uid):
     b = request.get_json(silent=True) or {}
     lms_db.set_teacher_plan(uid, bool(b.get('active', True)))
+    return jsonify({'ok': True})
+
+
+@bp.route('/admin/students/<uid>/premium', methods=['POST'])
+@lms_auth.require_admin_token
+def admin_set_student_premium(uid):
+    """Admin cấp/thu hồi Premium cho 1 học sinh BẤT KỲ, không phụ thuộc lớp
+    học/giáo viên nào (#1) — khác với gift-premium của giáo viên (chỉ trong
+    phạm vi lớp mình chủ nhiệm, có hạn số ngày)."""
+    b = request.get_json(silent=True) or {}
+    if bool(b.get('active', True)):
+        days = b.get('days')  # None = vĩnh viễn, admin được phép cấp không hạn
+        try:
+            days = int(days) if days is not None else None
+        except (TypeError, ValueError):
+            days = None
+        lms_db.grant_student_premium(uid, 'admin', days=days)
+    else:
+        lms_db.revoke_student_premium(uid)
     return jsonify({'ok': True})
 
 
