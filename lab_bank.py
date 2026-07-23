@@ -83,6 +83,7 @@ def _doc_to_reaction(doc) -> dict:
         'duringPhenomenon': d.get('during_phenomenon', ''),
         'afterColor': d.get('after_color', '#ffffff'),
         'afterPhenomenon': d.get('after_phenomenon', ''),
+        'premiumOnly': bool(d.get('premium_only')),
         'status': d.get('status', 'draft'),
         'createdBy': d.get('created_by', ''),
         'createdAt': d.get('created_at'),
@@ -128,6 +129,17 @@ def seed_default_reactions() -> int:
 
 
 # ── Molecules CRUD ─────────────────────────────────────────────────────────
+def filter_premium_only(items: list[dict], unlimited: bool) -> list[dict]:
+    """Lọc bỏ các hoá chất/phản ứng đánh dấu `premiumOnly` khỏi danh sách trả
+    về cho học sinh KHÔNG có Premium (#6 — Mở khóa nội dung Lab 3D/công thức
+    nâng cao chỉ dành cho Premium). An toàn theo mặc định: nếu không xác
+    định được `unlimited` (VD khách vãng lai chưa đăng nhập), coi như KHÔNG
+    có Premium — chỉ ẩn, không lộ nội dung nâng cao."""
+    if unlimited:
+        return items
+    return [it for it in items if not it.get('premiumOnly')]
+
+
 def list_molecules(status: str = None) -> list[dict]:
     col = fsdb.collection(_MOLECULES_COL)
     q = col.where('status', '==', status) if status else col
@@ -207,7 +219,7 @@ def create_reaction(eq: str, type_: str = '', conditions: str = '', tools: str =
                      before_color: str = '#ffffff', before_phenomenon: str = '',
                      during_color: str = '#ffffff', during_phenomenon: str = '',
                      after_color: str = '#ffffff', after_phenomenon: str = '',
-                     status: str = 'draft', created_by: str = '') -> str:
+                     status: str = 'draft', created_by: str = '', premium_only: bool = False) -> str:
     ts = time.time()
     ref = fsdb.collection(_REACTIONS_COL).document()
     ref.set({
@@ -216,7 +228,8 @@ def create_reaction(eq: str, type_: str = '', conditions: str = '', tools: str =
         'needs_heat': bool(needs_heat), 'before_color': before_color,
         'before_phenomenon': before_phenomenon, 'during_color': during_color,
         'during_phenomenon': during_phenomenon, 'after_color': after_color,
-        'after_phenomenon': after_phenomenon, 'status': status, 'created_by': created_by,
+        'after_phenomenon': after_phenomenon, 'premium_only': bool(premium_only),
+        'status': status, 'created_by': created_by,
         'created_at': ts, 'updated_at': ts,
     })
     return ref.id
@@ -233,12 +246,13 @@ def update_reaction(rid: str, **fields) -> bool:
         'beforeColor': 'before_color', 'beforePhenomenon': 'before_phenomenon',
         'duringColor': 'during_color', 'duringPhenomenon': 'during_phenomenon',
         'afterColor': 'after_color', 'afterPhenomenon': 'after_phenomenon',
+        'premiumOnly': 'premium_only',
     }
     updates = {}
     for key, col_name in mapping.items():
         if key in fields and fields[key] is not None:
             v = fields[key]
-            if key == 'needsHeat':
+            if key in ('needsHeat', 'premiumOnly'):
                 v = bool(v)
             updates[col_name] = v
     if not updates:
@@ -280,6 +294,7 @@ def _doc_to_shelf_chemical(doc) -> dict:
         'isPaper': bool(d.get('is_paper')),
         'opacity': d.get('opacity'),
         'allowedStates': d.get('allowed_states', []),
+        'premiumOnly': bool(d.get('premium_only')),
         'status': d.get('status', 'draft'),
         'createdBy': d.get('created_by', ''),
         'createdAt': d.get('created_at'),
@@ -319,14 +334,14 @@ def get_shelf_chemical(sid: str) -> dict | None:
 def create_shelf_chemical(chem_id: str, name: str, cat: str, desc: str = '', type_: str = '',
                            color: str = '#ffffff', ph=None, solid: bool = False, is_gas: bool = False,
                            is_paper: bool = False, opacity=None, allowed_states: list = None,
-                           status: str = 'draft', created_by: str = '') -> str:
+                           status: str = 'draft', created_by: str = '', premium_only: bool = False) -> str:
     ts = time.time()
     ref = fsdb.collection(_SHELF_COL).document()
     ref.set({
         'chem_id': chem_id, 'name': name, 'desc': desc, 'type': type_, 'cat': cat, 'color': color,
         'ph': ph, 'solid': bool(solid), 'is_gas': bool(is_gas), 'is_paper': bool(is_paper),
-        'opacity': opacity, 'allowed_states': allowed_states or [], 'status': status,
-        'created_by': created_by, 'created_at': ts, 'updated_at': ts,
+        'opacity': opacity, 'allowed_states': allowed_states or [], 'premium_only': bool(premium_only),
+        'status': status, 'created_by': created_by, 'created_at': ts, 'updated_at': ts,
     })
     return ref.id
 
@@ -339,12 +354,13 @@ def update_shelf_chemical(sid: str, **fields) -> bool:
         'chemId': 'chem_id', 'name': 'name', 'desc': 'desc', 'type': 'type', 'cat': 'cat',
         'color': 'color', 'ph': 'ph', 'solid': 'solid', 'isGas': 'is_gas', 'isPaper': 'is_paper',
         'opacity': 'opacity', 'allowedStates': 'allowed_states', 'status': 'status',
+        'premiumOnly': 'premium_only',
     }
     updates = {}
     for key, col_name in mapping.items():
         if key in fields and fields[key] is not None:
             v = fields[key]
-            if key in ('solid', 'isGas', 'isPaper'):
+            if key in ('solid', 'isGas', 'isPaper', 'premiumOnly'):
                 v = bool(v)
             updates[col_name] = v
     if not updates:
