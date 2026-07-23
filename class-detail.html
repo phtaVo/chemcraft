@@ -67,6 +67,7 @@ textarea,input{font-family:inherit;width:100%;padding:10px 13px;border:1.5px sol
     <div class="tab" data-tab="lessons">Bài học</div>
     <div class="tab" data-tab="assignments">Bài tập</div>
     <div class="tab" data-tab="tests">Bài kiểm tra</div>
+    <div class="tab" data-tab="chat">Chat với giáo viên</div>
   </div>
   <div id="content"></div>
 </div>
@@ -182,6 +183,7 @@ async function renderTab(tab){
     if (tab==='lessons') return renderLessons();
     if (tab==='assignments') return renderAssignments();
     if (tab==='tests') return renderTests();
+    if (tab==='chat') return renderTeacherChat();
   } catch(e){ el.innerHTML = `<div class="empty">${e.message}</div>`; }
 }
 
@@ -252,6 +254,41 @@ async function renderLivestream(){
       catch(e){ alert(e.message); }
     };
   }
+}
+
+// Chat trực tiếp riêng tư với giáo viên chủ nhiệm lớp (khác chat livestream
+// công khai ở trên) — tồn tại lâu dài, dùng để hỏi bài ngoài giờ học.
+async function renderTeacherChat(){
+  const el = document.getElementById('content');
+  el.innerHTML = `
+    <div class="card">
+      <div class="chat-box" style="height:60vh;">
+        <div class="chat-msgs" id="teacher-chat-msgs" style="flex:1;overflow-y:auto;"></div>
+        <div class="chat-input"><input id="teacher-chat-input" placeholder="Nhập tin nhắn cho giáo viên..."><button id="teacher-chat-send"><i class="fa-solid fa-paper-plane"></i></button></div>
+      </div>
+    </div>`;
+  const box = document.getElementById('teacher-chat-msgs');
+  const loadChat = async ()=>{
+    const {messages} = await api(`/classes/${CLASS_ID}/chat`);
+    box.innerHTML = messages.length ? messages.map(m=>`
+      <div class="chat-msg" style="margin-bottom:8px;${m.senderRole==='student'?'text-align:right;':''}">
+        <div style="font-size:0.72rem;color:var(--text-l);margin-bottom:2px;">${m.senderRole==='teacher'?'Giáo viên':'Bạn'} · ${new Date(m.ts*1000).toLocaleString('vi-VN')}</div>
+        <div style="display:inline-block;padding:8px 12px;border-radius:12px;background:${m.senderRole==='teacher'?'var(--sky2)':'linear-gradient(135deg,var(--indigo),var(--cyan))'};color:${m.senderRole==='teacher'?'var(--text)':'#fff'};max-width:80%;text-align:left;">${m.message}</div>
+      </div>`).join('') : '<div class="empty">Chưa có tin nhắn nào. Hãy chào giáo viên của bạn!</div>';
+    box.scrollTop = box.scrollHeight;
+  };
+  await loadChat();
+  chatPollTimer = setInterval(loadChat, 4000);
+  const send = async ()=>{
+    const input = document.getElementById('teacher-chat-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    try { await api(`/classes/${CLASS_ID}/chat`, {method:'POST', body:{message:msg}}); loadChat(); }
+    catch(e){ alert(e.message); }
+  };
+  document.getElementById('teacher-chat-send').onclick = send;
+  document.getElementById('teacher-chat-input').addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
 }
 
 async function renderDocuments(){
