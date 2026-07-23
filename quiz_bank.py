@@ -34,7 +34,28 @@ import firestore_db as fsdb
 
 _COLLECTION = 'quiz_questions_bank'
 
-# ── 34 câu trắc nghiệm gốc (di trú từ quizData trong lesson.html) ─────────
+# ── Chuyên đề (topic) — dùng cho thống kê điểm yếu (#2) và quiz theo chủ đề
+# tự chọn (#4). Đây là danh sách cố định, khớp với 4 chuyên đề đang có trong
+# ngân hàng câu hỏi gốc; khi admin thêm câu hỏi mới có thể chọn 1 trong các
+# giá trị này hoặc thêm chuyên đề mới (không bắt buộc phải sửa danh sách này
+# — nó chỉ dùng để gợi ý UI, list_topics() vẫn đọc topic thực tế đang có
+# trong Firestore).
+TOPICS = ['Nhiệt hóa học', 'Tốc độ phản ứng', 'Halogen', 'Chất khí & Avogadro']
+
+# ── 36 câu trắc nghiệm gốc (di trú từ quizData trong lesson.html), mỗi câu
+# được gắn `topic` theo NỘI DUNG câu hỏi (không theo vị trí trong đề) để
+# phục vụ thống kê điểm yếu theo chuyên đề (#2) và random theo chủ đề (#4).
+_LEGACY_TOPICS = (
+    ['Nhiệt hóa học'] * 9 +      # câu 0-8: enthalpy, ΔrH, phản ứng tỏa/thu nhiệt
+    ['Tốc độ phản ứng'] * 9 +    # câu 9-17: nồng độ, xúc tác, Van't Hoff, diện tích tiếp xúc
+    ['Halogen'] * 9 +            # câu 18-26: F2/Cl2/Br2/I2, Van der Waals, độ âm điện
+    ['Chất khí & Avogadro'] * 5 +  # câu 27-31: định luật Avogadro, thể tích mol
+    ['Nhiệt hóa học'] +          # câu 32: phân hủy CaCO3 (thu nhiệt) — nội dung thuộc enthalpy
+    ['Chất khí & Avogadro'] +    # câu 33: trộn 2 thể tích khí, so sánh số hạt
+    ['Halogen'] +                # câu 34: nhận xét về lực Van der Waals
+    ['Tốc độ phản ứng']          # câu 35: hệ số nhiệt độ Van't Hoff γ
+)
+
 _LEGACY_QUESTIONS = [
     {"q": "Phản ứng tỏa nhiệt là phản ứng có:", "opts": ["ΔrH < 0, làm môi trường nóng lên", "ΔrH > 0, làm môi trường nóng lên", "ΔrH < 0, làm môi trường lạnh đi", "ΔrH > 0, làm môi trường lạnh đi"], "ans": 0},
     {"q": "Nhiệt tạo thành chuẩn (ΔfHo) của một đơn chất bền vững (VD: O2, H2) bằng:", "opts": ["< 0", "1", "0", "Phụ thuộc nhiệt độ"], "ans": 2},
@@ -82,6 +103,7 @@ def _doc_to_dict(doc) -> dict:
         'question': d.get('question', ''),
         'options': d.get('options', []),
         'answerIndex': d.get('answer_index'),
+        'topic': d.get('topic', ''),
         'difficulty': d.get('difficulty', 'TB'),
         'active': bool(d.get('active', True)),
         'createdBy': d.get('created_by', ''),
@@ -99,9 +121,10 @@ def seed_default_questions() -> int:
     ts = time.time()
     docs = {}
     for i, item in enumerate(_LEGACY_QUESTIONS):
+        topic = _LEGACY_TOPICS[i] if i < len(_LEGACY_TOPICS) else ''
         docs[f'seed_{i:03d}'] = {
             'question': item['q'], 'options': item['opts'], 'answer_index': item['ans'],
-            'difficulty': 'TB', 'active': True, 'created_by': 'system_seed',
+            'topic': topic, 'difficulty': 'TB', 'active': True, 'created_by': 'system_seed',
             'created_at': ts, 'updated_at': ts,
         }
     return fsdb.batched_seed(_COLLECTION, docs)
@@ -122,12 +145,12 @@ def get_question(qid: str) -> dict | None:
 
 
 def create_question(question: str, options: list[str], answer_index: int,
-                     difficulty: str = 'TB', created_by: str = '') -> str:
+                     difficulty: str = 'TB', created_by: str = '', topic: str = '') -> str:
     ts = time.time()
     ref = fsdb.collection(_COLLECTION).document()
     ref.set({
         'question': question, 'options': options, 'answer_index': answer_index,
-        'difficulty': difficulty, 'active': True, 'created_by': created_by,
+        'topic': topic or '', 'difficulty': difficulty, 'active': True, 'created_by': created_by,
         'created_at': ts, 'updated_at': ts,
     })
     return ref.id
@@ -135,7 +158,7 @@ def create_question(question: str, options: list[str], answer_index: int,
 
 def update_question(qid: str, question: str = None, options: list[str] = None,
                      answer_index: int = None, difficulty: str = None,
-                     active: bool = None) -> bool:
+                     active: bool = None, topic: str = None) -> bool:
     ref = fsdb.collection(_COLLECTION).document(str(qid))
     snap = ref.get()
     if not snap.exists:
@@ -151,6 +174,8 @@ def update_question(qid: str, question: str = None, options: list[str] = None,
         updates['difficulty'] = difficulty
     if active is not None:
         updates['active'] = bool(active)
+    if topic is not None:
+        updates['topic'] = topic
     ref.update(updates)
     return True
 
@@ -163,11 +188,26 @@ def delete_question(qid: str) -> bool:
     return True
 
 
-def random_questions(count: int = 34) -> list[dict]:
-    """Rút ngẫu nhiên `count` câu đang active. Firestore không hỗ trợ
-    ORDER BY RANDOM() như SQLite nên tải toàn bộ câu active (số lượng nhỏ,
-    vài chục tới vài trăm câu) rồi xáo trộn bằng Python."""
+def list_topics() -> list[str]:
+    """Danh sách chuyên đề đang thực sự có trong ngân hàng câu hỏi (không chỉ
+    hằng số TOPICS gợi ý), dùng cho dropdown 'Quiz theo chuyên đề tự chọn'."""
     items = list_questions(include_inactive=False)
+    seen = []
+    for it in items:
+        t = (it.get('topic') or '').strip()
+        if t and t not in seen:
+            seen.append(t)
+    return seen or list(TOPICS)
+
+
+def random_questions(count: int = 34, topic: str = None) -> list[dict]:
+    """Rút ngẫu nhiên `count` câu đang active, lọc theo `topic` nếu được
+    truyền vào (dùng cho quiz theo chuyên đề tự chọn — #4). Firestore không
+    hỗ trợ ORDER BY RANDOM() như SQLite nên tải toàn bộ câu active (số lượng
+    nhỏ, vài chục tới vài trăm câu) rồi xáo trộn bằng Python."""
+    items = list_questions(include_inactive=False)
+    if topic:
+        items = [it for it in items if (it.get('topic') or '') == topic]
     if len(items) <= count:
         random.shuffle(items)
         return items
