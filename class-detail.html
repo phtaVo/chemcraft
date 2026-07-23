@@ -113,17 +113,41 @@ async function uploadFile(file, path, onProgress){
 }
 function safeFileName(name){ return name.replace(/[^a-zA-Z0-9_.\-]/g, '_'); }
 const VIEWABLE_EXT = ['pdf','doc','docx','ppt','pptx'];
+function isGoogleDocsLink(url){
+  return /^https?:\/\/(docs|drive)\.google\.com\//.test(url || '');
+}
+function googleEmbedUrl(url){
+  let m = url.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return `https://docs.google.com/document/d/${m[1]}/preview`;
+  m = url.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return `https://docs.google.com/spreadsheets/d/${m[1]}/preview`;
+  m = url.match(/docs\.google\.com\/presentation\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return `https://docs.google.com/presentation/d/${m[1]}/embed`;
+  m = url.match(/docs\.google\.com\/forms\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return `https://docs.google.com/forms/d/${m[1]}/viewform?embedded=true`;
+  m = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+  m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+  return url;
+}
 function docViewerUrl(fileURL){
   return 'https://docs.google.com/viewer?url=' + encodeURIComponent(fileURL) + '&embedded=true';
 }
 function isViewableFile(fileURL, fileType){
+  if (isGoogleDocsLink(fileURL)) return true;
   const ext = (fileType || fileURL.split('.').pop() || '').toLowerCase().replace('.', '');
   return VIEWABLE_EXT.includes(ext);
 }
 window.openViewer = function(title, fileURL, fileType){
   document.getElementById('viewer-title').textContent = title || 'Xem tài liệu';
-  const ext = (fileType || fileURL.split('.').pop() || '').toLowerCase().replace('.', '');
-  const src = ext === 'pdf' ? fileURL : docViewerUrl(fileURL);
+  let src;
+  if (isGoogleDocsLink(fileURL)) {
+    src = googleEmbedUrl(fileURL);
+  } else {
+    const ext = (fileType || fileURL.split('.').pop() || '').toLowerCase().replace('.', '');
+    src = ext === 'pdf' ? fileURL : docViewerUrl(fileURL);
+  }
   document.getElementById('viewer-iframe').src = src;
   document.getElementById('viewer-bg').classList.add('show');
 };
@@ -274,10 +298,11 @@ async function renderAssignments(){
   const el = document.getElementById('content');
   const {assignments} = await api(`/classes/${CLASS_ID}/assignments`);
   const now = Date.now()/1000;
-  const cards = await Promise.all(assignments.map(async a=>{
+  const cards = await Promise.all(assignments.map(async (a,ai)=>{
     const {submission} = await api(`/assignments/${a.id}/my-submission`);
     const overdue = a.deadline && now > a.deadline;
     const files = (submission && submission.files) || [];
+    const attachments = a.attachments || [];
     return `
       <div class="card">
         <div style="display:flex;justify-content:space-between;">
@@ -286,10 +311,16 @@ async function renderAssignments(){
         </div>
         <div style="color:var(--text-m);font-size:0.85rem;margin:6px 0;">Hạn nộp: ${fmtDate(a.deadline)} · Điểm tối đa: ${a.maxScore}</div>
         <div style="margin:8px 0;white-space:pre-wrap;">${a.description||''}</div>
+        ${attachments.length ? `<div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          ${attachments.map((att,ati)=>`<button class="btn btn-ghost btn-sm view-a-attach" data-ai="${ai}" data-ati="${ati}"><i class="fa-solid fa-paperclip"></i> ${att.name||('Tài liệu '+(ati+1))}</button>`).join('')}
+        </div>` : ''}
         ${(!overdue || submission) ? `
           <textarea id="ans-${a.id}" rows="3" placeholder="Nhập câu trả lời trực tiếp...">${submission ? (submission.content||'') : ''}</textarea>
           <div class="field"><label>Đính kèm file (ảnh bài làm / Word / PDF — có thể chọn nhiều)</label>
             <input type="file" id="file-${a.id}" multiple accept=".pdf,.doc,.docx,image/*">
+          </div>
+          <div class="field"><label>Hoặc dán link bài làm (Google Docs/Sheets/Slides/Drive — mỗi dòng 1 link)</label>
+            <textarea id="link-${a.id}" rows="2" placeholder="https://docs.google.com/document/d/..."></textarea>
           </div>
           ${files.length ? `<div style="margin-bottom:8px;">Đã nộp: ${files.map(f=>`<a href="${f.url}" target="_blank">${f.name}</a>`).join(', ')}</div>` : ''}
           <div id="prog-${a.id}" class="hidden" style="height:6px;background:var(--sky2);border-radius:99px;overflow:hidden;margin-bottom:8px;"><div id="progbar-${a.id}" style="height:100%;width:0%;background:var(--indigo);"></div></div>
@@ -298,11 +329,18 @@ async function renderAssignments(){
       </div>`;
   }));
   el.innerHTML = cards.length ? cards.join('') : '<div class="card empty">Chưa có bài tập nào.</div>';
+  el.querySelectorAll('.view-a-attach').forEach(b=>b.onclick=()=>{
+    const a = assignments[parseInt(b.dataset.ai,10)];
+    const att = a.attachments[parseInt(b.dataset.ati,10)];
+    if (isViewableFile(att.url, att.type)) openViewer(att.name, att.url, att.type);
+    else window.open(att.url, '_blank');
+  });
   el.querySelectorAll('.submit-a').forEach(b=>b.onclick=async()=>{
     const aid = b.dataset.id;
     const content = document.getElementById('ans-'+aid).value;
     const fileInput = document.getElementById('file-'+aid);
     const newFiles = Array.from(fileInput.files || []);
+    const linkLines = (document.getElementById('link-'+aid).value || '').split('\n').map(s=>s.trim()).filter(Boolean);
     const uploaded = [];
     try {
       if (newFiles.length) {
@@ -315,6 +353,7 @@ async function renderAssignments(){
           uploaded.push({name: file.name, url});
         }
       }
+      linkLines.forEach(url => uploaded.push({name: 'Link nộp bài', url}));
       await api(`/assignments/${aid}/submit`, {method:'POST', body:{content, files: uploaded}});
       alert('Đã nộp bài thành công!'); renderAssignments();
     } catch(e){ alert(e.message); }
