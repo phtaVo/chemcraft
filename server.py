@@ -162,6 +162,34 @@ _runtime = {
     'active_ips': {},
 }
 
+# ── Giới hạn AI/ngày cho khách vãng lai (chưa đăng nhập, không có userId) ──
+# Trước đây tài khoản ẩn danh KHÔNG bị giới hạn (lms_db.try_consume_ai_usage
+# chỉ áp dụng khi có user_id) — đây là lỗ hổng cho phép spam Gemini API
+# không giới hạn chỉ bằng cách không đăng nhập. Dùng bộ đếm trong RAM theo
+# IP (không ghi Firestore, tránh tốn quota ghi cho lượt truy cập vãng lai)
+# — chấp nhận được vì bộ đếm reset khi server restart, giống các bộ đếm
+# rate-limit khác trong file này.
+ANON_AI_DAILY_LIMIT = 5
+_anon_ai_usage: dict[str, dict] = {}
+_anon_ai_lock = Lock()
+
+
+def _check_anon_ai_limit(ip: str) -> str | None:
+    """Trả về thông báo lỗi nếu IP này đã dùng hết lượt AI miễn phí hôm nay,
+    None nếu còn được phép (và đã tăng bộ đếm)."""
+    today = time.strftime('%Y-%m-%d', time.gmtime(time.time() + 7 * 3600))
+    with _anon_ai_lock:
+        entry = _anon_ai_usage.get(ip)
+        if not entry or entry.get('date') != today:
+            entry = {'date': today, 'count': 0}
+        if entry['count'] >= ANON_AI_DAILY_LIMIT:
+            _anon_ai_usage[ip] = entry
+            return (f"Bạn đã sử dụng hết {ANON_AI_DAILY_LIMIT} lượt AI miễn phí hôm nay cho khách "
+                    f"vãng lai. Vui lòng đăng nhập để có thêm lượt dùng, hoặc quay lại vào ngày mai.")
+        entry['count'] += 1
+        _anon_ai_usage[ip] = entry
+    return None
+
 
 def _get_client_ip() -> str:
     return request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
@@ -247,8 +275,8 @@ def chat():
         return jsonify({'error': 'Server chưa cấu hình API key.'}), 500
 
     # Freemium: tối đa 5 lượt AI/ngày cho tài khoản Free (gộp chung mọi loại
-    # AI, không tách riêng). Tài khoản chưa đăng nhập (user_id rỗng) không bị
-    # giới hạn ở đây vì không có gì để đếm theo - giữ nguyên hành vi cũ.
+    # AI, không tách riêng). Tài khoản chưa đăng nhập (user_id rỗng) dùng bộ
+    # đếm theo IP riêng (xem _check_anon_ai_limit) — đã vá lỗ hổng cũ (#7).
     if user_id:
         try:
             allowed, usage_info = lms_db.try_consume_ai_usage(user_id)
@@ -260,6 +288,10 @@ def chat():
                 }), 429
         except Exception as e:
             app.logger.warning('Bỏ qua kiểm tra usage AI do lỗi Firestore: %s', e)
+    else:
+        anon_err = _check_anon_ai_limit(ip)
+        if anon_err:
+            return jsonify({'error': anon_err, 'limitReached': True}), 429
 
     # Ensure a conversation row exists so multi-turn chats are threaded,
     # not just isolated question/answer events like before.
@@ -476,7 +508,8 @@ def _fanout_structured_tables(ev_type: str, payload: dict, user_id: str):
         if attempt_id:
             fsdb.record_quiz_answer(
                 attempt_id, payload.get('questionId', ''), payload.get('questionText', ''),
-                bool(payload.get('correct')), payload.get('retryCount', 0), payload.get('durationSec')
+                bool(payload.get('correct')), payload.get('retryCount', 0), payload.get('durationSec'),
+                topic=payload.get('topic', '')
             )
     elif ev_type == 'quiz_complete':
         attempt_id = payload.get('attemptId')
@@ -668,7 +701,14 @@ def public_quiz_questions():
     except (TypeError, ValueError):
         count = 34
     count = max(1, min(count, 200))
-    return jsonify({'questions': quiz_bank.random_questions(count)})
+    topic = (request.args.get('topic') or '').strip() or None
+    return jsonify({'questions': quiz_bank.random_questions(count, topic=topic)})
+
+
+# Public: danh sách chuyên đề hiện có, cho dropdown "Quiz theo chuyên đề tự chọn" (#4).
+@app.route('/api/quiz-topics', methods=['GET'])
+def public_quiz_topics():
+    return jsonify({'topics': quiz_bank.list_topics()})
 
 
 # Admin: CRUD toàn bộ ngân hàng câu hỏi cho tab "Ngân hàng câu hỏi" trong trang Quiz.
@@ -767,6 +807,26 @@ def admin_delete_quiz_question(qid):
 # Public: lab.html gọi lúc khởi tạo để nạp thêm hoá chất/phản ứng do admin tạo
 # (chỉ trả về những bản ghi đã 'published'), gộp thêm vào LAB_MOLECULE_DATA /
 # REACTIONS vốn đã có sẵn trong file — không thay thế, chỉ bổ sung.
+#
+# `premiumOnly` (#6): nội dung nâng cao (công thức/phản ứng khó) admin đánh
+# dấu premiumOnly=true sẽ bị ẨN khỏi kết quả nếu người gọi không có Premium.
+# Truyền `?uid=<uid>` (Firebase uid) để server kiểm tra quyền — nếu không
+# truyền (hoặc user không unlimited), mặc định AN TOÀN là ẩn nội dung
+# premium. TODO tích hợp lab.html: hiện lab.html đang gọi các endpoint này
+# ĐỒNG BỘ (XHR sync) trước khi Firebase Auth kịp resolve user, nên chưa gửi
+# `uid` — cần đợi onAuthStateChanged rồi mới gọi (hoặc gọi lại 1 lần sau khi
+# có user) để nội dung Premium thật sự hiện ra cho học sinh đã mua gói.
+def _resolve_unlimited_from_query() -> bool:
+    uid = (request.args.get('uid') or '').strip()
+    if not uid:
+        return False
+    try:
+        user = lms_db.ensure_user_defaults(uid)
+        return lms_db.has_unlimited_access(user)
+    except Exception:
+        return False
+
+
 @app.route('/api/lab/molecules', methods=['GET'])
 def public_lab_molecules():
     return jsonify({'molecules': lab_bank.list_molecules(status='published')})
@@ -774,7 +834,9 @@ def public_lab_molecules():
 
 @app.route('/api/lab/reactions', methods=['GET'])
 def public_lab_reactions():
-    return jsonify({'reactions': lab_bank.list_reactions(status='published')})
+    reactions = lab_bank.list_reactions(status='published')
+    reactions = lab_bank.filter_premium_only(reactions, _resolve_unlimited_from_query())
+    return jsonify({'reactions': reactions})
 
 
 # lab.html's evaluateReaction() engine (the code that actually decides what color/
@@ -786,6 +848,7 @@ def public_lab_reactions():
 def public_lab_reactions_full():
     reactions = lab_bank.list_reactions(status='published')
     reactions = [r for r in reactions if r.get('participants')]
+    reactions = lab_bank.filter_premium_only(reactions, _resolve_unlimited_from_query())
     return jsonify({'reactions': reactions})
 
 
@@ -892,7 +955,7 @@ def admin_create_lab_reaction():
         before_color=body.get('beforeColor', '#ffffff'), before_phenomenon=body.get('beforePhenomenon', ''),
         during_color=body.get('duringColor', '#ffffff'), during_phenomenon=body.get('duringPhenomenon', ''),
         after_color=body.get('afterColor', '#ffffff'), after_phenomenon=body.get('afterPhenomenon', ''),
-        status=status, created_by=session['username'],
+        status=status, created_by=session['username'], premium_only=bool(body.get('premiumOnly')),
     )
     return jsonify(lab_bank.get_reaction(rid)), 201
 
@@ -913,7 +976,7 @@ def admin_update_lab_reaction(rid):
     fields = {k: v for k, v in body.items()
               if k in ('eq', 'type', 'conditions', 'tools', 'steps', 'obs', 'product', 'grp', 'status',
                         'participants', 'needsHeat', 'beforeColor', 'beforePhenomenon',
-                        'duringColor', 'duringPhenomenon', 'afterColor', 'afterPhenomenon')}
+                        'duringColor', 'duringPhenomenon', 'afterColor', 'afterPhenomenon', 'premiumOnly')}
     lab_bank.update_reaction(rid, **fields)
     return jsonify(lab_bank.get_reaction(rid))
 
@@ -933,7 +996,9 @@ def admin_delete_lab_reaction(rid):
 # chất admin thêm xuất hiện ngay trên kệ cùng lượt tải, không cần load 2 lần.
 @app.route('/api/lab/shelf-chemicals', methods=['GET'])
 def public_lab_shelf_chemicals():
-    return jsonify({'chemicals': lab_bank.list_shelf_chemicals(status='published')})
+    chemicals = lab_bank.list_shelf_chemicals(status='published')
+    chemicals = lab_bank.filter_premium_only(chemicals, _resolve_unlimited_from_query())
+    return jsonify({'chemicals': chemicals})
 
 
 # Admin: CRUD hóa chất trên kệ cho tab "Lab 3D" trong trang quản trị.
@@ -967,7 +1032,7 @@ def admin_create_lab_shelf_chemical():
             color='#ffffff', ph=None, solid=bool(body.get('solid')),
             is_gas=bool(body.get('isGas')), is_paper=False,
             opacity=None, allowed_states=body.get('allowedStates'),
-            status=status, created_by=session['username'],
+            status=status, created_by=session['username'], premium_only=bool(body.get('premiumOnly')),
         )
     except Exception:
         return jsonify({'error': 'Mã hoá chất đã tồn tại hoặc dữ liệu không hợp lệ.'}), 400
