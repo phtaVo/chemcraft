@@ -76,6 +76,7 @@ td{padding:10px;border-bottom:1px solid var(--border);}
     <div class="sb-item" data-tab="tests"><i class="fa-solid fa-file-circle-check"></i> Bài kiểm tra</div>
     <div class="sb-item" data-tab="submissions"><i class="fa-solid fa-inbox"></i> Bài nộp của học sinh</div>
     <div class="sb-item" data-tab="students"><i class="fa-solid fa-users"></i> Học sinh</div>
+    <div class="sb-item" data-tab="messages"><i class="fa-solid fa-comments"></i> Tin nhắn</div>
     <div class="sb-item" data-tab="settings"><i class="fa-solid fa-gear"></i> Cài đặt</div>
     <div style="margin-top:20px;padding:12px;border-top:1px solid rgba(255,255,255,0.1);">
       <div id="sb-user" style="font-size:0.82rem;color:rgba(255,255,255,0.6);"></div>
@@ -173,7 +174,12 @@ function openModal(html){
   document.getElementById('modal-body').innerHTML = html;
   document.getElementById('modal-bg').classList.add('show');
 }
-function closeModal(){ document.getElementById('modal-bg').classList.remove('show'); }
+let _threadPollTimer = null;
+function closeModal(){
+  document.getElementById('modal-bg').classList.remove('show');
+  clearInterval(_threadPollTimer);
+  _threadPollTimer = null;
+}
 document.getElementById('modal-bg').addEventListener('click', (e)=>{ if(e.target.id==='modal-bg') closeModal(); });
 window.closeModal = closeModal;
 
@@ -188,7 +194,7 @@ const TABS = ['overview','classes','livestreams','documents','lessons','assignme
 const TAB_TITLES = {
   overview:'Tổng quan', classes:'Lớp học', livestreams:'Livestream', documents:'Tài liệu',
   lessons:'Bài học', assignments:'Bài tập', tests:'Bài kiểm tra', submissions:'Bài nộp của học sinh',
-  students:'Học sinh', settings:'Cài đặt',
+  students:'Học sinh', messages:'Tin nhắn', settings:'Cài đặt',
 };
 const NEEDS_CLASS = new Set(['livestreams','documents','lessons','assignments','tests','submissions','students']);
 
@@ -219,6 +225,7 @@ async function renderTab(tab){
       if (tab === 'students') return renderStudents();
     }
     if (tab === 'settings') return renderSettings();
+    if (tab === 'messages') return renderMessages();
   } catch(e) { el.innerHTML = `<div class="empty">${e.message}</div>`; }
 }
 
@@ -808,20 +815,122 @@ async function renderSubmissionsOverview(){
   const el = document.getElementById('tab-content');
   el.innerHTML = '<div class="empty">Chọn một bài tập trong tab "Bài tập" để xem và chấm bài nộp tương ứng.</div>';
 }
+function _studentPlanPill(s){
+  // educationPlanStatus: Premium cả lớp vì giáo viên đang có gói edu (cơ chế cũ).
+  if (s.educationPlanStatus === 'active') return '<span class="pill pill-gold">Premium (theo lớp)</span>';
+  // studentPlanStatus: Premium được TẶNG RIÊNG cho học sinh này (#1, #3).
+  if (s.studentPlanStatus === 'active') return '<span class="pill pill-gold">Premium (được tặng)</span>';
+  return '<span class="pill pill-cyan">Free</span>';
+}
+
 async function renderStudents(){
   const el = document.getElementById('tab-content');
   const {students} = await api(`/classes/${ACTIVE_CLASS.id}/students`);
   el.innerHTML = students.length ? `<table><thead><tr><th>Tên</th><th>Email</th><th>Gói học tập</th><th></th></tr></thead><tbody>
     ${students.map(s=>`<tr><td>${s.displayName||'(chưa đặt tên)'}</td><td>${s.email||''}</td>
-    <td>${s.educationPlanStatus==='active'?'<span class="pill pill-gold">Premium (được cấp)</span>':'<span class="pill pill-cyan">Free</span>'}</td>
-    <td><button class="btn btn-danger btn-sm rm-student" data-id="${s.uid}"><i class="fa-solid fa-user-minus"></i></button></td></tr>`).join('')}
+    <td>${_studentPlanPill(s)}</td>
+    <td>
+      ${s.studentPlanStatus==='active'
+        ? `<button class="btn btn-danger btn-sm revoke-premium" data-id="${s.uid}" title="Thu hồi Premium đã tặng"><i class="fa-solid fa-ban"></i></button>`
+        : `<button class="btn btn-ghost btn-sm gift-premium" data-id="${s.uid}" title="Tặng Premium"><i class="fa-solid fa-gift"></i></button>`}
+      <button class="btn btn-ghost btn-sm view-weak-topics" data-id="${s.uid}" data-name="${(s.displayName||s.email||'').replace(/"/g,'&quot;')}" title="Xem điểm yếu theo chuyên đề"><i class="fa-solid fa-chart-line"></i></button>
+      <button class="btn btn-ghost btn-sm chat-student" data-id="${s.uid}" data-name="${(s.displayName||s.email||'').replace(/"/g,'&quot;')}" title="Nhắn tin"><i class="fa-solid fa-comment"></i></button>
+      <button class="btn btn-danger btn-sm rm-student" data-id="${s.uid}"><i class="fa-solid fa-user-minus"></i></button>
+    </td></tr>`).join('')}
   </tbody></table>` : '<div class="empty">Lớp chưa có học sinh nào. Chia sẻ mã lớp để học sinh tham gia.</div>';
   el.querySelectorAll('.rm-student').forEach(b=>b.onclick=async()=>{
     if (!confirm('Xoá học sinh khỏi lớp?')) return;
     await api(`/classes/${ACTIVE_CLASS.id}/students/${b.dataset.id}`, {method:'DELETE'});
     renderStudents();
   });
+  el.querySelectorAll('.gift-premium').forEach(b=>b.onclick=async()=>{
+    const days = prompt('Tặng Premium trong bao nhiêu ngày? (tối đa 90)', '30');
+    if (days === null) return;
+    try {
+      await api(`/classes/${ACTIVE_CLASS.id}/students/${b.dataset.id}/gift-premium`, {method:'POST', body:{days: parseInt(days, 10) || 30}});
+      toast('Đã tặng Premium cho học sinh.');
+      renderStudents();
+    } catch(e){ toast(e.message); }
+  });
+  el.querySelectorAll('.revoke-premium').forEach(b=>b.onclick=async()=>{
+    if (!confirm('Thu hồi Premium đã tặng cho học sinh này?')) return;
+    try {
+      await api(`/classes/${ACTIVE_CLASS.id}/students/${b.dataset.id}/gift-premium`, {method:'DELETE'});
+      toast('Đã thu hồi Premium.');
+      renderStudents();
+    } catch(e){ toast(e.message); }
+  });
+  el.querySelectorAll('.view-weak-topics').forEach(b=>b.onclick=async()=>{
+    try {
+      const stats = await api(`/classes/${ACTIVE_CLASS.id}/students/${b.dataset.id}/weak-topics`);
+      const rows = stats.byTopic.length ? stats.byTopic.map(t=>`<tr><td>${t.topic}</td><td>${t.correct}/${t.total}</td><td>${Math.round(t.accuracy*100)}%</td></tr>`).join('')
+        : '<tr><td colspan="3" style="text-align:center;color:var(--text-l);">Học sinh chưa làm quiz nào.</td></tr>';
+      openModal(`<h3>Điểm yếu theo chuyên đề — ${b.dataset.name}</h3>
+        <table><thead><tr><th>Chuyên đề</th><th>Đúng/Tổng</th><th>Tỉ lệ</th></tr></thead><tbody>${rows}</tbody></table>
+        <div style="text-align:right;margin-top:16px;"><button class="btn btn-ghost" onclick="closeModal()">Đóng</button></div>`);
+    } catch(e){ toast(e.message); }
+  });
+  el.querySelectorAll('.chat-student').forEach(b=>b.onclick=()=>{
+    openChatThreadModal(ACTIVE_CLASS.id, b.dataset.id, b.dataset.name);
+  });
 }
+let messagesPollTimer = null;
+
+async function renderMessages(){
+  clearInterval(messagesPollTimer);
+  const el = document.getElementById('tab-content');
+  const {threads} = await api('/teacher/chat-threads');
+  el.innerHTML = threads.length ? `<table><thead><tr><th>Học sinh</th><th>Lớp</th><th>Tin nhắn gần nhất</th><th>Thời gian</th><th></th></tr></thead><tbody>
+    ${threads.map(t=>`<tr style="${t.unreadForTeacher?'font-weight:800;':''}">
+      <td>${t.studentName}${t.unreadForTeacher?' <span class="pill" style="background:#FDEDED;color:#C8312A;">Mới</span>':''}</td>
+      <td>${t.className||''}</td>
+      <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.lastSenderRole==='teacher'?'Bạn: ':''}${t.lastMessage||''}</td>
+      <td>${t.updatedAt ? new Date(t.updatedAt*1000).toLocaleString('vi-VN') : ''}</td>
+      <td><button class="btn btn-primary btn-sm open-thread" data-class="${t.classId}" data-student="${t.studentId}" data-name="${(t.studentName||'').replace(/"/g,'&quot;')}">Mở chat</button></td>
+    </tr>`).join('')}
+  </tbody></table>` : '<div class="empty">Chưa có học sinh nào nhắn tin cho bạn.</div>';
+  el.querySelectorAll('.open-thread').forEach(b=>b.onclick=()=>{
+    openChatThreadModal(b.dataset.class, b.dataset.student, b.dataset.name);
+  });
+  // Tự làm mới danh sách hội thoại mỗi 8s để thấy tin nhắn mới mà không cần bấm lại tab.
+  messagesPollTimer = setInterval(()=>{ if (document.querySelector('.sb-item.active').dataset.tab === 'messages') renderMessages(); }, 8000);
+}
+
+function openChatThreadModal(classId, studentId, studentName){
+  clearInterval(_threadPollTimer);
+  openModal(`
+    <h3 style="margin-bottom:14px;">Nhắn tin — ${studentName}</h3>
+    <div id="thread-msgs" style="height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--sky);"></div>
+    <div style="display:flex;gap:8px;">
+      <input id="thread-input" placeholder="Nhập tin nhắn..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;">
+      <button class="btn btn-primary" id="thread-send">Gửi</button>
+    </div>
+    <div style="text-align:right;margin-top:14px;"><button class="btn btn-ghost" onclick="closeModal()">Đóng</button></div>
+  `);
+  const box = document.getElementById('thread-msgs');
+  const loadThread = async ()=>{
+    const {messages} = await api(`/classes/${classId}/students/${studentId}/chat`);
+    box.innerHTML = messages.length ? messages.map(m=>`
+      <div style="margin-bottom:8px;${m.senderRole==='teacher'?'text-align:right;':''}">
+        <div style="font-size:0.72rem;color:var(--text-l);margin-bottom:2px;">${m.senderRole==='teacher'?'Bạn':studentName} · ${new Date(m.ts*1000).toLocaleString('vi-VN')}</div>
+        <div style="display:inline-block;padding:8px 12px;border-radius:12px;max-width:80%;text-align:left;background:${m.senderRole==='teacher'?'linear-gradient(135deg,var(--indigo),var(--cyan))':'#fff'};color:${m.senderRole==='teacher'?'#fff':'var(--text)'};border:${m.senderRole==='teacher'?'none':'1px solid var(--border)'};">${m.message}</div>
+      </div>`).join('') : '<div class="empty">Chưa có tin nhắn nào.</div>';
+    box.scrollTop = box.scrollHeight;
+  };
+  loadThread();
+  _threadPollTimer = setInterval(loadThread, 4000);
+  const send = async ()=>{
+    const input = document.getElementById('thread-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    try { await api(`/classes/${classId}/students/${studentId}/chat`, {method:'POST', body:{message:msg}}); loadThread(); }
+    catch(e){ toast(e.message); }
+  };
+  document.getElementById('thread-send').onclick = send;
+  document.getElementById('thread-input').addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
+}
+
 async function renderSettings(){
   const el = document.getElementById('tab-content');
   const me = await api('/me');
