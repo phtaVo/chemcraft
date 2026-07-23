@@ -35,6 +35,26 @@ EDU_PLAN = 'chemcraft_for_edu'
 _stats_cache = {'ts': 0, 'data': None}
 _STATS_TTL = 300  # 5 phút — cùng ý tưởng cache như /api/admin/users-stats
 
+# ── Gói Premium RIÊNG cho học sinh (độc lập với sponsoredBy/educationPlan) ──
+# Trước đây học sinh chỉ có Premium theo 1 cách DUY NHẤT: được "bảo trợ"
+# (sponsoredBy) bởi 1 giáo viên đang có gói 'chemcraft_for_edu' — nếu giáo
+# viên bị thu hồi Premium thì TOÀN BỘ học sinh trong lớp mất Premium theo,
+# không có cách nào cấp Premium cho RIÊNG 1 học sinh (VD giáo viên tặng cho
+# 1 em học giỏi, hoặc sau này học sinh tự mua).
+#
+# `studentPlan`/`studentPlanStatus`/`studentPlanExpiresAt`/`studentPlanGrantedBy`
+# là các field MỚI, tách biệt hoàn toàn với `sponsoredBy`/`educationPlan`
+# (cơ chế cũ theo lớp) — has_unlimited_access() coi user có Premium nếu
+# THỎA MÃN BẤT KỲ cơ chế nào trong 2 cơ chế trên (OR), không cái nào ghi đè
+# cái nào. Khi giáo viên bị thu hồi Premium, `_sync_sponsored_students` vẫn
+# chỉ đụng vào educationPlan/sponsoredBy như cũ — không đụng vào studentPlan
+# đã cấp riêng.
+STUDENT_PREMIUM_PLAN = 'chemcraft_premium_student'
+
+
+def _now() -> float:
+    return time.time()
+
 
 # ══════════════════════════════════════════════════════════════════════
 # USERS — role / plan / usage
@@ -68,6 +88,8 @@ def ensure_user_defaults(uid: str, display_name: str = '', email: str = '') -> d
             'role': 'student', 'plan': 'free', 'planStatus': 'inactive',
             'sponsoredBy': None, 'aiUsageToday': 0, 'submissionUsageToday': 0,
             'usageDate': _today_str(), 'createdAt': ts, 'updatedAt': ts,
+            'studentPlan': 'free', 'studentPlanStatus': 'inactive',
+            'studentPlanExpiresAt': None, 'studentPlanGrantedBy': None,
         }
         ref.set(data)
         data['uid'] = uid
@@ -78,6 +100,8 @@ def ensure_user_defaults(uid: str, display_name: str = '', email: str = '') -> d
         ('role', 'student'), ('plan', 'free'), ('planStatus', 'inactive'),
         ('sponsoredBy', None), ('aiUsageToday', 0), ('submissionUsageToday', 0),
         ('usageDate', _today_str()),
+        ('studentPlan', 'free'), ('studentPlanStatus', 'inactive'),
+        ('studentPlanExpiresAt', None), ('studentPlanGrantedBy', None),
     ):
         if key not in d:
             patch[key] = default
@@ -85,8 +109,22 @@ def ensure_user_defaults(uid: str, display_name: str = '', email: str = '') -> d
         patch['updatedAt'] = ts
         ref.update(patch)
         d.update(patch)
+    d = _expire_student_plan_if_needed(uid, d)
     d['uid'] = uid
     return d
+
+
+def _expire_student_plan_if_needed(uid: str, user: dict) -> dict:
+    """Tự động hạ studentPlanStatus về 'inactive' nếu đã quá hạn
+    studentPlanExpiresAt. Gọi mỗi lần đọc user (ensure_user_defaults) để
+    Premium hết hạn tự mất đi mà không cần cron job riêng."""
+    expires_at = user.get('studentPlanExpiresAt')
+    if user.get('studentPlanStatus') == 'active' and expires_at and _now() > expires_at:
+        fsdb.collection('users').document(uid).set({
+            'studentPlanStatus': 'expired', 'updatedAt': _now(),
+        }, merge=True)
+        user['studentPlanStatus'] = 'expired'
+    return user
 
 
 def set_role(uid: str, role: str) -> bool:
@@ -147,10 +185,49 @@ def has_unlimited_access(user: dict) -> bool:
     if (user.get('role') == 'teacher' and user.get('plan') == EDU_PLAN
             and user.get('planStatus') == 'active'):
         return True
+    # Cơ chế 1 (cũ): học sinh được "bảo trợ" theo cả lớp vì giáo viên chủ
+    # nhiệm đang có gói 'chemcraft_for_edu'.
     if (user.get('educationPlan') == EDU_PLAN
             and user.get('educationPlanStatus') == 'active'):
         return True
+    # Cơ chế 2 (mới, #1): Premium cấp RIÊNG cho học sinh này — độc lập với
+    # giáo viên/lớp học, có thể có hạn (studentPlanExpiresAt) hoặc vĩnh viễn
+    # (studentPlanExpiresAt = None). Không kiểm tra hết hạn ở đây để tránh
+    # ghi Firestore trên đường đọc nóng (hot path) — việc hạ trạng thái hết
+    # hạn được xử lý lười (lazy) trong _expire_student_plan_if_needed(), gọi
+    # từ ensure_user_defaults() mỗi khi user được load.
+    if (user.get('studentPlanStatus') == 'active'
+            and (not user.get('studentPlanExpiresAt') or user.get('studentPlanExpiresAt') > _now())):
+        return True
     return False
+
+
+def grant_student_premium(student_id: str, granted_by: str, days: int | None = 30) -> bool:
+    """Cấp Premium riêng cho 1 học sinh, độc lập với sponsoredBy/lớp học.
+    `granted_by` là uid giáo viên (khi giáo viên tặng — #3) hoặc 'admin'
+    (khi admin cấp trực tiếp). `days=None` = không giới hạn (admin dùng khi
+    cần cấp vĩnh viễn); dùng cho gói tặng của giáo viên nên truyền số ngày
+    cụ thể để tránh giáo viên tặng vĩnh viễn không kiểm soát."""
+    if not student_id:
+        return False
+    expires_at = (_now() + days * 86400) if days else None
+    fsdb.collection('users').document(student_id).set({
+        'studentPlan': STUDENT_PREMIUM_PLAN, 'studentPlanStatus': 'active',
+        'studentPlanExpiresAt': expires_at, 'studentPlanGrantedBy': granted_by,
+        'updatedAt': _now(),
+    }, merge=True)
+    return True
+
+
+def revoke_student_premium(student_id: str) -> bool:
+    if not student_id:
+        return False
+    fsdb.collection('users').document(student_id).set({
+        'studentPlan': 'free', 'studentPlanStatus': 'inactive',
+        'studentPlanExpiresAt': None, 'studentPlanGrantedBy': None,
+        'updatedAt': _now(),
+    }, merge=True)
+    return True
 
 
 def _reset_usage_if_new_day(uid: str, user: dict) -> dict:
@@ -202,7 +279,39 @@ def usage_snapshot(uid: str) -> dict:
         'unlimited': unlimited,
         'aiUsed': user.get('aiUsageToday', 0), 'aiLimit': FREE_AI_LIMIT,
         'submissionUsed': user.get('submissionUsageToday', 0), 'submissionLimit': FREE_SUBMISSION_LIMIT,
+        'studentPlanStatus': user.get('studentPlanStatus', 'inactive'),
+        'studentPlanExpiresAt': user.get('studentPlanExpiresAt'),
     }
+
+
+def student_weak_topics(uid: str, min_answers: int = 3) -> dict:
+    """Thống kê điểm yếu theo chuyên đề (#2) từ quiz_answers (tab Quiz) của
+    1 học sinh: với mỗi chuyên đề đã làm, tính tỉ lệ đúng và số câu đã làm.
+    `min_answers`: chuyên đề có ÍT HƠN số câu này bị loại khỏi 'weakest' vì
+    chưa đủ dữ liệu để kết luận (nhưng vẫn xuất hiện trong 'byTopic' đầy đủ).
+
+    Chỉ dùng dữ liệu quiz_answers có `topic` (câu hỏi cũ trước khi có field
+    này, hoặc câu tự luận trong bài kiểm tra riêng của giáo viên, sẽ có
+    topic rỗng và bị bỏ qua ở đây — có thể mở rộng sau bằng cách gắn topic
+    cho câu hỏi trong tests nếu cần thống kê cả phần đó)."""
+    answers = fsdb.list_quiz_answers_for_user(uid)
+    by_topic: dict[str, dict] = {}
+    for a in answers:
+        topic = (a.get('topic') or '').strip()
+        if not topic:
+            continue
+        bucket = by_topic.setdefault(topic, {'correct': 0, 'total': 0})
+        bucket['total'] += 1
+        if a.get('is_correct'):
+            bucket['correct'] += 1
+    result = []
+    for topic, b in by_topic.items():
+        accuracy = (b['correct'] / b['total']) if b['total'] else 0.0
+        result.append({'topic': topic, 'correct': b['correct'], 'total': b['total'],
+                        'accuracy': round(accuracy, 4)})
+    result.sort(key=lambda x: x['accuracy'])
+    weakest = [r for r in result if r['total'] >= min_answers]
+    return {'byTopic': result, 'weakest': weakest[:3]}
 
 
 def list_teachers() -> list[dict]:
@@ -981,6 +1090,103 @@ def delete_chat_message(livestream_id: str, message_id: str) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# CHAT TRỰC TIẾP HỌC SINH ↔ GIÁO VIÊN CHỦ NHIỆM (theo từng lớp)
+# ══════════════════════════════════════════════════════════════════════
+# Khác với chat công khai trong livestream (mọi người trong buổi live thấy
+# nhau), đây là kênh RIÊNG TƯ giữa 1 học sinh và giáo viên chủ nhiệm LỚP đó
+# — mỗi (lớp, học sinh) là 1 luồng hội thoại (`thread`) độc lập, giáo viên
+# thấy được danh sách hội thoại của TẤT CẢ học sinh trong các lớp mình dạy,
+# học sinh chỉ thấy hội thoại của chính mình với giáo viên lớp mình đang học.
+#
+# Firestore: class_chat_threads/{class_id}__{student_id}
+#              .messages (subcollection, order theo ts)
+_CHAT_THREADS_COL = 'class_chat_threads'
+
+
+def _chat_thread_id(class_id: str, student_id: str) -> str:
+    return f'{class_id}__{student_id}'
+
+
+def send_class_chat_message(class_id: str, student_id: str, sender_id: str,
+                             sender_role: str, sender_name: str, message: str) -> str:
+    """`sender_role` là 'teacher' hoặc 'student' — quyền gửi được kiểm tra ở
+    route (lms_routes.py), hàm này chỉ ghi dữ liệu."""
+    message = (message or '').strip()[:2000]
+    if not message:
+        raise ValueError('empty_message')
+    tid = _chat_thread_id(class_id, student_id)
+    thread_ref = fsdb.collection(_CHAT_THREADS_COL).document(tid)
+    ts = _now()
+    msg_ref = thread_ref.collection('messages').document()
+    msg_ref.set({
+        'senderId': sender_id, 'senderRole': sender_role, 'senderName': sender_name or '',
+        'message': message, 'ts': ts,
+    })
+    # unreadForTeacher/unreadForStudent: đánh dấu bên KIA có tin chưa đọc —
+    # đơn giản hoá bằng cờ boolean thay vì đếm số lượng, đủ dùng cho badge "●".
+    thread_ref.set({
+        'classId': class_id, 'studentId': student_id,
+        'lastMessage': message, 'lastSenderRole': sender_role, 'updatedAt': ts,
+        'unreadForTeacher': sender_role == 'student',
+        'unreadForStudent': sender_role == 'teacher',
+    }, merge=True)
+    return msg_ref.id
+
+
+def list_class_chat_messages(class_id: str, student_id: str, limit: int = 300) -> list[dict]:
+    tid = _chat_thread_id(class_id, student_id)
+    docs = (fsdb.collection(_CHAT_THREADS_COL).document(tid)
+            .collection('messages').order_by('ts').limit_to_last(limit).stream())
+    items = []
+    for d in docs:
+        it = d.to_dict()
+        it['id'] = d.id
+        items.append(it)
+    return items
+
+
+def mark_class_chat_read(class_id: str, student_id: str, reader_role: str) -> None:
+    tid = _chat_thread_id(class_id, student_id)
+    field = 'unreadForTeacher' if reader_role == 'teacher' else 'unreadForStudent'
+    fsdb.collection(_CHAT_THREADS_COL).document(tid).set({field: False}, merge=True)
+
+
+def get_class_chat_thread(class_id: str, student_id: str) -> dict | None:
+    doc = fsdb.collection(_CHAT_THREADS_COL).document(_chat_thread_id(class_id, student_id)).get()
+    if not doc.exists:
+        return None
+    d = doc.to_dict()
+    d['id'] = doc.id
+    return d
+
+
+def list_chat_threads_for_teacher(teacher_id: str) -> list[dict]:
+    """Toàn bộ hội thoại (1 dòng / học sinh) của các lớp giáo viên này chủ
+    nhiệm, kèm tên học sinh + tên lớp, sắp xếp mới nhất lên đầu — dùng cho
+    hộp thư "Tin nhắn học sinh" của giáo viên."""
+    classes = {c['id']: c for c in list_classes(teacher_id=teacher_id)}
+    if not classes:
+        return []
+    threads = []
+    # Firestore 'in' giới hạn 30 giá trị — số lớp của 1 giáo viên thường rất
+    # nhỏ nên không cần chia lô, nhưng vẫn chia phòng khi vượt 30 cho an toàn.
+    class_ids = list(classes.keys())
+    for i in range(0, len(class_ids), 30):
+        chunk = class_ids[i:i + 30]
+        q = fsdb.collection(_CHAT_THREADS_COL).where('classId', 'in', chunk)
+        for d in q.stream():
+            t = d.to_dict()
+            t['id'] = d.id
+            cls = classes.get(t.get('classId'), {})
+            t['className'] = cls.get('name', '')
+            student = ensure_user_defaults(t.get('studentId'))
+            t['studentName'] = student.get('displayName') or student.get('email') or '(chưa đặt tên)'
+            threads.append(t)
+    threads.sort(key=lambda x: x.get('updatedAt') or 0, reverse=True)
+    return threads
+
+
+# ══════════════════════════════════════════════════════════════════════
 # ADMIN STATS
 # ══════════════════════════════════════════════════════════════════════
 
@@ -1015,6 +1221,9 @@ def admin_lms_stats() -> dict:
         'submissionCount': _agg_count(fsdb.collection('submissions')),
         'testAttemptCount': _agg_count(fsdb.collection('test_attempts')),
         'livestreamCount': _agg_count(fsdb.collection('livestreams')),
+        'studentPremiumCount': _agg_count(
+            fsdb.collection('users').where('studentPlanStatus', '==', 'active')
+        ),
     }
     _stats_cache['ts'] = now
     _stats_cache['data'] = data
