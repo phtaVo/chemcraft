@@ -13,6 +13,9 @@ Cách gắn vào server.py hiện tại (KHÔNG đổi cấu trúc file cũ):
 blueprint không phụ thuộc thứ tự khởi tạo đó, chỉ cần fsdb.init() đã chạy
 (đã có sẵn trong server.py) trước khi có request đầu tiên tới các route này.
 """
+import logging
+import traceback
+
 from flask import Blueprint, request, jsonify, Response
 
 import lms_db
@@ -21,10 +24,30 @@ import firestore_db as fsdb
 import ai_pdf_export
 
 bp = Blueprint('lms', __name__, url_prefix='/api/lms')
+logger = logging.getLogger('lms_routes')
 
 
 def register(app):
     app.register_blueprint(bp)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# XỬ LÝ LỖI CHUNG
+# ══════════════════════════════════════════════════════════════════════
+# Trước đây khi 1 route ném exception không bắt, Flask trả về trang HTML
+# 500 mặc định. Frontend gọi res.json() trên trang HTML đó bị lỗi, rơi
+# vào catch(()=>({})) và luôn hiện thông báo chung chung "Đã có lỗi xảy
+# ra." — không ai biết lỗi thật là gì. Handler dưới đây:
+#   1. Log full traceback ra server log (để debug được lỗi thật).
+#   2. Luôn trả JSON {'error': ...} thay vì HTML, để frontend parse được
+#      và không bị "Uncaught (in promise) Error" ở console.
+@bp.errorhandler(Exception)
+def handle_uncaught_exception(e):
+    logger.error(
+        'Unhandled exception on %s %s: %s\n%s',
+        request.method, request.path, e, traceback.format_exc()
+    )
+    return jsonify({'error': 'Lỗi hệ thống, vui lòng thử lại sau.'}), 500
 
 
 # ══════════════════════════════════════════════════════════════════════
