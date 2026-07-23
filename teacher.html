@@ -132,6 +132,17 @@ async function uploadFile(file, path, onProgress){
   });
 }
 function safeFileName(name){ return name.replace(/[^a-zA-Z0-9_.\-]/g, '_'); }
+function labelForLink(url){
+  if (/docs\.google\.com\/document/.test(url)) return 'Google Docs';
+  if (/docs\.google\.com\/spreadsheets/.test(url)) return 'Google Sheets';
+  if (/docs\.google\.com\/presentation/.test(url)) return 'Google Slides';
+  if (/docs\.google\.com\/forms/.test(url)) return 'Google Form';
+  if (/drive\.google\.com/.test(url)) return 'Google Drive';
+  try { return new URL(url).hostname; } catch(e){ return 'Link'; }
+}
+function parseLinkLines(text){
+  return (text || '').split('\n').map(s=>s.trim()).filter(Boolean);
+}
 
 let CURRENT_USER = null;
 let MY_CLASSES = [];
@@ -358,8 +369,11 @@ async function renderDocuments(){
       <div class="field"><label>File (PDF / Word / PowerPoint / hình ảnh, tối đa 25MB)</label>
         <input type="file" id="df-file" accept=".pdf,.doc,.docx,.ppt,.pptx,image/*">
       </div>
+      <div class="field"><label>Hoặc dán link (Google Docs / Sheets / Slides / Drive — không cần tải file)</label>
+        <input id="df-link" placeholder="https://docs.google.com/document/d/...">
+      </div>
       <div id="df-progress" class="usage-bar-wrap hidden" style="margin-bottom:10px;"><div class="usage-bar" id="df-progress-bar" style="width:0%"></div></div>
-      <button class="btn btn-primary" id="df-submit"><i class="fa-solid fa-upload"></i> Tải lên</button>
+      <button class="btn btn-primary" id="df-submit"><i class="fa-solid fa-upload"></i> Thêm tài liệu</button>
     </div>
     <div class="grid">${documents.length ? documents.map(d=>`
       <div class="card">
@@ -376,20 +390,29 @@ async function renderDocuments(){
     const title = document.getElementById('df-title').value.trim();
     const fileInput = document.getElementById('df-file');
     const file = fileInput.files[0];
-    if (!title || !file) return toast('Vui lòng nhập tiêu đề và chọn file.');
+    const link = document.getElementById('df-link').value.trim();
+    if (!title || (!file && !link)) return toast('Vui lòng nhập tiêu đề, và chọn file hoặc dán link.');
     const progWrap = document.getElementById('df-progress');
     const progBar = document.getElementById('df-progress-bar');
-    progWrap.classList.remove('hidden');
     try {
-      const path = `lms/classes/${ACTIVE_CLASS.id}/documents/${Date.now()}_${safeFileName(file.name)}`;
-      const fileURL = await uploadFile(file, path, (pct)=>{ progBar.style.width = pct+'%'; });
-      const ext = (file.name.split('.').pop()||'').toLowerCase();
+      let fileURL, fileType, fileSize;
+      if (file) {
+        progWrap.classList.remove('hidden');
+        const path = `lms/classes/${ACTIVE_CLASS.id}/documents/${Date.now()}_${safeFileName(file.name)}`;
+        fileURL = await uploadFile(file, path, (pct)=>{ progBar.style.width = pct+'%'; });
+        fileType = (file.name.split('.').pop()||'').toLowerCase();
+        fileSize = file.size;
+      } else {
+        fileURL = link;
+        fileType = labelForLink(link);
+        fileSize = 0;
+      }
       await api(`/classes/${ACTIVE_CLASS.id}/documents`, {method:'POST', body:{
         title, description:document.getElementById('df-desc').value, fileURL,
-        fileType: ext, fileSize: file.size,
+        fileType, fileSize,
       }});
-      toast('Đã tải lên tài liệu.'); renderDocuments();
-    } catch(e){ toast('Lỗi tải lên: ' + e.message); progWrap.classList.add('hidden'); }
+      toast('Đã thêm tài liệu.'); renderDocuments();
+    } catch(e){ toast('Lỗi: ' + e.message); progWrap.classList.add('hidden'); }
   };
   el.querySelectorAll('.del-doc').forEach(b=>b.onclick=async()=>{ await api('/documents/'+b.dataset.id,{method:'DELETE'}); renderDocuments(); });
 }
@@ -417,6 +440,9 @@ function showLessonModal(){
     <div class="field"><label>Tài liệu đính kèm (PDF/Word/PPT/hình ảnh, có thể chọn nhiều)</label>
       <input type="file" id="ls-files" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,image/*">
     </div>
+    <div class="field"><label>Hoặc dán link (Google Docs/Sheets/Slides/Drive — mỗi dòng 1 link)</label>
+      <textarea id="ls-links" rows="2" placeholder="https://docs.google.com/document/d/..."></textarea>
+    </div>
     <div id="ls-progress" class="usage-bar-wrap hidden" style="margin-bottom:10px;"><div class="usage-bar" id="ls-progress-bar" style="width:0%"></div></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
@@ -427,6 +453,7 @@ function showLessonModal(){
     const title = document.getElementById('ls-title').value.trim();
     if (!title) return toast('Vui lòng nhập tiêu đề.');
     const files = Array.from(document.getElementById('ls-files').files || []);
+    const links = parseLinkLines(document.getElementById('ls-links').value);
     const attachments = [];
     if (files.length) {
       const progWrap = document.getElementById('ls-progress');
@@ -441,6 +468,7 @@ function showLessonModal(){
         } catch(e){ toast('Lỗi tải file ' + file.name + ': ' + e.message); }
       }
     }
+    links.forEach(url => attachments.push({name: labelForLink(url), url, type: 'link'}));
     await api(`/classes/${ACTIVE_CLASS.id}/lessons`, {method:'POST', body:{
       title, chapter:document.getElementById('ls-chapter').value, content:document.getElementById('ls-content').value,
       attachments,
@@ -473,6 +501,13 @@ function showAssignmentModal(){
     <div class="field"><label>Loại bài tập</label><select id="af-type"><option value="text">Nhập trực tiếp</option><option value="file">Nộp file</option><option value="mixed">Cả hai</option></select></div>
     <div class="field"><label>Hạn nộp</label><input id="af-deadline" type="datetime-local"></div>
     <div class="field"><label>Điểm tối đa</label><input id="af-max" type="number" value="10"></div>
+    <div class="field"><label>Tài liệu đề bài đính kèm (không bắt buộc)</label>
+      <input type="file" id="af-files" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,image/*">
+    </div>
+    <div class="field"><label>Hoặc dán link (Google Docs/Sheets/Slides/Drive — mỗi dòng 1 link)</label>
+      <textarea id="af-links" rows="2" placeholder="https://docs.google.com/document/d/..."></textarea>
+    </div>
+    <div id="af-progress" class="usage-bar-wrap hidden" style="margin-bottom:10px;"><div class="usage-bar" id="af-progress-bar" style="width:0%"></div></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
       <button class="btn btn-primary" id="af-submit">Tạo</button>
@@ -482,9 +517,26 @@ function showAssignmentModal(){
     const title = document.getElementById('af-title').value.trim();
     if (!title) return toast('Vui lòng nhập tiêu đề.');
     const deadline = new Date(document.getElementById('af-deadline').value || Date.now()).getTime()/1000;
+    const files = Array.from(document.getElementById('af-files').files || []);
+    const links = parseLinkLines(document.getElementById('af-links').value);
+    const attachments = [];
+    if (files.length) {
+      const progWrap = document.getElementById('af-progress');
+      const progBar = document.getElementById('af-progress-bar');
+      progWrap.classList.remove('hidden');
+      for (const file of files) {
+        try {
+          const path = `lms/classes/${ACTIVE_CLASS.id}/assignments/${Date.now()}_${safeFileName(file.name)}`;
+          const url = await uploadFile(file, path, (pct)=>{ progBar.style.width = pct+'%'; });
+          const ext = (file.name.split('.').pop()||'').toLowerCase();
+          attachments.push({name: file.name, url, type: ext});
+        } catch(e){ toast('Lỗi tải file ' + file.name + ': ' + e.message); }
+      }
+    }
+    links.forEach(url => attachments.push({name: labelForLink(url), url, type: 'link'}));
     await api(`/classes/${ACTIVE_CLASS.id}/assignments`, {method:'POST', body:{
       title, description:document.getElementById('af-desc').value, type:document.getElementById('af-type').value,
-      deadline, maxScore: parseFloat(document.getElementById('af-max').value)||10,
+      deadline, maxScore: parseFloat(document.getElementById('af-max').value)||10, attachments,
     }});
     closeModal(); toast('Đã tạo bài tập.'); renderAssignments();
   };
