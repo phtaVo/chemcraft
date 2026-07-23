@@ -454,13 +454,15 @@ def delete_document(document_id: str) -> bool:
 # ══════════════════════════════════════════════════════════════════════
 
 def create_assignment(class_id: str, teacher_id: str, title: str, description: str,
-                       a_type: str, deadline: float, max_score: float, lesson_id: str = None) -> str:
+                       a_type: str, deadline: float, max_score: float, lesson_id: str = None,
+                       attachments: list = None) -> str:
     ts = time.time()
     ref = fsdb.collection('assignments').document()
     ref.set({
         'classId': class_id, 'teacherId': teacher_id, 'lessonId': lesson_id,
         'title': title, 'description': description, 'type': a_type,
-        'deadline': deadline, 'maxScore': max_score, 'createdAt': ts, 'updatedAt': ts,
+        'deadline': deadline, 'maxScore': max_score, 'attachments': attachments or [],
+        'createdAt': ts, 'updatedAt': ts,
     })
     return ref.id
 
