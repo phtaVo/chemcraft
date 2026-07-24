@@ -4,82 +4,176 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Teacher Dashboard - ChemCraft</title>
-<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Text:wght@400;500;700&family=Google+Sans:wght@400;500;700&family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
+/* ════════════════════════════════════════════════════════════
+   CHEMCRAFT for TEACHER — Google Workspace inspired design system
+   (đồng bộ token với admin.html)
+   ════════════════════════════════════════════════════════════ */
 :root{
-  --navy:#0B1220; --indigo:#4F6BFF; --cyan:#06B6D4; --purple:#8B5CF6;
-  --gold:#F59E0B; --green:#10B981; --red:#EF4444;
-  --sky:#F6F8FC; --sky2:#EEF2F9; --white:#FFFFFF;
-  --ink:#101725; --text:#1E2433; --text-m:#5B6477; --text-l:#8C95A8;
-  --border:#E4E9F1; --sh-2: 0 4px 14px rgba(16,23,37,0.08); --sh-3: 0 12px 28px rgba(16,23,37,0.12);
-  --r-md:12px; --r-lg:18px; --r-pill:999px;
+  --g-blue:#1a73e8;   --g-blue-hover:#1765cc;   --g-blue-container:#e8f0fe;   --g-blue-on:#174ea6;
+  --g-red:#d93025;    --g-red-hover:#c5221f;    --g-red-container:#fce8e6;    --g-red-on:#a50e0e;
+  --g-yellow:#f9ab00; --g-yellow-hover:#e37400; --g-yellow-container:#feefc3; --g-yellow-on:#e37400;
+  --g-green:#1e8e3e;  --g-green-hover:#188038;  --g-green-container:#e6f4ea;  --g-green-on:#0d652d;
+  --g-purple:#8430ce; --g-purple-container:#f3e8fd; --g-purple-on:#6c2eb5;
+  --g-teal:#0b7f8e;   --g-teal-container:#e4f7f9;
+  --g-pink:#d01884;   --g-pink-container:#fce8f3;
+  --g-orange:#e37400; --g-orange-container:#fef3e8;
+
+  --navy:#202124; --navy-2:#292a2d;
+  --indigo:var(--g-blue); --indigo-d:var(--g-blue-on);
+  --cyan:var(--g-teal); --purple:var(--g-purple);
+  --gold:var(--g-yellow-hover); --gold-d:var(--g-yellow-on);
+  --green:var(--g-green); --red:var(--g-red);
+
+  --white:#ffffff;
+  --n-0:#ffffff; --n-5:#fafafa; --n-10:#f8f9fa; --n-20:#f1f3f4; --n-30:#e8eaed;
+  --n-40:#dadce0; --n-50:#bdc1c6; --n-60:#9aa0a6; --n-70:#80868b; --n-80:#5f6368;
+  --n-90:#3c4043; --n-100:#202124;
+
+  --sky:var(--n-10); --sky2:var(--n-20);
+  --ink:var(--n-100); --text:var(--n-100); --text-m:var(--n-80); --text-l:var(--n-70);
+  --border:var(--n-40); --border-soft:var(--n-30);
+
+  --sh-1:0 1px 2px 0 rgba(60,64,67,.06), 0 1px 2px 0 rgba(60,64,67,.04);
+  --sh-2:0 1px 3px 0 rgba(60,64,67,.10), 0 4px 8px 0 rgba(60,64,67,.06);
+  --sh-3:0 4px 8px 0 rgba(60,64,67,.10), 0 8px 24px 0 rgba(60,64,67,.08);
+  --sh-4:0 8px 20px 0 rgba(60,64,67,.14), 0 12px 32px 0 rgba(60,64,67,.10);
+
+  --r-xs:4px; --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:20px; --r-2xl:28px; --r-pill:9999px;
+
+  --font-body:'Google Sans Text','Google Sans','Be Vietnam Pro',Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-display:'Google Sans','Google Sans Text','Be Vietnam Pro',Roboto,sans-serif;
+
+  --bg:var(--n-10); --bg-2:var(--white);
+  --surface:var(--white); --surface-2:var(--n-20); --surface-3:var(--n-30);
+  --line:var(--border); --line-soft:var(--border-soft);
+  --fg:var(--n-100); --fg-soft:var(--n-80); --fg-mute:var(--n-70);
+  --sidebar-bg:var(--white); --sidebar-fg:var(--n-90); --sidebar-active:var(--g-blue-container);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--text);min-height:100vh;}
+html,body{height:100%;}
+body{font-family:var(--font-body);background:var(--bg);color:var(--fg);font-size:14px;line-height:1.5;letter-spacing:.01em;-webkit-font-smoothing:antialiased;}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:var(--n-40);border-radius:99px;border:2px solid transparent;background-clip:padding-box;}
+::-webkit-scrollbar-track{background:transparent;}
+a{color:var(--g-blue);text-decoration:none;}
+a:hover{text-decoration:underline;}
+button{font-family:inherit;}
+input,select,textarea{font-family:inherit;}
+
 .shell{display:flex;min-height:100vh;}
-.sidebar{width:250px;flex-shrink:0;background:var(--navy);color:#fff;padding:22px 14px;position:sticky;top:0;height:100vh;overflow-y:auto;}
-.sb-logo{font-weight:900;font-size:1.15rem;padding:0 10px 20px;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;}
-.sb-logo i{color:var(--cyan);}
-.sb-item{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:var(--r-md);color:rgba(255,255,255,0.72);font-weight:600;font-size:0.92rem;cursor:pointer;transition:.15s;margin-bottom:2px;}
-.sb-item:hover{background:rgba(255,255,255,0.06);color:#fff;}
-.sb-item.active{background:linear-gradient(135deg,var(--indigo),var(--cyan));color:#fff;}
-.main{flex:1;padding:28px 34px;max-width:1200px;}
-.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
-.page-title{font-weight:800;font-size:1.5rem;color:var(--ink);letter-spacing:-0.02em;}
-.card{background:#fff;border-radius:var(--r-lg);box-shadow:var(--sh-2);border:1px solid var(--border);padding:20px;margin-bottom:18px;}
+
+/* ── Sidebar (đồng bộ .a-sidebar admin.html, giữ nguyên class .sb-item để JS hoạt động) ── */
+.sidebar{width:256px;flex-shrink:0;background:var(--sidebar-bg);color:var(--sidebar-fg);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--line-soft);}
+.sb-logo{display:flex;align-items:center;gap:12px;padding:14px 20px;height:64px;flex-shrink:0;border-bottom:1px solid var(--line-soft);font-family:var(--font-display);font-weight:500;font-size:1.0625rem;color:var(--fg);letter-spacing:-.005em;}
+.sb-logo-icon{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#4285f4,#1a73e8);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sb-logo-icon i{color:#fff;font-size:.9rem;}
+.sb-nav{flex:1;padding:12px 0 16px;}
+.sb-item{display:flex;align-items:center;gap:16px;height:36px;padding:0 24px;margin:0 12px 4px 0;border-radius:0 18px 18px 0;font-size:.875rem;font-weight:500;color:var(--sidebar-fg);cursor:pointer;transition:background .12s,color .12s;white-space:nowrap;}
+.sb-item i{width:20px;text-align:center;font-size:1rem;flex-shrink:0;color:var(--fg-mute);}
+.sb-item:hover{background:var(--surface-2);color:var(--fg);}
+.sb-item:hover i{color:var(--fg-soft);}
+.sb-item.active{background:var(--sidebar-active);color:var(--g-blue-on);font-weight:700;}
+.sb-item.active i{color:var(--g-blue-on);}
+.sb-foot{padding:14px 20px 18px;border-top:1px solid var(--line-soft);flex-shrink:0;}
+#sb-user{font-size:.8125rem;color:var(--fg-soft);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+.main{flex:1;min-width:0;}
+.topbar{position:sticky;top:0;z-index:150;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 32px;height:64px;background:var(--surface);border-bottom:1px solid var(--line-soft);}
+.page-title{font-family:var(--font-display);font-size:1.375rem;font-weight:400;color:var(--fg);letter-spacing:-.005em;}
+#tab-content{padding:28px 32px 60px;max-width:1360px;margin:0 auto;animation:fadeUp .25s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+/* ── Cards / panels ── */
+.card{background:var(--surface);border-radius:var(--r-md);border:1px solid var(--line-soft);padding:20px 22px;margin-bottom:16px;}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
-.btn{font-family:inherit;font-weight:700;font-size:0.88rem;padding:10px 18px;border:none;border-radius:var(--r-pill);cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px;}
-.btn-primary{background:linear-gradient(135deg,var(--indigo),var(--cyan));color:#fff;}
-.btn-primary:hover{filter:brightness(1.08);}
-.btn-ghost{background:var(--sky2);color:var(--ink);}
-.btn-danger{background:rgba(239,68,68,0.12);color:var(--red);}
-.btn-sm{padding:6px 12px;font-size:0.78rem;}
-input,textarea,select{font-family:inherit;width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9rem;background:#fff;color:var(--text);}
-input:focus,textarea:focus,select:focus{outline:none;border-color:var(--indigo);}
-label{font-size:0.8rem;font-weight:700;color:var(--text-m);display:block;margin-bottom:5px;}
-.field{margin-bottom:12px;}
-.class-card{border:1px solid var(--border);border-radius:var(--r-md);padding:16px;background:#fff;transition:.15s;cursor:pointer;}
-.class-card:hover{box-shadow:var(--sh-3);transform:translateY(-2px);}
-.class-name{font-weight:800;font-size:1rem;margin-bottom:4px;}
-.class-meta{font-size:0.8rem;color:var(--text-m);margin-bottom:8px;}
-.pill{display:inline-block;padding:3px 10px;border-radius:var(--r-pill);font-size:0.72rem;font-weight:700;}
-.pill-cyan{background:#E3F8FB;color:#0891A8;}
-.pill-green{background:#E6F8F1;color:#0D9166;}
-.pill-gold{background:#FEF3DD;color:#B45309;}
-table{width:100%;border-collapse:collapse;font-size:0.86rem;}
-th{text-align:left;color:var(--text-m);font-weight:700;padding:9px 10px;border-bottom:2px solid var(--border);}
-td{padding:10px;border-bottom:1px solid var(--border);}
-.empty{text-align:center;padding:40px 20px;color:var(--text-l);}
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(11,18,32,0.55);z-index:999;align-items:center;justify-content:center;}
+
+/* ── Buttons ── */
+.btn{font-family:inherit;font-weight:500;font-size:.8125rem;padding:9px 18px;border:none;border-radius:var(--r-sm);cursor:pointer;transition:background .12s,box-shadow .12s,color .12s;display:inline-flex;align-items:center;gap:7px;letter-spacing:.01em;}
+.btn-primary{background:var(--g-blue);color:#fff;}
+.btn-primary:hover{background:var(--g-blue-hover);box-shadow:var(--sh-1);}
+.btn-ghost{background:var(--surface-2);color:var(--fg);}
+.btn-ghost:hover{background:var(--surface-3);}
+.btn-danger{background:var(--g-red-container);color:var(--g-red-on);}
+.btn-danger:hover{background:var(--g-red);color:#fff;}
+.btn-sm{padding:6px 13px;font-size:.75rem;}
+
+/* ── Forms ── */
+input,textarea,select{font-family:inherit;width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:.875rem;background:var(--surface);color:var(--fg);outline:none;transition:border-color .15s,box-shadow .15s;}
+input:hover,textarea:hover,select:hover{border-color:var(--n-60);}
+input:focus,textarea:focus,select:focus{border-color:var(--g-blue);box-shadow:0 0 0 3px rgba(26,115,232,.15);}
+label{font-size:.75rem;font-weight:500;color:var(--fg-soft);display:block;margin-bottom:6px;}
+.field{margin-bottom:14px;}
+
+/* ── Class cards ── */
+.class-card{border:1px solid var(--line-soft);border-radius:var(--r-md);padding:16px;background:var(--surface);transition:border-color .15s,box-shadow .15s;cursor:pointer;}
+.class-card:hover{border-color:var(--line);box-shadow:var(--sh-2);}
+.class-name{font-family:var(--font-display);font-weight:500;font-size:1rem;margin-bottom:4px;color:var(--fg);}
+.class-meta{font-size:.8125rem;color:var(--fg-soft);margin-bottom:8px;}
+
+/* ── Badges / pills ── */
+.pill{display:inline-block;padding:3px 10px;border-radius:var(--r-pill);font-size:.6875rem;font-weight:500;letter-spacing:.02em;}
+.pill-cyan{background:var(--g-teal-container);color:var(--g-teal);}
+.pill-green{background:var(--g-green-container);color:var(--g-green-on);}
+.pill-gold{background:var(--g-yellow-container);color:var(--g-yellow-on);}
+
+/* ── Table ── */
+table{width:100%;border-collapse:collapse;font-size:.875rem;}
+th{text-align:left;font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-mute);padding:12px 14px;border-bottom:1px solid var(--line-soft);}
+td{padding:12px 14px;border-bottom:1px solid var(--line-soft);color:var(--fg);}
+tbody tr:hover{background:var(--surface-2);}
+.empty{text-align:center;padding:44px 20px;color:var(--fg-mute);font-size:.9rem;}
+
+/* ── Modal / toast ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(32,33,36,.5);z-index:999;align-items:center;justify-content:center;}
 .modal-bg.show{display:flex;}
-.modal{background:#fff;border-radius:var(--r-lg);padding:24px;width:min(480px,92vw);max-height:88vh;overflow-y:auto;}
-.modal h3{margin-bottom:16px;font-size:1.1rem;}
-.toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:#fff;padding:13px 20px;border-radius:12px;font-size:0.88rem;font-weight:600;z-index:1000;opacity:0;transform:translateY(10px);transition:.25s;}
+.modal{background:var(--surface);border-radius:var(--r-lg);padding:24px;width:min(480px,92vw);max-height:88vh;overflow-y:auto;box-shadow:var(--sh-4);}
+.modal h3{font-family:var(--font-display);font-weight:500;margin-bottom:16px;font-size:1.125rem;color:var(--fg);}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--n-100);color:#fff;padding:13px 20px;border-radius:var(--r-sm);font-size:.875rem;font-weight:500;z-index:1000;opacity:0;transform:translateY(10px);transition:.25s;box-shadow:var(--sh-3);}
 .toast.show{opacity:1;transform:translateY(0);}
 .hidden{display:none !important;}
-.usage-bar-wrap{background:var(--sky2);border-radius:var(--r-pill);height:8px;overflow:hidden;margin-top:4px;}
-.usage-bar{height:100%;background:linear-gradient(90deg,var(--cyan),var(--indigo));}
+
+/* ── Class selector (topbar) ── */
+#class-selector-wrap select{min-width:220px;height:38px;padding:0 14px;border-radius:var(--r-pill);background:var(--surface-2);border:1px solid transparent;font-weight:500;font-size:.8125rem;}
+#class-selector-wrap select:hover{background:var(--surface-3);}
+#class-selector-wrap select:focus{background:var(--surface);border-color:var(--g-blue);box-shadow:none;}
+
+/* ── Usage bar ── */
+.usage-bar-wrap{background:var(--surface-2);border-radius:var(--r-pill);height:8px;overflow:hidden;margin-top:6px;}
+.usage-bar{height:100%;background:var(--g-blue);}
+
+@media (max-width:900px){
+  .sidebar{position:fixed;top:0;bottom:0;left:0;transform:translateX(-100%);z-index:200;box-shadow:var(--sh-4);transition:transform .2s ease;}
+  .sidebar.open{transform:translateX(0);}
+  #tab-content{padding:20px 16px 60px;}
+  .topbar{padding:0 14px;}
+}
 </style>
 </head>
 <body>
 
 <div class="shell">
-  <div class="sidebar">
-    <div class="sb-logo"><i class="fa-solid fa-flask"></i> ChemCraft <span style="color:var(--cyan)">·</span> Teacher</div>
-    <div class="sb-item active" data-tab="overview"><i class="fa-solid fa-house"></i> Tổng quan</div>
-    <div class="sb-item" data-tab="classes"><i class="fa-solid fa-chalkboard"></i> Lớp học</div>
-    <div class="sb-item" data-tab="livestreams"><i class="fa-solid fa-video"></i> Livestream</div>
-    <div class="sb-item" data-tab="documents"><i class="fa-solid fa-folder-open"></i> Tài liệu</div>
-    <div class="sb-item" data-tab="lessons"><i class="fa-solid fa-book"></i> Bài học</div>
-    <div class="sb-item" data-tab="assignments"><i class="fa-solid fa-pen"></i> Bài tập</div>
-    <div class="sb-item" data-tab="tests"><i class="fa-solid fa-file-circle-check"></i> Bài kiểm tra</div>
-    <div class="sb-item" data-tab="submissions"><i class="fa-solid fa-inbox"></i> Bài nộp của học sinh</div>
-    <div class="sb-item" data-tab="students"><i class="fa-solid fa-users"></i> Học sinh</div>
-    <div class="sb-item" data-tab="messages"><i class="fa-solid fa-comments"></i> Tin nhắn</div>
-    <div class="sb-item" data-tab="settings"><i class="fa-solid fa-gear"></i> Cài đặt</div>
-    <div style="margin-top:20px;padding:12px;border-top:1px solid rgba(255,255,255,0.1);">
-      <div id="sb-user" style="font-size:0.82rem;color:rgba(255,255,255,0.6);"></div>
+  <div class="sidebar" id="sidebar">
+    <div class="sb-logo"><div class="sb-logo-icon"><i class="fa-solid fa-flask-vial"></i></div> ChemCraft <span style="color:var(--g-blue);font-weight:400;">· Teacher</span></div>
+    <nav class="sb-nav">
+      <div class="sb-item active" data-tab="overview"><i class="fa-solid fa-gauge-high"></i> Tổng quan</div>
+      <div class="sb-item" data-tab="classes"><i class="fa-solid fa-chalkboard"></i> Lớp học</div>
+      <div class="sb-item" data-tab="livestreams"><i class="fa-solid fa-video"></i> Livestream</div>
+      <div class="sb-item" data-tab="documents"><i class="fa-solid fa-folder-open"></i> Tài liệu</div>
+      <div class="sb-item" data-tab="lessons"><i class="fa-solid fa-book"></i> Bài học</div>
+      <div class="sb-item" data-tab="assignments"><i class="fa-solid fa-pen"></i> Bài tập</div>
+      <div class="sb-item" data-tab="tests"><i class="fa-solid fa-file-circle-check"></i> Bài kiểm tra</div>
+      <div class="sb-item" data-tab="submissions"><i class="fa-solid fa-inbox"></i> Bài nộp của học sinh</div>
+      <div class="sb-item" data-tab="students"><i class="fa-solid fa-users"></i> Học sinh</div>
+      <div class="sb-item" data-tab="messages"><i class="fa-solid fa-comments"></i> Tin nhắn</div>
+      <div class="sb-item" data-tab="settings"><i class="fa-solid fa-gear"></i> Cài đặt</div>
+    </nav>
+    <div class="sb-foot">
+      <div id="sb-user">—</div>
     </div>
   </div>
 
@@ -87,7 +181,7 @@ td{padding:10px;border-bottom:1px solid var(--border);}
     <div class="topbar">
       <div class="page-title" id="page-title">Tổng quan</div>
       <div id="class-selector-wrap" class="hidden">
-        <select id="class-selector" style="min-width:220px;"></select>
+        <select id="class-selector"></select>
       </div>
     </div>
     <div id="tab-content"></div>
