@@ -1071,8 +1071,10 @@ def add_chat_message(livestream_id: str, user_id: str, name: str, message: str) 
 
 
 def list_chat_messages(livestream_id: str, limit: int = 200) -> list[dict]:
+    # Cùng lỗi với list_class_chat_messages: limit_to_last() không dùng
+    # được với .stream(), phải dùng .get().
     docs = (fsdb.collection('livestreams').document(livestream_id)
-            .collection('chat_messages').order_by('ts').limit_to_last(limit).stream())
+            .collection('chat_messages').order_by('ts').limit_to_last(limit).get())
     items = []
     for d in docs:
         it = d.to_dict()
@@ -1135,8 +1137,11 @@ def send_class_chat_message(class_id: str, student_id: str, sender_id: str,
 
 def list_class_chat_messages(class_id: str, student_id: str, limit: int = 300) -> list[dict]:
     tid = _chat_thread_id(class_id, student_id)
+    # LƯU Ý: query có limit_to_last() không được phép dùng .stream(),
+    # thư viện google-cloud-firestore bắt buộc phải dùng .get() —
+    # đây chính là nguyên nhân gây lỗi 500 (ValueError) trước đó.
     docs = (fsdb.collection(_CHAT_THREADS_COL).document(tid)
-            .collection('messages').order_by('ts').limit_to_last(limit).stream())
+            .collection('messages').order_by('ts').limit_to_last(limit).get())
     items = []
     for d in docs:
         it = d.to_dict()
