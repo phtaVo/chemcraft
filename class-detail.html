@@ -31,7 +31,8 @@ body{font-family:'Be Vietnam Pro',sans-serif;background:var(--sky);color:var(--t
 .pill-cyan{background:#E3F8FB;color:#0891A8;}
 .pill-green{background:#E6F8F1;color:#0D9166;}
 .empty{text-align:center;padding:34px;color:var(--text-l);}
-textarea,input{font-family:inherit;width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9rem;margin-bottom:10px;}
+textarea,input:not([type="radio"]):not([type="checkbox"]){font-family:inherit;width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:0.9rem;margin-bottom:10px;}
+input[type="radio"],input[type="checkbox"]{width:16px;height:16px;flex:none;margin:0;accent-color:var(--indigo);}
 .chat-box{display:flex;flex-direction:column;height:280px;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;}
 .chat-msgs{flex:1;overflow-y:auto;padding:10px;font-size:0.85rem;}
 .chat-msg{margin-bottom:6px;}
