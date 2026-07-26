@@ -916,10 +916,15 @@ def list_test_attempts(test_id: str = None, student_id: str = None) -> list[dict
 
 # ── Parser đề dạng text (kiểu Azota) ────────────────────────────────────
 _Q_HEADER_RE = re.compile(r'(?im)^[ \t]*C[âa]u[ \t]*(\d+)[\.:]?[ \t]*(.*)$')
-_MC_OPT_RE = re.compile(r'^[ \t]*(\*?)([A-D])[\.\)][ \t]*(.*)$')
-_TF_OPT_RE = re.compile(r'^[ \t]*(\*?)([a-d])[\.\)][ \t]*(.*)$')
+_MC_OPT_RE = re.compile(r'^[ \t]*(\*)?[ \t]*([A-D])[\.\)][ \t]*(.*)$')
+_TF_OPT_RE = re.compile(r'^[ \t]*(\*)?[ \t]*([a-d])[\.\)][ \t]*(.*)$')
 _ANSKEY_HEADER_RE = re.compile(r'(?im)^[ \t]*answer[_ ]?key[ \t]*:?[ \t]*$')
 _ANSKEY_ENTRY_RE = re.compile(r'(\d+)[ \t]*[\.\):][ \t]*([^;\n]+)')
+# Dòng tiêu đề phần/nhóm (VD "PHẦN III. Trả lời ngắn", "Nhóm 1.", "Part I.") có
+# thể xuất hiện xen giữa các câu hỏi trong đề dán — KHÔNG phải nội dung câu
+# hỏi, nên phải bỏ qua khi quét thân câu, nếu không dòng này sẽ bị nối nhầm
+# vào cuối câu hỏi đứng ngay trước nó (bug: câu hỏi hiển thị 2 dòng lộn xộn).
+_SECTION_HEADER_RE = re.compile(r'(?im)^[ \t]*(PH[AẦ]N|NH[OÓ]M|PART)\b.*$')
 
 
 def parse_azota_text(raw_text: str) -> list[dict]:
@@ -930,7 +935,7 @@ def parse_azota_text(raw_text: str) -> list[dict]:
       - Đúng/Sai nhiều ý: các dòng 'a) ...'/'b) ...'/'c) ...'/'d) ...', '*'
         trước chữ đánh dấu ý ĐÚNG.
       - Trả lời ngắn: câu không có lựa chọn nhưng có mặt trong khối
-        'answer_key' ở cuối đề (nhiều đáp án tương đương cách nhau bằng '/').
+        'answer_key' ở cuối đề (nhiều đáp án tương đương cách nhau bằng '|').
       - Còn lại (không lựa chọn, không có trong answer_key) -> tự luận.
     Trả về danh sách câu hỏi ở dạng preview để giáo viên xem/sửa trước khi lưu
     — KHÔNG tự lưu vào Firestore."""
@@ -943,7 +948,11 @@ def parse_azota_text(raw_text: str) -> list[dict]:
         text = text[:m.start()]
         for km in _ANSKEY_ENTRY_RE.finditer(key_blob):
             qnum, val = int(km.group(1)), km.group(2).strip()
-            vals = [v.strip() for v in val.split('/') if v.strip()]
+            # Dùng '|' để tách nhiều đáp án tương đương (khớp quy ước Azota
+            # thật) — KHÔNG dùng '/' vì đáp án hóa học thường tự chứa dấu '/'
+            # (VD đơn vị "kJ/mol", "g/mol"), dùng '/' làm dấu tách sẽ tách
+            # nhầm 1 đáp án hợp lệ thành 2 đáp án sai (bug đã gặp).
+            vals = [v.strip() for v in val.split('|') if v.strip()]
             key_map[qnum] = vals if len(vals) > 1 else (vals[0] if vals else '')
 
     headers = list(_Q_HEADER_RE.finditer(text))
@@ -958,7 +967,7 @@ def parse_azota_text(raw_text: str) -> list[dict]:
         idx = 0
         while idx < len(lines):
             line = lines[idx].strip()
-            if not line:
+            if not line or _SECTION_HEADER_RE.match(line):
                 idx += 1
                 continue
             if _MC_OPT_RE.match(line) or _TF_OPT_RE.match(line):
@@ -970,7 +979,7 @@ def parse_azota_text(raw_text: str) -> list[dict]:
         mc_opts, tf_opts = [], []
         while idx < len(lines):
             line = lines[idx].strip()
-            if not line:
+            if not line or _SECTION_HEADER_RE.match(line):
                 idx += 1
                 continue
             mc = _MC_OPT_RE.match(line)
