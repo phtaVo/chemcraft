@@ -103,7 +103,8 @@ input,select,textarea{font-family:inherit;}
 .btn-sm{padding:6px 13px;font-size:.75rem;}
 
 /* ── Forms ── */
-input,textarea,select{font-family:inherit;width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:.875rem;background:var(--surface);color:var(--fg);outline:none;transition:border-color .15s,box-shadow .15s;}
+input:not([type="radio"]):not([type="checkbox"]),textarea,select{font-family:inherit;width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:.875rem;background:var(--surface);color:var(--fg);outline:none;transition:border-color .15s,box-shadow .15s;}
+input[type="radio"],input[type="checkbox"]{width:16px;height:16px;flex:none;margin:0;accent-color:var(--g-blue);}
 input:hover,textarea:hover,select:hover{border-color:var(--n-60);}
 input:focus,textarea:focus,select:focus{border-color:var(--g-blue);box-shadow:0 0 0 3px rgba(26,115,232,.15);}
 label{font-size:.75rem;font-weight:500;color:var(--fg-soft);display:block;margin-bottom:6px;}
@@ -780,7 +781,7 @@ function renderManualPanel(){
     } else if (sel.value === 'true_false') {
       extra.innerHTML = `<div class="field"><select id="mq-correct"><option value="true">Đúng</option><option value="false">Sai</option></select></div>`;
     } else if (sel.value === 'short_answer') {
-      extra.innerHTML = `<div class="field"><input id="mq-correct" placeholder="Đáp án đúng (nhiều đáp án tương đương cách nhau bằng /)"></div>`;
+      extra.innerHTML = `<div class="field"><input id="mq-correct" placeholder="Đáp án đúng (nhiều đáp án tương đương cách nhau bằng |)"></div>`;
     } else {
       extra.innerHTML = `<div class="class-meta">Tự luận — giáo viên chấm điểm thủ công sau khi học sinh nộp.</div>`;
     }
@@ -799,7 +800,7 @@ function renderManualPanel(){
       q.correctAnswer = document.getElementById('mq-correct').value === 'true';
     } else if (type === 'short_answer') {
       const raw = document.getElementById('mq-correct').value.trim();
-      const parts = raw.split('/').map(s=>s.trim()).filter(Boolean);
+      const parts = raw.split('|').map(s=>s.trim()).filter(Boolean);
       q.correctAnswer = parts.length > 1 ? parts : raw;
     }
     TEST_QUESTIONS.push(q);
@@ -813,11 +814,12 @@ function renderPastePanel(){
   panel.innerHTML = `
     <div class="card">
       <div class="class-meta" style="margin-bottom:8px;">
-        Cú pháp: mỗi câu bắt đầu bằng <b>"Câu N."</b>. Trắc nghiệm dùng <b>A./B./C./D.</b> (đặt <b>*</b> trước chữ cái đáp án đúng).
+        Cú pháp: mỗi câu bắt đầu bằng <b>"Câu N."</b>. Trắc nghiệm dùng <b>A./B./C./D.</b> (đặt <b>*</b> trước chữ cái đáp án đúng, ví dụ <code>*B.</code>).
         Đúng/Sai nhiều ý dùng <b>a)/b)/c)/d)</b> (đặt <b>*</b> trước ý ĐÚNG). Trả lời ngắn: không có lựa chọn, khai đáp án ở khối
-        <b>answer_key</b> cuối đề (VD: "1. 13,5"). Câu không có lựa chọn và không có trong answer_key → tự động là tự luận.
+        <b>answer_key</b> cuối đề (VD: "1. 13,5"; nếu có nhiều đáp án tương đương, cách nhau bằng <b>|</b>, ví dụ "2. kJ/mol|kJ").
+        Câu không có lựa chọn và không có trong answer_key → tự động là tự luận.
       </div>
-      <textarea id="tf-paste-text" rows="10" placeholder="Câu 1. ...&#10;A. ...&#10;*B. ...&#10;C. ...&#10;D. ...&#10;&#10;answer_key&#10;1. ..."></textarea>
+      <textarea id="tf-paste-text" rows="10" placeholder="Câu 1. ...&#10;A. ...&#10;*B. ...&#10;C. ...&#10;D. ...&#10;&#10;answer_key&#10;1. 13,5"></textarea>
       <button class="btn btn-primary btn-sm" id="tf-parse-btn" style="margin-top:8px;">Phân tích đề</button>
     </div>
   `;
