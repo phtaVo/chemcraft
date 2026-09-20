@@ -16,7 +16,9 @@ import quiz_bank
 import lab_bank
 import firestore_db as fsdb
 import lms_db
+import lms_auth
 import lms_routes
+import billing_routes
 
 load_dotenv()
 
@@ -41,6 +43,10 @@ try:
     # phân quyền student/teacher/admin, freemium usage limits.
     lms_routes.register(app)
     print('✅ LMS routes đã đăng ký (/api/lms/*).')
+
+    # Thanh toán: bảng giá, đơn hàng VietQR, mã kích hoạt gói trường học.
+    billing_routes.register(app)
+    print('✅ Billing routes đã đăng ký (/api/billing/*).')
 
     try:
         n = quiz_bank.seed_default_questions()
@@ -285,13 +291,18 @@ def chat():
                     'error': f"Bạn đã sử dụng hết {usage_info['limit']} lượt AI miễn phí hôm nay. "
                              f"Vui lòng quay lại vào ngày mai hoặc nâng cấp gói Premium.",
                     'limitReached': True,
+                    # Frontend dùng field này để hiện nút 'Nâng cấp' ngay trong
+                    # thông báo hết lượt — trước đây báo 'hãy nâng cấp' mà không
+                    # có bất kỳ chỗ nào để bấm, nên gần như không ai chuyển đổi.
+                    'upgradeUrl': '/upgrade.html',
                 }), 429
         except Exception as e:
             app.logger.warning('Bỏ qua kiểm tra usage AI do lỗi Firestore: %s', e)
     else:
         anon_err = _check_anon_ai_limit(ip)
         if anon_err:
-            return jsonify({'error': anon_err, 'limitReached': True}), 429
+            return jsonify({'error': anon_err, 'limitReached': True,
+                            'upgradeUrl': '/upgrade.html'}), 429
 
     # Ensure a conversation row exists so multi-turn chats are threaded,
     # not just isolated question/answer events like before.
@@ -817,12 +828,30 @@ def admin_delete_quiz_question(qid):
 # `uid` — cần đợi onAuthStateChanged rồi mới gọi (hoặc gọi lại 1 lần sau khi
 # có user) để nội dung Premium thật sự hiện ra cho học sinh đã mua gói.
 def _resolve_unlimited_from_query() -> bool:
+    """Xác định người gọi có quyền xem nội dung Premium hay không.
+
+    LỖ HỔNG ĐÃ VÁ: bản cũ chỉ đọc `?uid=` trên query string rồi tra Firestore.
+    uid Firebase KHÔNG phải bí mật (nó nằm trong mọi request tracking, lộ ra
+    ở devtools của bất kỳ ai ngồi cạnh), nên chỉ cần biết uid của một bạn có
+    Premium là dùng ké được toàn bộ phản ứng trả phí — tức là bán bao nhiêu
+    gói cũng vô nghĩa. Giờ quyền được xác định bằng Firebase ID token đã
+    verify (Authorization: Bearer ...), thứ chỉ chủ tài khoản mới có.
+
+    Vẫn giữ nhánh `?uid=` phía dưới NHƯNG chỉ để tương thích tạm với lab.html
+    hiện tại và chỉ khi bật cờ ALLOW_LEGACY_UID_UNLOCK=1 — hãy tắt cờ này
+    ngay khi lab.html đã gửi kèm token (xem INTEGRATION_BILLING.md).
+    """
+    user = lms_auth.current_user()
+    if user:
+        return lms_db.has_unlimited_access(user)
+
+    if os.getenv('ALLOW_LEGACY_UID_UNLOCK', '0') != '1':
+        return False
     uid = (request.args.get('uid') or '').strip()
     if not uid:
         return False
     try:
-        user = lms_db.ensure_user_defaults(uid)
-        return lms_db.has_unlimited_access(user)
+        return lms_db.has_unlimited_access(lms_db.ensure_user_defaults(uid))
     except Exception:
         return False
 
