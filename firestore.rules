@@ -34,9 +34,18 @@ service cloud.firestore {
 
     // Các field chỉ Admin SDK (backend) được phép thay đổi trên users/{uid}.
     function protectedUserFields() {
+      // LỖ HỔNG ĐÃ VÁ: danh sách cũ THIẾU nhóm field studentPlan* (thêm vào
+      // lms_db.py sau khi rules này được viết). Vì rule update chỉ chặn đúng
+      // các field liệt kê ở đây, bất kỳ học sinh nào đã đăng nhập cũng có thể
+      // mở console trình duyệt ghi thẳng studentPlanStatus:'active' vào
+      // users/{uid} của chính mình và có Premium vĩnh viễn miễn phí — bán gói
+      // bao nhiêu cũng vô nghĩa. Mọi field quyết định quyền lợi trả phí PHẢI
+      // nằm trong danh sách này, chỉ Admin SDK (backend Flask) được ghi.
       return ['role', 'plan', 'planStatus', 'educationPlan', 'educationPlanStatus',
               'sponsoredBy', 'aiUsageToday', 'submissionUsageToday', 'usageDate',
-              'accountDisabled'];
+              'accountDisabled',
+              'studentPlan', 'studentPlanStatus', 'studentPlanExpiresAt',
+              'studentPlanGrantedBy', 'eduPlanExpiresAt'];
     }
 
     function onlyChangesAllowedFields(existingData, newData, protectedKeys) {
@@ -97,6 +106,14 @@ service cloud.firestore {
     match /quiz_questions_bank/{id} { allow read, write: if false; }
     match /lab_sessions/{id} { allow read, write: if false; }
     match /lab_reaction_runs/{id} { allow read, write: if false; }
+
+    // ── Thanh toán: TUYỆT ĐỐI không cho client đụng vào ────────────────────
+    // Đọc được `license_keys` là đọc được toàn bộ mã kích hoạt chưa dùng của
+    // mọi trường; ghi được `orders` là tự đổi status đơn của mình thành
+    // 'paid'. Cả hai chỉ đi qua backend (billing_db.py) bằng Admin SDK.
+    match /orders/{id}          { allow read, write: if false; }
+    match /license_keys/{id}    { allow read, write: if false; }
+    match /license_batches/{id} { allow read, write: if false; }
 
     // Mặc định: từ chối tất cả những gì chưa khai báo ở trên.
     match /{document=**} {
