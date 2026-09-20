@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nâng cấp Premium - ChemCraft</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Text:wght@400;500;700&family=Google+Sans:wght@400;500;700&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+/* Token đồng bộ với classes.html / teacher.html / admin.html */
+:root{
+  --g-blue:#1a73e8; --g-blue-hover:#1765cc; --g-blue-container:#e8f0fe; --g-blue-on:#174ea6;
+  --g-red:#d93025; --g-red-container:#fce8e6; --g-red-on:#a50e0e;
+  --g-yellow:#f9ab00; --g-yellow-hover:#e37400; --g-yellow-container:#feefc3; --g-yellow-on:#e37400;
+  --g-green:#1e8e3e; --g-green-container:#e6f4ea; --g-green-on:#0d652d;
+  --g-teal:#0b7f8e; --g-teal-container:#e4f7f9;
+  --n-10:#f8f9fa; --n-20:#f1f3f4; --n-30:#e8eaed; --n-40:#dadce0;
+  --n-60:#9aa0a6; --n-70:#80868b; --n-80:#5f6368; --n-100:#202124;
+  --sky:var(--n-10); --surface:#fff; --surface-2:var(--n-20);
+  --ink:var(--n-100); --text:var(--n-100); --text-m:var(--n-80); --text-l:var(--n-70);
+  --border:var(--n-40); --line-soft:var(--n-30);
+  --sh-2:0 1px 3px 0 rgba(60,64,67,.10), 0 4px 8px 0 rgba(60,64,67,.06);
+  --sh-3:0 4px 8px 0 rgba(60,64,67,.10), 0 8px 24px 0 rgba(60,64,67,.08);
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-pill:9999px;
+  --font-body:'Google Sans Text','Google Sans','Be Vietnam Pro',Roboto,-apple-system,sans-serif;
+  --font-display:'Google Sans','Google Sans Text','Be Vietnam Pro',Roboto,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font-body);background:var(--sky);color:var(--text);-webkit-font-smoothing:antialiased;}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 22px 72px;}
+.header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:28px;}
+.title{display:flex;align-items:center;gap:12px;font-family:var(--font-display);font-weight:500;font-size:1.5rem;letter-spacing:-.01em;}
+.title i{width:36px;height:36px;border-radius:10px;background:var(--g-yellow-container);color:var(--g-yellow-on);display:flex;align-items:center;justify-content:center;font-size:.95rem;}
+.btn{font-family:inherit;font-weight:500;font-size:.8125rem;padding:10px 20px;border:none;border-radius:var(--r-sm);cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:.12s;}
+.btn-primary{background:var(--g-blue);color:#fff;}
+.btn-primary:hover{background:var(--g-blue-hover);box-shadow:var(--sh-2);}
+.btn-ghost{background:var(--surface-2);color:var(--ink);}
+.btn-ghost:hover{background:var(--n-30);}
+.btn-gold{background:var(--g-yellow);color:#3c2f00;}
+.btn-gold:hover{background:var(--g-yellow-hover);color:#fff;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+
+.status-bar{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r-md);padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:26px;}
+.status-bar.premium{background:linear-gradient(135deg,#fffdf5,#fff8e1);border-color:var(--g-yellow);}
+.status-main{font-weight:500;font-size:.95rem;display:flex;align-items:center;gap:10px;}
+.status-sub{font-size:.8125rem;color:var(--text-m);margin-top:3px;}
+.usage-chips{display:flex;gap:8px;flex-wrap:wrap;}
+.chip{background:var(--surface-2);border-radius:var(--r-pill);padding:6px 13px;font-size:.75rem;font-weight:500;color:var(--text-m);}
+.chip.warn{background:var(--g-red-container);color:var(--g-red-on);}
+
+.tabs{display:inline-flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:var(--r-pill);margin-bottom:22px;}
+.tab{padding:9px 20px;border-radius:var(--r-pill);background:transparent;border:none;font-family:inherit;font-weight:500;font-size:.8125rem;cursor:pointer;color:var(--text-m);}
+.tab.active{background:var(--surface);color:var(--g-blue-on);box-shadow:0 1px 2px rgba(60,64,67,.15);}
+
+.plan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
+.plan{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r-lg);padding:22px;display:flex;flex-direction:column;position:relative;transition:.15s;}
+.plan:hover{box-shadow:var(--sh-3);border-color:var(--border);}
+.plan.featured{border:2px solid var(--g-yellow);}
+.plan-badge{position:absolute;top:-11px;left:22px;background:var(--g-yellow);color:#3c2f00;font-size:.7rem;font-weight:700;padding:4px 12px;border-radius:var(--r-pill);}
+.plan-name{font-family:var(--font-display);font-weight:500;font-size:1rem;margin-bottom:10px;line-height:1.35;}
+.plan-price{font-family:var(--font-display);font-size:1.85rem;font-weight:500;letter-spacing:-.02em;}
+.plan-price span{font-size:.8125rem;color:var(--text-l);font-weight:400;}
+.plan-feats{list-style:none;margin:16px 0 20px;display:flex;flex-direction:column;gap:9px;flex:1;}
+.plan-feats li{font-size:.8125rem;color:var(--text-m);display:flex;gap:9px;line-height:1.5;}
+.plan-feats i{color:var(--g-green);font-size:.75rem;margin-top:4px;}
+
+.card{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--r-md);padding:22px;margin-top:22px;}
+.card h3{font-family:var(--font-display);font-weight:500;font-size:1.0625rem;margin-bottom:6px;}
+.card p.muted{font-size:.8125rem;color:var(--text-m);line-height:1.6;}
+input,textarea{font-family:inherit;font-size:.875rem;width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:var(--r-sm);margin-top:10px;background:var(--surface);color:var(--text);}
+input:focus,textarea:focus{outline:2px solid var(--g-blue);outline-offset:-1px;border-color:transparent;}
+
+.modal-bg{position:fixed;inset:0;background:rgba(32,33,36,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:50;}
+.modal-bg.show{display:flex;}
+.modal{background:var(--surface);border-radius:var(--r-lg);padding:26px;max-width:480px;width:100%;box-shadow:var(--sh-3);max-height:92vh;overflow-y:auto;}
+.qr-box{text-align:center;padding:16px 0;}
+.qr-box img{width:240px;max-width:100%;border-radius:var(--r-md);border:1px solid var(--line-soft);}
+.pay-row{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:.8125rem;}
+.pay-row:last-child{border-bottom:none;}
+.pay-row .k{color:var(--text-m);}
+.pay-row .v{font-weight:600;text-align:right;word-break:break-all;}
+.pay-row .v.copy{cursor:pointer;color:var(--g-blue);}
+.notice{background:var(--g-blue-container);color:var(--g-blue-on);border-radius:var(--r-sm);padding:12px 14px;font-size:.8125rem;line-height:1.55;margin:14px 0;}
+.notice.warn{background:var(--g-yellow-container);color:var(--g-yellow-on);}
+
+table{width:100%;border-collapse:collapse;margin-top:14px;font-size:.8125rem;}
+th{text-align:left;padding:10px;color:var(--text-l);font-weight:500;border-bottom:1px solid var(--line-soft);}
+td{padding:11px 10px;border-bottom:1px solid var(--line-soft);}
+.pill{display:inline-block;padding:3px 10px;border-radius:var(--r-pill);font-size:.7rem;font-weight:600;}
+.pill-wait{background:var(--g-yellow-container);color:var(--g-yellow-on);}
+.pill-ok{background:var(--g-green-container);color:var(--g-green-on);}
+.pill-no{background:var(--g-red-container);color:var(--g-red-on);}
+.pill-grey{background:var(--surface-2);color:var(--text-m);}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(90px);background:var(--n-100);color:#fff;padding:12px 22px;border-radius:var(--r-sm);font-size:.8125rem;transition:transform .25s;z-index:99;}
+.toast.show{transform:translateX(-50%) translateY(0);}
+.hidden{display:none !important;}
+.empty{text-align:center;padding:36px;color:var(--text-l);font-size:.875rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="title"><i class="fa-solid fa-crown"></i> Nâng cấp ChemCraft Premium</div>
+    <a class="btn btn-ghost" href="index.html"><i class="fa-solid fa-arrow-left"></i> Về trang chủ</a>
+  </div>
+
+  <div class="status-bar" id="status-bar">
+    <div>
+      <div class="status-main" id="status-main">Đang tải trạng thái tài khoản…</div>
+      <div class="status-sub" id="status-sub"></div>
+    </div>
+    <div class="usage-chips" id="usage-chips"></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-aud="student">Học sinh</button>
+    <button class="tab" data-aud="teacher">Giáo viên</button>
+    <button class="tab" data-aud="school">Nhà trường</button>
+  </div>
+
+  <div class="plan-grid" id="plan-grid"></div>
+
+  <div class="card">
+    <h3>Có mã kích hoạt?</h3>
+    <p class="muted">Nếu trường của bạn đã mua gói ChemCraft, hoặc bạn nhận được mã từ chương trình tài trợ,
+      hãy nhập mã tại đây để kích hoạt Premium ngay lập tức — không cần thanh toán.</p>
+    <input id="redeem-code" placeholder="CC-XXXX-XXXX-XXXX" maxlength="20" style="text-transform:uppercase;letter-spacing:.06em;">
+    <button class="btn btn-gold" id="redeem-btn" style="margin-top:12px;"><i class="fa-solid fa-key"></i> Kích hoạt</button>
+  </div>
+
+  <div class="card">
+    <h3>Đơn hàng của tôi</h3>
+    <div id="orders-box"><div class="empty">Đang tải…</div></div>
+  </div>
+</div>
+
+<!-- Modal thanh toán -->
+<div class="modal-bg" id="pay-modal">
+  <div class="modal">
+    <h3 style="font-family:var(--font-display);font-weight:500;font-size:1.125rem;" id="pay-title">Thanh toán</h3>
+    <div class="qr-box" id="qr-box"></div>
+    <div id="pay-details"></div>
+    <div class="notice warn">
+      <strong>Quan trọng:</strong> giữ nguyên nội dung chuyển khoản. Đây là cách hệ thống nhận ra đơn của bạn —
+      ghi sai nội dung sẽ khiến việc đối chiếu bị chậm. Đơn được duyệt thủ công trong vòng 24 giờ làm việc;
+      Premium kích hoạt ngay sau khi duyệt.
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+      <button class="btn btn-ghost" id="pay-close">Để sau</button>
+      <button class="btn btn-primary" id="pay-done"><i class="fa-solid fa-check"></i> Tôi đã chuyển khoản</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+
+let firebaseConfig = {};
+try { firebaseConfig = await (await fetch('/api/firebase-config')).json(); } catch(e){}
+const auth = getAuth(initializeApp(firebaseConfig));
+
+let CURRENT_USER = null, PLANS = [], CURRENT_ORDER = null, AUDIENCE = 'student';
+
+const $ = s => document.querySelector(s);
+const esc = s => (s ?? '').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const vnd = n => new Intl.NumberFormat('vi-VN').format(n || 0) + 'đ';
+const fmtDate = ts => !ts ? '—' : new Date(ts * 1000).toLocaleDateString('vi-VN');
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
+
+async function api(path, opts={}){
+  const token = CURRENT_USER ? await CURRENT_USER.getIdToken() : null;
+  const res = await fetch('/api/billing'+path, {
+    method: opts.method||'GET',
+    headers: {'Content-Type':'application/json', ...(token?{'Authorization':'Bearer '+token}:{})},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(()=>({}));
+  if (!res.ok) throw new Error(data.error || 'Đã có lỗi xảy ra.');
+  return data;
+}
+
+// ── Bảng giá (xem được cả khi chưa đăng nhập) ────────────────────────────
+async function loadPlans(){
+  const {plans} = await (await fetch('/api/billing/plans')).json();
+  PLANS = plans;
+  renderPlans();
+}
+
+function renderPlans(){
+  const list = PLANS.filter(p => p.audience === AUDIENCE);
+  $('#plan-grid').innerHTML = list.map(p => `
+    <div class="plan ${p.badge?'featured':''}">
+      ${p.badge ? `<div class="plan-badge">${esc(p.badge)}</div>` : ''}
+      <div class="plan-name">${esc(p.name)}</div>
+      <div class="plan-price">${vnd(p.amount)} <span>/ ${p.days >= 365 ? 'năm' : p.days >= 180 ? '6 tháng' : 'tháng'}</span></div>
+      <ul class="plan-feats">
+        ${(p.features||[]).map(f=>`<li><i class="fa-solid fa-check"></i><span>${esc(f)}</span></li>`).join('')}
+      </ul>
+      <button class="btn ${p.badge?'btn-gold':'btn-primary'}" data-plan="${esc(p.code)}"
+        style="width:100%;justify-content:center;">
+        ${p.kind === 'school_license' ? 'Đăng ký gói trường' : 'Chọn gói này'}
+      </button>
+    </div>`).join('') || '<div class="empty">Chưa có gói nào cho nhóm này.</div>';
+
+  document.querySelectorAll('[data-plan]').forEach(b => b.onclick = () => startOrder(b.dataset.plan));
+}
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); AUDIENCE = t.dataset.aud; renderPlans();
+});
+
+// ── Trạng thái gói hiện tại ──────────────────────────────────────────────
+async function loadStatus(){
+  if (!CURRENT_USER){
+    $('#status-main').innerHTML = '<i class="fa-solid fa-circle-info" style="color:var(--g-blue)"></i> Bạn chưa đăng nhập';
+    $('#status-sub').textContent = 'Đăng nhập để mua gói hoặc kích hoạt mã.';
+    return;
+  }
+  try {
+    const s = await api('/my-subscription');
+    const bar = $('#status-bar');
+    if (s.unlimited){
+      bar.classList.add('premium');
+      $('#status-main').innerHTML = '<i class="fa-solid fa-crown" style="color:var(--g-yellow)"></i> Tài khoản Premium đang hoạt động';
+      const exp = s.studentPlanExpiresAt || s.eduPlanExpiresAt;
+      $('#status-sub').textContent = exp
+        ? `Hiệu lực đến ${fmtDate(exp)}. Mua thêm gói sẽ được cộng nối tiếp từ ngày hết hạn.`
+        : 'Không giới hạn thời hạn.';
+      $('#usage-chips').innerHTML = '<span class="chip">AI: không giới hạn</span><span class="chip">Lab 3D: đầy đủ</span>';
+    } else {
+      bar.classList.remove('premium');
+      $('#status-main').innerHTML = '<i class="fa-regular fa-user" style="color:var(--text-l)"></i> Bạn đang dùng gói Miễn phí';
+      $('#status-sub').textContent = 'Giới hạn được đặt lại vào 00:00 mỗi ngày (giờ Việt Nam).';
+      const u = s.usage || {};
+      const aiLeft = Math.max(0, (u.aiLimit||0) - (u.aiUsed||0));
+      const subLeft = Math.max(0, (u.submissionLimit||0) - (u.submissionUsed||0));
+      $('#usage-chips').innerHTML =
+        `<span class="chip ${aiLeft===0?'warn':''}">Còn ${aiLeft}/${u.aiLimit||0} lượt AI hôm nay</span>` +
+        `<span class="chip ${subLeft===0?'warn':''}">Còn ${subLeft}/${u.submissionLimit||0} lượt nộp bài</span>`;
+    }
+  } catch(e){ $('#status-sub').textContent = e.message; }
+}
+
+// ── Tạo đơn + hiện QR ────────────────────────────────────────────────────
+async function startOrder(planCode){
+  if (!CURRENT_USER){ toast('Vui lòng đăng nhập trước khi mua gói.'); setTimeout(()=>location.href='index.html',1200); return; }
+  const plan = PLANS.find(p=>p.code===planCode);
+  let extra = {};
+  if (plan && plan.kind === 'school_license'){
+    const org = prompt('Tên trường / đơn vị mua gói:');
+    if (!org) return;
+    const phone = prompt('Số điện thoại liên hệ (để gửi mã kích hoạt):') || '';
+    extra = { orgName: org, phone };
+  }
+  try {
+    const order = await api('/orders', {method:'POST', body:{planCode, ...extra}});
+    showPayModal(order);
+    loadOrders();
+  } catch(e){ toast(e.message); }
+}
+
+function showPayModal(order){
+  CURRENT_ORDER = order;
+  const p = order.payment || {};
+  $('#pay-title').textContent = order.planName;
+  if (!p.configured){
+    $('#qr-box').innerHTML = '<div class="notice warn">Hệ thống chưa cấu hình tài khoản nhận tiền. Vui lòng liên hệ quản trị viên.</div>';
+  } else {
+    $('#qr-box').innerHTML = `<img src="${esc(p.qrUrl)}" alt="Mã VietQR thanh toán">
+      <div style="font-size:.75rem;color:var(--text-l);margin-top:8px;">Quét bằng app ngân hàng bất kỳ — số tiền và nội dung đã điền sẵn</div>`;
+  }
+  $('#pay-details').innerHTML = `
+    <div class="pay-row"><span class="k">Ngân hàng</span><span class="v">${esc(p.bankName||'')}</span></div>
+    <div class="pay-row"><span class="k">Số tài khoản</span><span class="v copy" data-copy="${esc(p.accountNo||'')}">${esc(p.accountNo||'—')} <i class="fa-regular fa-copy"></i></span></div>
+    <div class="pay-row"><span class="k">Chủ tài khoản</span><span class="v">${esc(p.accountName||'')}</span></div>
+    <div class="pay-row"><span class="k">Số tiền</span><span class="v">${vnd(order.amount)}</span></div>
+    <div class="pay-row"><span class="k">Nội dung chuyển khoản</span><span class="v copy" data-copy="${esc(order.code)}">${esc(order.code)} <i class="fa-regular fa-copy"></i></span></div>`;
+  $('#pay-details').querySelectorAll('.copy').forEach(el => el.onclick = () => {
+    navigator.clipboard.writeText(el.dataset.copy).then(()=>toast('Đã sao chép: '+el.dataset.copy));
+  });
+  $('#pay-modal').classList.add('show');
+}
+
+$('#pay-close').onclick = () => $('#pay-modal').classList.remove('show');
+$('#pay-done').onclick = async () => {
+  if (!CURRENT_ORDER) return;
+  try {
+    await api(`/orders/${CURRENT_ORDER.id}/transferred`, {method:'POST'});
+    $('#pay-modal').classList.remove('show');
+    toast('Đã ghi nhận. Đơn sẽ được duyệt trong vòng 24 giờ làm việc.');
+    loadOrders();
+  } catch(e){ toast(e.message); }
+};
+
+// ── Danh sách đơn ────────────────────────────────────────────────────────
+const STATUS_PILL = {
+  pending:         ['pill-wait','Chờ chuyển khoản'],
+  awaiting_review: ['pill-wait','Chờ duyệt'],
+  paid:            ['pill-ok','Đã thanh toán'],
+  rejected:        ['pill-no','Bị từ chối'],
+  expired:         ['pill-grey','Hết hạn'],
+  cancelled:       ['pill-grey','Đã huỷ'],
+};
+
+async function loadOrders(){
+  if (!CURRENT_USER){ $('#orders-box').innerHTML = '<div class="empty">Đăng nhập để xem đơn hàng.</div>'; return; }
+  try {
+    const {orders} = await api('/orders/mine');
+    if (!orders.length){ $('#orders-box').innerHTML = '<div class="empty">Bạn chưa có đơn hàng nào.</div>'; return; }
+    $('#orders-box').innerHTML = `<table>
+      <thead><tr><th>Mã đơn</th><th>Gói</th><th>Số tiền</th><th>Ngày tạo</th><th>Trạng thái</th><th></th></tr></thead>
+      <tbody>${orders.map(o=>{
+        const [cls,label] = STATUS_PILL[o.status] || ['pill-grey', o.status];
+        const act = (o.status==='pending'||o.status==='awaiting_review')
+          ? `<button class="btn btn-ghost" style="padding:6px 12px;font-size:.75rem;" data-pay="${o.id}">Xem QR</button>`
+          : (o.status==='paid' && o.licenseBatchId ? '<span style="font-size:.75rem;color:var(--text-l)">Mã đã gửi qua email</span>' : '');
+        return `<tr>
+          <td style="font-family:monospace;font-weight:600;">${esc(o.code)}</td>
+          <td>${esc(o.planName)}</td><td>${vnd(o.amount)}</td>
+          <td>${fmtDate(o.createdAt)}</td>
+          <td><span class="pill ${cls}">${label}</span></td><td>${act}</td></tr>`;
+      }).join('')}</tbody></table>`;
+    document.querySelectorAll('[data-pay]').forEach(b => b.onclick = async () => {
+      try { showPayModal(await api('/orders/'+b.dataset.pay)); } catch(e){ toast(e.message); }
+    });
+  } catch(e){ $('#orders-box').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+// ── Mã kích hoạt ─────────────────────────────────────────────────────────
+$('#redeem-btn').onclick = async () => {
+  if (!CURRENT_USER){ toast('Vui lòng đăng nhập trước.'); return; }
+  const code = $('#redeem-code').value.trim().toUpperCase();
+  if (!code){ toast('Vui lòng nhập mã kích hoạt.'); return; }
+  $('#redeem-btn').disabled = true;
+  try {
+    const r = await api('/redeem', {method:'POST', body:{code}});
+    toast(`Kích hoạt thành công! Premium có hiệu lực ${r.days} ngày.`);
+    $('#redeem-code').value = '';
+    loadStatus();
+  } catch(e){ toast(e.message); }
+  finally { $('#redeem-btn').disabled = false; }
+};
+
+// ── Khởi động ────────────────────────────────────────────────────────────
+loadPlans();
+onAuthStateChanged(auth, user => { CURRENT_USER = user; loadStatus(); loadOrders(); });
+</script>
+</body>
+</html>
