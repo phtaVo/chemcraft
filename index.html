@@ -1090,6 +1090,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     <button class="nav-btn" onclick="goTo('tools')" aria-label="Công Cụ">🔧 <span class="nav-lbl">Công Cụ</span></button>
     <button class="nav-btn" onclick="goTo('quiz')" aria-label="Giải Bài Tập">🧠 <span class="nav-lbl">Giải Bài</span></button>
     <button class="nav-btn" onclick="goTo('formulas')" aria-label="Công Thức">📐 <span class="nav-lbl">Công Thức</span></button>
+    <button class="nav-btn" onclick="goTo('premium')" aria-label="Nâng Cấp Premium" style="background:linear-gradient(135deg,#f9ab00,#e37400);color:#fff;font-weight:800;">👑 <span class="nav-lbl">Premium</span></button>
   </div>
   <!-- Auth area (logged out) -->
   <button class="nav-auth-btn" id="nav-login-btn" onclick="openAuth()" aria-label="Đăng Nhập">🔑 <span class="nav-lbl">Đăng Nhập</span></button>
@@ -2301,6 +2302,27 @@ BẮT BUỘC:
   </div>
 </section>
 
+<section class="page" id="premium">
+<style>
+#premium-iframe-wrap { width:100%; height:calc(100vh - 64px); overflow:hidden; display:block; }
+#premium-iframe-wrap iframe { width:100%; height:100%; border:none; display:block; }
+</style>
+<div id="premium-iframe-wrap">
+  <iframe id="premium-iframe" src="" allowfullscreen></iframe>
+</div>
+<script>
+(function(){
+  function loadPremiumIframe() {
+    var iframe = document.getElementById('premium-iframe');
+    if (!iframe || iframe.dataset.loaded) return;
+    iframe.dataset.loaded = '1';
+    iframe.src = 'upgrade.html';
+  }
+  window._loadPremiumIframe = loadPremiumIframe;
+})();
+</script>
+</section>
+
 <script>
 "use strict";
 function goTo(id){
@@ -2329,6 +2351,13 @@ function goTo(id){
     setTimeout(function(){
       if(window._loadLessonsIframe) window._loadLessonsIframe();
     }, 80);
+  }
+  /* load premium/upgrade iframe on first visit */
+  if(id === 'premium'){
+    setTimeout(function(){
+      if(window._loadPremiumIframe) window._loadPremiumIframe();
+    }, 80);
+    if(window.recordLesson) window.recordLesson('Nâng cấp Premium', 'Thanh toán', '👑');
   }
   /* load lab iframe on first visit */
   if(id === 'lab'){
